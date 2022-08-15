@@ -17,10 +17,11 @@ jobs:
     steps:
     - name: Build release
       uses: actions/checkout@v3
-    - run: sudo apt-get update
-    - run: sudo apt-get install -y dpkg dpkg-dev liblzma-dev
+#     - run: sudo apt-get update
+#     - run: sudo apt-get install -y dpkg dpkg-dev liblzma-dev
     - run: cargo install cargo-deb
     - run: make
+    - run: mv restcommander restcommander-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu
 
     - uses: "marvinpinto/action-automatic-releases@latest"
       with:
