@@ -1,6 +1,10 @@
 name: RestCommander
 
-on: [pull_request, push]
+on: 
+  pull_request:
+  push:
+    tags-ignore:
+      - '**'
 
 jobs:
   check:
