@@ -15,20 +15,40 @@ jobs:
     runs-on: "ubuntu-latest"
 
     steps:
+
     - name: Build release
       uses: actions/checkout@v3
+
 #     - run: sudo apt-get update
 #     - run: sudo apt-get install -y dpkg dpkg-dev liblzma-dev
-    - run: cargo install cargo-deb
-    - run: make
-    - run: mv restcommander restcommander-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu
 
-    - uses: "marvinpinto/action-automatic-releases@latest"
+    - name: Install cargo deb
+      run: cargo install cargo-deb
+
+    - name: Build release
+      run: make
+
+    - name: Rename release file
+      run: cp restcommander restcommander-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu
+
+    - run: ls -lash
+
+    - name: Make github release for latest
+      uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
         automatic_release_tag: "latest"
         prerelease: true
-        title: "Development Build"
+        title: "Latest Build"
         files: |
-          restcommander
-          *.deb
+          restcommander*
+
+    - name: "Make github release for latest ${{ secrets.GITHUB_TOKEN }}"
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "${{  github.ref_name }}"
+        prerelease: true
+        title: "${{  github.ref_name }}"
+        files: |
+          restcommander*
