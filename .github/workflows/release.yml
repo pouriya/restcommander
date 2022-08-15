@@ -11,13 +11,12 @@ on:
 
 jobs:
   pre-release:
-    name: "Pre Release"
+    name: Build release
     runs-on: "ubuntu-latest"
 
     steps:
 
-    - name: Build release
-      uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
 #     - run: sudo apt-get update
 #     - run: sudo apt-get install -y dpkg dpkg-dev liblzma-dev
@@ -33,7 +32,7 @@ jobs:
 
     - run: ls -lash
 
-    - name: Make github release for latest
+    - name: Make GitHub release for latest
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
@@ -43,7 +42,7 @@ jobs:
         files: |
           restcommander*
 
-    - name: "Make github release for latest ${{ secrets.GITHUB_TOKEN }}"
+    - name: Make GitHub release for tag name
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
