@@ -50,4 +50,4 @@ jobs:
         prerelease: true
         title: "${{  github.ref_name }}"
         files: |
-          restcommander*
+          restcommander-*
