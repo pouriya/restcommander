@@ -15,9 +15,8 @@ jobs:
     runs-on: "ubuntu-latest"
 
     steps:
-      # ...
     - name: Build release
-      uses: actions-rs/cargo@v1
+      uses: actions/checkout@v3
       with:
         command: make
 
