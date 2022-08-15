@@ -30,7 +30,8 @@ jobs:
     - name: Rename release file
       run: cp restcommander restcommander-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu
 
-    - run: ls -lash
+    - name: List of files
+      run: ls -lash
 
     - name: Make GitHub release for latest
       uses: "marvinpinto/action-automatic-releases@latest"
@@ -40,7 +41,8 @@ jobs:
         prerelease: true
         title: "Latest Build"
         files: |
-          restcommander*
+          restcommander-*
+          *.deb
 
     - name: Make GitHub release for tag name
       uses: "marvinpinto/action-automatic-releases@latest"
@@ -51,3 +53,4 @@ jobs:
         title: "${{  github.ref_name }}"
         files: |
           restcommander-*
+          *.deb
