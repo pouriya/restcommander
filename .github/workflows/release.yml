@@ -16,7 +16,12 @@ jobs:
 
     steps:
     - name: Build release
-      uses: actions/checkout@v3
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: stable
+        override: true
+        components: deb
     - run: make
 
     - uses: "marvinpinto/action-automatic-releases@latest"
