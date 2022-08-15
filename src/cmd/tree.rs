@@ -3,10 +3,10 @@ use crate::cmd::MAX_COMMAND_DIRECTORY_DEPTH;
 use crate::http::API_RUN_BASE_PATH;
 use log::{debug, trace, warn};
 use serde_derive::{Deserialize, Serialize};
+use serde_yaml;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use serde_yaml;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Command {
@@ -24,7 +24,6 @@ pub struct Command {
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub commands: HashMap<String, Command>,
 }
-
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommandInfo {
@@ -122,7 +121,9 @@ impl Command {
         if recursion_count == 0 {
             warn!(
                 "maximum depth of command directories is {}. skipped directory {:?} with depth {}",
-                MAX_COMMAND_DIRECTORY_DEPTH, &directory, MAX_COMMAND_DIRECTORY_DEPTH + 1
+                MAX_COMMAND_DIRECTORY_DEPTH,
+                &directory,
+                MAX_COMMAND_DIRECTORY_DEPTH + 1
             );
             return Ok(HashMap::new());
         };
@@ -135,15 +136,17 @@ impl Command {
                 })?;
         let mut commands = HashMap::new();
         for entry in read_directory {
-            let entry = entry.map_err(|reason| CommandError::ReadDirectoryEntry {
-                directory: directory.clone(),
-                source: reason,
-            })?.path();
+            let entry = entry
+                .map_err(|reason| CommandError::ReadDirectoryEntry {
+                    directory: directory.clone(),
+                    source: reason,
+                })?
+                .path();
             if entry.is_file() {
                 if !is_executable::is_executable(entry.clone()) {
                     if let Some(extension) = entry.extension() {
                         if extension == "yaml" || extension == "yml" {
-                            continue
+                            continue;
                         };
                     };
                     warn!("{:?} is not executable and discarded", entry);
@@ -153,20 +156,13 @@ impl Command {
                     Self::from_filename(root_directory, &entry, &http_base_path.clone())?;
                 debug!(
                     "created command {} from command filename {:?}: {:#?}",
-                    command_name,
-                    &entry,
-                    command
+                    command_name, &entry, command
                 );
                 commands.insert(command_name, command);
             };
             if entry.is_dir() {
                 let command = Command {
-                    name: entry
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
+                    name: entry.file_name().unwrap().to_str().unwrap().to_string(),
                     file_path: entry.clone(),
                     info_file_path: Default::default(),
                     http_path: http_base_path
@@ -181,7 +177,10 @@ impl Command {
                         recursion_count - 1,
                     )?,
                 };
-                commands.insert(entry.file_name().unwrap().to_str().unwrap().to_string(), command);
+                commands.insert(
+                    entry.file_name().unwrap().to_str().unwrap().to_string(),
+                    command,
+                );
             }
         }
         Ok(commands)
@@ -249,50 +248,49 @@ impl Command {
         };
         if !info_filename.exists() {
             warn!("No .yaml or .yml info file found for {:?}", info_filename);
-            return Ok(
-                CommandInfo {
-                    description: command_filename
-
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                    version: None,
-                    current_state: None,
-                    options: Default::default(),
-                }
-            );
+            return Ok(CommandInfo {
+                description: command_filename
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                version: None,
+                current_state: None,
+                options: Default::default(),
+            });
         };
         if !info_filename.is_file() {
-            return Err(CommandError::CommandInfoFileNotIsNotFile{ filename: command_filename.clone()})
+            return Err(CommandError::CommandInfoFileNotIsNotFile {
+                filename: command_filename.clone(),
+            });
         };
-        let info_file_content = fs::read_to_string(info_filename.clone())
-            .map_err(
-                |reason| {
-                    CommandError::ReadCommandInfoFile{ filename: command_filename.clone(), source: reason}
-                }
-            )?;
-        if info_file_content.trim().is_empty() {
-            return Ok(
-                CommandInfo {
-                    description: command_filename
-                        .file_name()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                    version: None,
-                    current_state: None,
-                    options: Default::default(),
-                }
-            )
-        };
-        let command_info = serde_yaml::from_str::<CommandInfo>(&info_file_content).map_err(
-            |reason| {
-                CommandError::DecodeCommandInfo{ filename: info_filename.clone(), message: reason }
+        let info_file_content = fs::read_to_string(info_filename.clone()).map_err(|reason| {
+            CommandError::ReadCommandInfoFile {
+                filename: command_filename.clone(),
+                source: reason,
             }
-        )?;
+        })?;
+        if info_file_content.trim().is_empty() {
+            return Ok(CommandInfo {
+                description: command_filename
+                    .file_name()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                version: None,
+                current_state: None,
+                options: Default::default(),
+            });
+        };
+        let command_info =
+            serde_yaml::from_str::<CommandInfo>(&info_file_content).map_err(|reason| {
+                CommandError::DecodeCommandInfo {
+                    filename: info_filename.clone(),
+                    message: reason,
+                }
+            })?;
         let mut check_options = Ok(command_info.clone());
         for (option, definition) in command_info.options {
             if !definition.required && definition.default_value.is_none() {
@@ -309,13 +307,8 @@ impl Command {
                         CommandOptionInfoValueType::AcceptedValueList(_),
                         CommandOptionValue::String(_),
                     ) => (),
-                    (CommandOptionInfoValueType::String(_), CommandOptionValue::String(_)) => {
-                        ()
-                    }
-                    (
-                        CommandOptionInfoValueType::Integer(_),
-                        CommandOptionValue::Integer(_),
-                    ) => (),
+                    (CommandOptionInfoValueType::String(_), CommandOptionValue::String(_)) => (),
+                    (CommandOptionInfoValueType::Integer(_), CommandOptionValue::Integer(_)) => (),
                     (CommandOptionInfoValueType::Float(_), CommandOptionValue::Float(_)) => (),
                     (CommandOptionInfoValueType::Bool, CommandOptionValue::Bool(_)) => (),
                     _ => {
@@ -333,9 +326,7 @@ impl Command {
                         ));
                         break;
                     };
-                    if let Some(CommandOptionValue::String(ref value)) =
-                    definition.default_value
-                    {
+                    if let Some(CommandOptionValue::String(ref value)) = definition.default_value {
                         if !list.contains(value) {
                             check_options = Err(format!("for option '{}' the default value should be in its default value list", option));
                             break;
@@ -344,7 +335,7 @@ impl Command {
                 }
                 _ => (),
             }
-        };
+        }
         if let Ok(ref command_info) = check_options {
             trace!("{:?} -> {:#?}", command_filename.clone(), command_info);
         };

@@ -274,12 +274,13 @@ impl CheckValue for CfgServer {
                     message: reason,
                 }
             })?;
-            let password = String::from_utf8(password).map_err(|reason| {
-                CfgServerCheckError::DecodePasswordFileContent {
+            let password = String::from_utf8(password)
+                .map_err(|reason| CfgServerCheckError::DecodePasswordFileContent {
                     filename: self.password_file.clone(),
                     message: reason,
-                }
-            })?.trim().to_string();
+                })?
+                .trim()
+                .to_string();
             if password.is_empty() {
                 return Err(CfgServerCheckError::PasswordFileEmpty {
                     filename: self.password_file.clone(),
@@ -532,7 +533,7 @@ pub enum CMDSample {
 }
 
 #[derive(Debug, Clone, StructOpt)]
-pub struct CMDSha512{
+pub struct CMDSha512 {
     #[structopt(about = "input to be encoded. If empty, It prompt to ask input.")]
     input: Option<String>,
 }
@@ -570,7 +571,9 @@ impl TryFrom<CMDOptRun> for Cfg {
                     port: command_line_options.port,
                     http_base_path: command_line_options.http_base_path,
                     username: command_line_options.username.unwrap_or("".to_string()),
-                    password_sha512: command_line_options.password_sha512.unwrap_or("".to_string()),
+                    password_sha512: command_line_options
+                        .password_sha512
+                        .unwrap_or("".to_string()),
                     password_file: command_line_options.password_file.unwrap_or(PathBuf::new()),
                     tls_cert_file: command_line_options.tls_cert_file,
                     tls_key_file: command_line_options.tls_key_file,
@@ -596,26 +599,22 @@ impl TryFrom<CMDOptRun> for Cfg {
 
 pub fn try_setup() -> Result<Cfg, Option<String>> {
     match CMDOpt::from_args() {
-        CMDOpt::Sha512(CMDSha512{input: maybe_input}) => {
+        CMDOpt::Sha512(CMDSha512 { input: maybe_input }) => {
             let input = if let Some(input) = maybe_input {
                 input
             } else {
                 AskPass::new([0; 10240])
                     .with_star('*')
                     .askpass("Enter input text: ")
-                    .map(
-                        |x| {
-                            String::from_utf8(x.into()).unwrap()
-                        }
-                    )
-                    .map_err(
-                        |reason| {
-                            Some(format!("Could not read password: {}", reason.to_string()))
-                        }
-                    )?
-            }.trim().to_string();
+                    .map(|x| String::from_utf8(x.into()).unwrap())
+                    .map_err(|reason| {
+                        Some(format!("Could not read password: {}", reason.to_string()))
+                    })?
+            }
+            .trim()
+            .to_string();
             if input.is_empty() {
-                return Err(Some("input is empty!".to_string()))
+                return Err(Some("input is empty!".to_string()));
             };
             println!("{}", utils::to_sha512(input));
             Err(None)

@@ -1,7 +1,7 @@
 use crate::cmd::CommandInput;
+use serde_yaml;
 use std::io;
 use std::path::PathBuf;
-use serde_yaml;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -62,12 +62,10 @@ pub enum CommandError {
     #[error("command information for command {command:?} is invalid: {reason:?}")]
     InvalidCommandInfo { command: PathBuf, reason: String },
     #[error("Command info file {filename:?} is not a regular file")]
-    CommandInfoFileNotIsNotFile{
-        filename: PathBuf
-    },
+    CommandInfoFileNotIsNotFile { filename: PathBuf },
     #[error("Could not read command info file {filename:?}")]
-    ReadCommandInfoFile{
+    ReadCommandInfoFile {
         filename: PathBuf,
-        source: io::Error
+        source: io::Error,
     },
 }

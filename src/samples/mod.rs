@@ -20,7 +20,7 @@ fn get_sample(sample_name: CMDSample) -> Result<String, String> {
         CMDSample::SelfSignedKey => self_signed_key(),
         CMDSample::SelfSignedCert => self_signed_cert(),
         CMDSample::TestScript => test_script(),
-        CMDSample::TestScriptInfo => test_script_info()
+        CMDSample::TestScriptInfo => test_script_info(),
     }
 }
 
@@ -40,12 +40,22 @@ fn perl() -> Result<String, String> {
     Ok(include_str!("perl.pl").to_string())
 }
 
-fn self_signed_key() -> Result<String, String> { Ok(include_str!("key.pem").to_string()) }
+fn self_signed_key() -> Result<String, String> {
+    Ok(include_str!("key.pem").to_string())
+}
 
-fn self_signed_cert() -> Result<String, String> { Ok(include_str!("cert.pem").to_string()) }
+fn self_signed_cert() -> Result<String, String> {
+    Ok(include_str!("cert.pem").to_string())
+}
 
-fn systemd_service() -> Result<String, String> { Ok(include_str!("restcommander.service").to_string()) }
+fn systemd_service() -> Result<String, String> {
+    Ok(include_str!("restcommander.service").to_string())
+}
 
-fn test_script() -> Result<String, String> { Ok(include_str!("test").to_string()) }
+fn test_script() -> Result<String, String> {
+    Ok(include_str!("test").to_string())
+}
 
-fn test_script_info() -> Result<String, String> { Ok(include_str!("test.yml").to_string()) }
+fn test_script_info() -> Result<String, String> {
+    Ok(include_str!("test.yml").to_string())
+}

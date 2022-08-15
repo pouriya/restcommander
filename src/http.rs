@@ -511,7 +511,10 @@ fn try_authenticate(
                 [username, password] => {
                     if username == server_cfg.username {
                         let password_sha512 = utils::to_sha512(password);
-                        debug!("client password encoded in sha512 for username {:?}: {}", username, password_sha512);
+                        debug!(
+                            "client password encoded in sha512 for username {:?}: {}",
+                            username, password_sha512
+                        );
                         if server_cfg.password_sha512 == password_sha512 {
                             return Ok(());
                         };
@@ -601,7 +604,9 @@ fn maybe_read_index_html_file(cfg: Arc<RwLock<Cfg>>) -> Response<String> {
         let filename = cfg_value.www.static_directory.join("index.html");
         match fs::read_to_string(filename.clone()) {
             Ok(data) => (StatusCode::OK, data),
-            Err(reason) if reason.kind() == ErrorKind::NotFound => (StatusCode::OK, www::get_index_html()),
+            Err(reason) if reason.kind() == ErrorKind::NotFound => {
+                (StatusCode::OK, www::get_index_html())
+            }
             Err(reason) => {
                 error!("could not read file {:?}: {:?}", filename, reason);
                 (

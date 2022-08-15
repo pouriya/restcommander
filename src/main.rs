@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 use std::thread::sleep;
 use std::time::Duration;
 
-use log::{error, info, LevelFilter, trace};
+use log::{error, info, trace, LevelFilter};
 
 mod cmd;
 mod http;
