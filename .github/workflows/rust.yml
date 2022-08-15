@@ -1,10 +1,6 @@
-name: RestCommander
+name: Build & Lint & Test
 
-on: 
-  pull_request:
-  push:
-    tags-ignore:
-      - '**'
+on: [push, pull_request]
 
 jobs:
   check:
