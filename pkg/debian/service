@@ -1,0 +1,15 @@
+[Unit]
+Description=HTTP REST API layer on top of scripts with a simple web dashboard
+Documentation=https://github.com/pouriya/RestCommander
+
+[Service]
+Type=simple
+# Depending on your installation, You may want to change paths here:
+ExecStart=/usr/local/bin/restcommander config /etc/restcommander/config.toml
+StandardOutput=syslog
+Restart=on-failure
+#User=
+#Group=
+
+[Install]
+WantedBy=multi-user.target

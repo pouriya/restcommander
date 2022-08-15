@@ -1,0 +1,53 @@
+[package]
+name = "restcommander"
+version = "0.1.0"
+edition = "2021"
+description = "HTTP REST API layer on top of scripts with a simple web dashboard"
+authors = ["pouriya.jahanbakhsh@gmail.com"]
+repository = "https://github.com/pouriya/RestCommander"
+
+
+[dependencies]
+thiserror = "1.*"
+anyhow = "1.*"
+# Configuration:
+config = { version="0.12", default-features = false, features=["toml"] }
+structopt = { version = "0.3", default-features = false }
+# Logging:
+log = "0.4"
+log4rs = { version = "1.0", default-features = false, features = ["console_appender"] }
+# (S|Des)erialization:
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = { version = "1.0" }
+serde_yaml = "0.8"
+# HTTP:
+warp = { version = "0.3", features = ["tls"] }
+tokio = { version = "1.17", features = ["full"] }
+base64 = "0.13"
+# Check file mode:
+is_executable = "1.0"
+# Ask password:
+ttyaskpass = "2.0"
+# Hash:
+sha2 = "0.10"
+hex = "0.4"
+
+[profile.release]
+opt-level = 'z'     # Optimize for size.
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Reduce number of codegen units to increase optimizations.
+panic = 'abort'     # Abort on panic
+strip = true
+
+[package.metadata.deb]
+maintainer = "Pouriya Jahanbakhsh pouriya.jahanbakhsh@gmail.com"
+depends = "" # "$auto, libc6 (>= 2.29)"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/restcommander", "usr/local/bin/", "755"],
+    ["src/samples/restcommander.toml", "etc/restcommander/config.toml.default", "644"],
+]
+systemd-units = { enable = true }
+maintainer-scripts = "pkg/debian/"

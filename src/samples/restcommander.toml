@@ -1,0 +1,45 @@
+[logging]
+## Possible values: error, warning, info, debug, trace
+## Default value: info
+level_name = "info"
+
+[server]
+## Default value: "127.0.0.1"
+host = "0.0.0.0"
+
+## Default value: 1995
+port = 1995
+
+## If `username` and `password_file` and `password_sha512` are set to empty or commented, no authentication is required.
+## If you specify both `password_sha512` and `password_file`, The `password_sha512` field will be ignored.
+## If you specify `password_sha512`, You can not use /api/setPassword endpoint to change the password.
+##
+username = "admin"
+## If you want to be able to use /api/setPassword endpoint, Make sure that the RestCommander program has enough permissions
+## to write to your specified `password_file`.
+password_file = "/etc/restcommander/password-file.sha512"
+# password_sha512 = "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd472634dfac71cd34ebc35d16ab7fb8a90c81f975113d6c7538dc69dd8de9077ec" # sha512 of word "admin"
+
+## If you specify `tls_cert_file` and `tls_key_file` fields, RestCommander tries to serve everything over HTTPS.
+## You can get a test cert file via `restcommander sample self-signed-cert` command.
+tls_cert_file = "/etc/restcommander/cert.pem"
+## You can get a test key file via `restcommander sample self-signed-key` command.
+tls_key_file = "/etc/restcommander/key.pem"
+
+[commands]
+## Root directory to load command files and directories and their information files.
+root_directory = "/srv/restcommander/scripts"
+
+
+[www]
+## If `static_directory` is set, You can override RestCommander files:
+##  index.html
+##  style.css
+##  panel.js
+##  favicon.ico
+##  inconsolata.woff2 (default font file)
+##  and serve your own file. Note that subdirectories are skipped!
+static_directory = "/srv/restcommander/www"
+html_title = "Rest Commander"
+## By default the web dashboard is enabled. You can disable it and just use the Rest API.
+enabled = true

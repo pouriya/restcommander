@@ -1,0 +1,26 @@
+#! /usr/bin/env python3
+
+from sys import stderr, stdin
+from json import loads as json_decode
+from json import dumps as json_encode
+
+
+configuration = ''
+for line in stdin:
+    configuration += line
+configuration = json_decode(configuration)
+exit_code = configuration['options']['ExitCode']
+output = configuration['options']['Output']
+decoded = False
+try:
+    output = json_decode(output)
+    decoded = True
+except Exception as error:
+    print('ERROR Could not decode value as JSON: {}'.format(error), file=stderr)
+    output = 'Your `output` could not be decoded to JSON: {}'.format(error)
+
+if not decoded:
+    exit_code = 2
+
+print(json_encode(output))
+exit(exit_code)

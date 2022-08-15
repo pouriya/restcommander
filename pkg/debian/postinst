@@ -1,0 +1,50 @@
+#!/bin/sh
+set -e
+
+# RC: RestCommander
+
+RC_CFG_DIR="/etc/restcommander/"
+
+RC_CFG_FILE=${RC_CFG_DIR}config.toml
+RC_PASSWORD_FILE=${RC_CFG_DIR}password-file.sha512
+RC_KEY_FILE=${RC_CFG_DIR}key.pem
+RC_CERT_FILE=${RC_CFG_DIR}cert.pem
+
+
+RC_SRV_DIR="/srv/restcommander/"
+
+RC_WWW_DIR=${RC_SRV_DIR}www/
+RC_SAMPLE_WWW_FILE=${RC_WWW_DIR}test.txt
+
+RC_SCRIPTS_DIR=${RC_SRV_DIR}scripts/
+RC_TEST_SCRIPT=${RC_SCRIPTS_DIR}test
+RC_TEST_SCRIPT_INFO=${RC_SCRIPTS_DIR}test.yml
+
+case "$1" in
+  configure)
+    if [ ! -f ${RC_CFG_FILE} ]; then
+      restcommander sample config > ${RC_CFG_FILE}
+    fi
+    if [ ! -f ${RC_PASSWORD_FILE} ]; then
+      restcommander sha512 admin > ${RC_PASSWORD_FILE}
+    fi
+    mkdir -p ${RC_SCRIPTS_DIR}
+    if [ ! "$(ls -A ${RC_SCRIPTS_DIR})" ]; then
+      restcommander sample test-script > ${RC_TEST_SCRIPT}
+      chmod a+x ${RC_TEST_SCRIPT}
+      restcommander sample test-script-info > ${RC_TEST_SCRIPT_INFO}
+    fi
+    if [ ! -f ${RC_KEY_FILE} ]; then
+      restcommander sample self-signed-key > ${RC_KEY_FILE}
+      restcommander sample self-signed-cert > ${RC_CERT_FILE}
+    fi
+    if [ ! -f ${RC_SAMPLE_WWW_FILE} ]; then
+      mkdir -p ${RC_WWW_DIR}
+      touch ${RC_SAMPLE_WWW_FILE}
+      echo "This is a sample static file to test your configuration." >> ${RC_SAMPLE_WWW_FILE}
+      echo "You can access this file at /test.txt ot /static/test.txt to see this text." >> ${RC_SAMPLE_WWW_FILE}
+    fi
+    ;;
+esac
+
+#DEBHELPER#

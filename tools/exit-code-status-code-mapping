@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e
+echo "Process exit-code to HTTP status-code mapping:"
+cat src/http.rs | awk 'BEGIN{FS="[=>:,() ]"; start=0} $2 == "exit_code_to_status_code"{start=1; next} start == 1 && $9 ~ /^[0-9]/ {print $9 "     -> " $NF " (" $15 ")"} start == 1 && $9 == "_" {print "OTHER -> " $NF " (" $15 ")"; exit}'
