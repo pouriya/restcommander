@@ -18,7 +18,7 @@ jobs:
     - name: Build release
       uses: actions/checkout@v3
     - run: sudo apt-get update
-    - run: sudo apt-get install -y dpkg dpkg-dev and liblzma-dev
+    - run: sudo apt-get install -y dpkg dpkg-dev liblzma-dev
     - run: cargo install cargo-deb
     - run: make
 
