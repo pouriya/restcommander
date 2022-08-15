@@ -16,12 +16,9 @@ jobs:
 
     steps:
     - name: Build release
-      uses: actions-rs/toolchain@v1
-      with:
-        profile: minimal
-        toolchain: stable
-        override: true
-        components: deb
+      uses: actions/checkout@v3
+    - run: apt-get -y install dpkg dpkg-dev and liblzma-dev
+    - run: cargo install cargo-deb
     - run: make
 
     - uses: "marvinpinto/action-automatic-releases@latest"
