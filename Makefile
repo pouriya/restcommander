@@ -2,7 +2,7 @@ DEV_CMD=./target/debug/restcommander
 DEV_DIR=tmp/
 DEV_CFG=${DEV_DIR}config.toml
 
-all: release
+all: release deb
 
 release:
 	cargo build --release
@@ -10,7 +10,7 @@ release:
 
 deb: release
 	cargo deb
-	cp /p/restcommander/target/debian/*.deb .
+	cp ./target/debian/*.deb .
 
 dev:
 	cargo build
@@ -55,4 +55,9 @@ update-self-signed-certificate:
 	echo '\n\n\n\n\n\n\n\n\n\n\n\n\n\n' | openssl req -new -x509 -nodes -days 3650 -key src/samples/key.pem -out src/samples/cert.pem
 
 
-.PHONY: all release deb dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate
+lint:
+	cargo fmt --verbose --check
+	cargo clippy --no-deps
+
+
+.PHONY: all release deb dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint
