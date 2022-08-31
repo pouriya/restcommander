@@ -76,6 +76,8 @@ pub struct CMDOptRun {
     pub tls_cert_file: Option<PathBuf>,
     #[structopt(long, parse(from_os_str), env = "RESTCOMMANDER_TLS_KEY_PATH")]
     pub tls_key_file: Option<PathBuf>,
+    #[structopt(long, parse(from_os_str), env = "RESTCOMMANDER_CAPTCHA_FILE")]
+    pub captcha_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,6 +194,7 @@ pub struct CfgServer {
     pub tls_cert_file: Option<PathBuf>,
     #[serde(default = "CfgServerDefault::tls_key_file")]
     pub tls_key_file: Option<PathBuf>,
+    pub captcha_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Error)]
@@ -339,6 +342,9 @@ impl CfgServerDefault {
     fn tls_key_file() -> Option<PathBuf> {
         None
     }
+    fn captcha_file() -> Option<PathBuf> {
+        None
+    }
 }
 
 impl Default for CfgServer {
@@ -352,6 +358,7 @@ impl Default for CfgServer {
             password_sha512: CfgServerDefault::password_sha512(),
             tls_cert_file: CfgServerDefault::tls_cert_file(),
             tls_key_file: CfgServerDefault::tls_key_file(),
+            captcha_file: CfgServerDefault::captcha_file(),
         }
     }
 }
@@ -577,6 +584,7 @@ impl TryFrom<CMDOptRun> for Cfg {
                     password_file: command_line_options.password_file.unwrap_or(PathBuf::new()),
                     tls_cert_file: command_line_options.tls_cert_file,
                     tls_key_file: command_line_options.tls_key_file,
+                    captcha_file: command_line_options.captcha_file,
                 },
                 commands: CfgCommands {
                     root_directory: command_line_options.root_directory,

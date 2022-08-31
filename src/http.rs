@@ -28,6 +28,7 @@ use warp::path::Tail;
 use warp::reject::Reject;
 use warp::{Filter, Rejection};
 
+use crate::captcha;
 use crate::cmd;
 use crate::cmd::{Command, CommandInput, CommandStats};
 use crate::settings::Cfg;
@@ -45,6 +46,8 @@ pub enum HTTPError {
     Authentication(#[from] HTTPAuthenticationError),
     #[error(transparent)]
     API(#[from] HTTPAPIError),
+    #[error(transparent)]
+    Captcha(#[from] std::io::Error),
 }
 
 impl Reject for HTTPError {}
@@ -66,6 +69,10 @@ pub enum HTTPAuthenticationError {
     InvalidBasicAuthentication { header_value: String },
     #[error("invalid username or password")]
     InvalidUsernameOrPassword,
+    #[error("invalid CAPTCHA")]
+    InvalidCaptcha,
+    #[error("invalid CAPTCHA form")]
+    InvalidCaptchaForm,
 }
 
 #[derive(Error, Debug)]
@@ -127,6 +134,8 @@ impl HTTPAuthenticationError {
             Self::UnknownMethod { .. } => 2005,
             Self::InvalidBasicAuthentication { .. } => 2006,
             Self::InvalidUsernameOrPassword => 2007,
+            Self::InvalidCaptcha => 2008,
+            Self::InvalidCaptchaForm => 2009,
         }
     }
 
@@ -138,6 +147,8 @@ impl HTTPAuthenticationError {
             Self::UnknownMethod { .. } => StatusCode::BAD_REQUEST,
             Self::InvalidBasicAuthentication { .. } => StatusCode::BAD_REQUEST,
             Self::InvalidUsernameOrPassword => StatusCode::UNAUTHORIZED,
+            Self::InvalidCaptcha => StatusCode::UNAUTHORIZED,
+            Self::InvalidCaptchaForm => StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -188,8 +199,32 @@ pub async fn setup(
         warp::path("reload").and(api_reload_commands_filter(commands.clone()).or(
             api_reload_config_filter(cfg.clone(), http_start_sender.clone()),
         ));
+    let maybe_captcha = if cfg
+        .read()
+        .unwrap()
+        .config_value
+        .server
+        .captcha_file
+        .is_some()
+    {
+        Some(Arc::new(RwLock::new(
+            captcha::Captcha::try_from(
+                cfg.read()
+                    .unwrap()
+                    .config_value
+                    .server
+                    .captcha_file
+                    .as_ref()
+                    .unwrap()
+                    .clone(),
+            )
+            .map_err(|error| error.to_string())?,
+        )))
+    } else {
+        None
+    };
     let api_filter = warp::path("api")
-        .and(authentication_filter(cfg.clone()))
+        .and(authentication_filter(cfg.clone(), maybe_captcha.clone()))
         .untuple_one()
         .and(
             api_run_filter
@@ -202,9 +237,12 @@ pub async fn setup(
         static_index_html_filter(cfg.clone())
             .or(static_external_filter(cfg.clone()).or(static_internal_filter(cfg.clone()))),
     );
+    let dynamic_captcha = warp::path("dynamic").and(captcha(maybe_captcha.clone()));
+
     let routes = api_filter
         .or(static_filter)
         .or(redirect_root_to_index_html_filter(cfg.clone()))
+        .or(dynamic_captcha)
         .recover(handle_rejection)
         .with(warp::log::custom(http_logging));
     if server_options.tls_cert_file.clone().is_some()
@@ -271,18 +309,26 @@ pub async fn maybe_handle_message(channel_receiver: &mut Receiver<()>) -> Result
 
 fn authentication_filter(
     cfg: Arc<RwLock<Cfg>>,
+    maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
-    warp::header::<String>(warp::http::header::AUTHORIZATION.as_str()).and_then(
-        move |authorization_value: String| {
-            let cfg = cfg.clone();
-            async move {
-                match try_authenticate(cfg, authorization_value) {
-                    Err(reason) => Err(warp::reject::custom(HTTPError::Authentication(reason))),
-                    Ok(_) => Ok(()),
+    warp::header::<String>(warp::http::header::AUTHORIZATION.as_str())
+        .and(
+            warp::body::form::<HashMap<String, String>>()
+                .or(warp::any().map(|| HashMap::new()))
+                .unify(),
+        )
+        .and_then(
+            move |authorization_value: String, form: HashMap<String, String>| {
+                let cfg = cfg.clone();
+                let maybe_captcha = maybe_captcha.clone();
+                async move {
+                    match try_authenticate(cfg, maybe_captcha, authorization_value, form) {
+                        Err(reason) => Err(warp::reject::custom(HTTPError::Authentication(reason))),
+                        Ok(_) => Ok(()),
+                    }
                 }
-            }
-        },
-    )
+            },
+        )
 }
 
 fn api_get_commands_filter(
@@ -479,9 +525,35 @@ fn static_internal_filter(
         })
 }
 
+fn captcha(
+    maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
+) -> impl Filter<Extract = (Response<Vec<u8>>,), Error = Rejection> + Clone {
+    warp::get().and(warp::path("captcha")).and_then(move || {
+        let maybe_captcha_tmp = maybe_captcha.clone();
+        async move {
+            if let Some(captcha) = maybe_captcha_tmp {
+                match captcha.write().unwrap().generate(true) {
+                    Ok((_, _, png_image)) => Ok(Response::builder()
+                        .header(warp::http::header::CONTENT_TYPE, "image/png")
+                        .status(StatusCode::OK)
+                        .body(png_image)
+                        .unwrap()),
+                    Err(error) => Err(warp::reject::custom(HTTPError::Captcha(error))),
+                }
+            } else {
+                Err(warp::reject::custom(HTTPError::Captcha(
+                    std::io::Error::from(std::io::ErrorKind::Unsupported),
+                )))
+            }
+        }
+    })
+}
+
 fn try_authenticate(
     cfg: Arc<RwLock<Cfg>>,
+    maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
     authorization_value: String,
+    form: HashMap<String, String>,
 ) -> Result<(), HTTPAuthenticationError> {
     let server_cfg = cfg.read().unwrap().config_value.server.clone();
     if server_cfg.password_sha512.is_empty() && server_cfg.username.is_empty() {
@@ -516,10 +588,33 @@ fn try_authenticate(
                             username, password_sha512
                         );
                         if server_cfg.password_sha512 == password_sha512 {
-                            return Ok(());
+                            if maybe_captcha.is_none() {
+                                return Ok(());
+                            };
+                            return if form.len() == 1 {
+                                let (key, value) = form
+                                    .into_iter()
+                                    .fold(None, |_, key_value| Some(key_value.clone()))
+                                    .unwrap()
+                                    .clone();
+                                debug!("{}={}", key, value);
+                                if maybe_captcha
+                                    .unwrap()
+                                    .write()
+                                    .unwrap()
+                                    .compare_and_update(key.to_string(), value)
+                                    .map_err(|_error| HTTPAuthenticationError::InvalidCaptcha {})?
+                                {
+                                    Ok(())
+                                } else {
+                                    Err(HTTPAuthenticationError::InvalidCaptcha {})
+                                }
+                            } else {
+                                Err(HTTPAuthenticationError::InvalidCaptchaForm {})
+                            };
                         };
                     } else {
-                        debug!("client authenticate with unknown username {}", username);
+                        debug!("client authenticates with unknown username {}", username);
                     };
                     return Err(HTTPAuthenticationError::InvalidUsernameOrPassword);
                 }
@@ -862,6 +957,11 @@ async fn handle_rejection(rejection: Rejection) -> Result<Response<String>, Reje
             StatusCode::METHOD_NOT_ALLOWED,
             Some(2000),
         )
+    } else if let Some(HTTPError::Captcha(captcha_error)) = rejection.find::<HTTPError>() {
+        Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(captcha_error.to_string())
+            .unwrap()
     } else {
         if !rejection.is_not_found() {
             error!("unhandled rejection {:?}", rejection);
