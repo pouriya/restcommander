@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use log::{error, info, trace, LevelFilter};
 
+mod captcha;
 mod cmd;
 mod http;
 mod logging;

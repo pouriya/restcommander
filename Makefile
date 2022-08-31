@@ -36,6 +36,7 @@ ${DEV_CFG}:
 	awk '$$1 == "tls_key_file" {$$3="\"key.pem\""}{print $$0}' ${DEV_CFG}.1 > ${DEV_CFG}.2
 	awk '$$1 == "root_directory" {$$3="\"scripts\""}{print $$0}' ${DEV_CFG}.2 > ${DEV_CFG}.1
 	awk '$$1 == "static_directory" {$$3="\"www\""}{print $$0}' ${DEV_CFG}.1 > ${DEV_CFG}
+	awk '$$1 == "captcha_file" {$$3="\"captcha.txt\""}{print $$0}' ${DEV_CFG}.1 > ${DEV_CFG}
 	rm -rf ${DEV_CFG}.1 ${DEV_CFG}.2
 	${DEV_CMD} sha512 admin > ${DEV_DIR}password-file.sha512
 	${DEV_CMD} sample self-signed-key > ${DEV_DIR}key.pem

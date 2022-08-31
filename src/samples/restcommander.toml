@@ -25,6 +25,7 @@ password_file = "/etc/restcommander/password-file.sha512"
 tls_cert_file = "/etc/restcommander/cert.pem"
 ## You can get a test key file via `restcommander sample self-signed-key` command.
 tls_key_file = "/etc/restcommander/key.pem"
+captcha_file = "/var/cache/twisted/captcha.txt"
 
 [commands]
 ## Root directory to load command files and directories and their information files.
