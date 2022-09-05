@@ -36,7 +36,8 @@ hex = "0.4"
 captcha = "0.0.9"
 rand = "0.8"
 uuid = { version = "1.1", features = ["v4", "fast-rng"] }
-
+# Time:
+chrono = "0.4"
 
 [profile.release]
 opt-level = 'z'     # Optimize for size.
