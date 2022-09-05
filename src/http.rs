@@ -238,23 +238,25 @@ pub async fn setup(
         None
     };
     let tokens = Arc::new(RwLock::new(HashMap::new()));
-    let api_filter = warp::path("api")
-        .and(
-            warp::path("auth").and(
+    let api_filter = warp::path("api").and(
+        warp::path("auth")
+            .and(
                 authentication_filter(cfg.clone(), tokens.clone(), maybe_captcha.clone(), true)
                     .untuple_one()
-                    .and(api_auth_filter(tokens.clone()))
+                    .and(api_auth_filter(tokens.clone())),
             )
-                .or(
-                    authentication_filter(cfg.clone(), tokens.clone(), maybe_captcha.clone(), false).untuple_one().and(
+            .or(
+                authentication_filter(cfg.clone(), tokens.clone(), maybe_captcha.clone(), false)
+                    .untuple_one()
+                    .and(
                         api_run_filter
                             .or(api_reload_filter)
                             .or(api_get_commands_filter(commands.clone()))
                             .or(api_set_password_filter(cfg.clone()))
                             .or(api_test_auth()),
-                    )
-                )
-        );
+                    ),
+            ),
+    );
     let static_filter = warp::path("static").and(
         static_index_html_filter(cfg.clone())
             .or(static_external_filter(cfg.clone()).or(static_internal_filter(cfg.clone()))),
@@ -336,22 +338,19 @@ fn authentication_filter(
     allow_basic_auth: bool,
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
     warp::header::<String>(warp::http::header::AUTHORIZATION.as_str())
-        .or(
-            warp::any().map(|| String::new())
-        )
+        .or(warp::any().map(|| String::new()))
         .unify()
         .and(
-            warp::post()
-                .or(warp::any())
-                .unify()
-                .and(warp::body::form::<HashMap<String, String>>()
-                .or(warp::any().map(|| HashMap::new()))
-                .unify()),
+            warp::post().or(warp::any()).unify().and(
+                warp::body::form::<HashMap<String, String>>()
+                    .or(warp::any().map(|| HashMap::new()))
+                    .unify(),
+            ),
         )
         .and(
             warp::cookie::cookie("token")
                 .or(warp::any().map(|| "".to_string()))
-                .unify()
+                .unify(),
         )
         .and_then(
             move |authorization_value: String, form: HashMap<String, String>, cookie: String| {
@@ -481,32 +480,36 @@ fn api_test_auth() -> impl Filter<Extract = (Response<String>,), Error = Rejecti
 fn api_auth_filter(
     tokens: Arc<RwLock<HashMap<String, u32>>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Infallible> + Clone {
-    warp::any()
-        .then(
-            move || {
-                let token = {
-                    let username = uuid::Uuid::new_v4().to_string();
-                    let password = uuid::Uuid::new_v4().to_string();
-                    base64::encode(format!("{}:{}", username, password))
-                };
-                let timestamp = chrono::Local::now().second() + 1000;
-                tokens.clone().write().unwrap().insert(token.clone(), timestamp);
-                async move {
-                    make_api_response_with_headers(
-                        serde_json::json!({"token": token}),
-                        StatusCode::OK,
-                        Some(
-                            {
-                                let mut headers = warp::http::HeaderMap::new();
-                                headers.insert(warp::http::header::SET_COOKIE, format!("token={}; Path=/; HttpOnly; Max-Age=1000", token).parse().unwrap());
-                                headers
-                            }
-                        ),
-                        None
-                    )
-                }
-            }
-        )
+    warp::any().then(move || {
+        let token = {
+            let username = uuid::Uuid::new_v4().to_string();
+            let password = uuid::Uuid::new_v4().to_string();
+            base64::encode(format!("{}:{}", username, password))
+        };
+        let timestamp = chrono::Local::now().second() + 1000;
+        tokens
+            .clone()
+            .write()
+            .unwrap()
+            .insert(token.clone(), timestamp);
+        async move {
+            make_api_response_with_headers(
+                serde_json::json!({ "token": token }),
+                StatusCode::OK,
+                Some({
+                    let mut headers = warp::http::HeaderMap::new();
+                    headers.insert(
+                        warp::http::header::SET_COOKIE,
+                        format!("token={}; Path=/; HttpOnly; Max-Age=1000", token)
+                            .parse()
+                            .unwrap(),
+                    );
+                    headers
+                }),
+                None,
+            )
+        }
+    })
 }
 
 fn static_index_html_filter(
@@ -644,16 +647,16 @@ fn try_authenticate(
     };
     if !allow_basic_auth {
         if cookie.is_empty() {
-            return Err(HTTPAuthenticationError::CookieNotFound)
+            return Err(HTTPAuthenticationError::CookieNotFound);
         };
         return if let Some(expire_time) = tokens.clone().read().unwrap().get(cookie.as_str()) {
             if expire_time > &chrono::Local::now().second() {
-                return Ok(())
+                return Ok(());
             };
             Err(HTTPAuthenticationError::CookieExpired)
         } else {
             Err(HTTPAuthenticationError::InvalidCookie)
-        }
+        };
     };
     match authorization_value
         .as_str()
