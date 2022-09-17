@@ -25,7 +25,7 @@ use warp;
 use warp::fs::File;
 use warp::http::header::{HeaderMap, AUTHORIZATION, LOCATION};
 use warp::http::{Response, StatusCode};
-use warp::hyper::{Body};
+use warp::hyper::Body;
 use warp::path::Tail;
 use warp::reject::Reject;
 use warp::{Filter, Rejection, Reply};
@@ -237,7 +237,8 @@ pub async fn setup(
     let api_reload_filter = warp::path("reload").and(
         api_reload_commands_filter(commands.clone())
             .or(api_reload_config_filter(
-                cfg.clone(), http_start_sender.clone()
+                cfg.clone(),
+                http_start_sender.clone(),
             ))
             .unify(),
     );
@@ -397,12 +398,17 @@ fn api_auth_token(
         .and(extract_basic_authentication_filter())
         .map(
             move |authorization_value: String, form: HashMap<String, String>| {
-                authentication_with_basic(cfg.clone(), maybe_captcha.clone(), authorization_value, form)
+                authentication_with_basic(
+                    cfg.clone(),
+                    maybe_captcha.clone(),
+                    authorization_value,
+                    form,
+                )
             },
         )
         .map(move |result: Result<_, HTTPAuthenticationError>| {
             if let Err(error) = result {
-                return make_api_response(Err(HTTPError::Authentication(error)))
+                return make_api_response(Err(HTTPError::Authentication(error)));
             }
             let token = {
                 let username = uuid::Uuid::new_v4().to_string();
@@ -421,9 +427,12 @@ fn api_auth_token(
                     let mut headers = warp::http::HeaderMap::new();
                     headers.insert(
                         warp::http::header::SET_COOKIE,
-                        format!("token={}; Path=/; Max-Age=3600; SameSite=None; Secure;", token)
-                            .parse()
-                            .unwrap(),
+                        format!(
+                            "token={}; Path=/; Max-Age=3600; SameSite=None; Secure;",
+                            token
+                        )
+                        .parse()
+                        .unwrap(),
                     );
                     headers
                 }),
@@ -512,30 +521,20 @@ fn api_run_command_filter(
 fn api_reload_commands_filter(
     commands: Arc<RwLock<Command>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
-    warp::get()
-        .and(warp::path("commands"))
-        .map(
-            move || {
-                commands
-                    .write()
-                    .unwrap()
-                    .reload()
-                    .map(|_| { make_api_response_ok() })
-                    .or_else::<Response<String>, _>(
-                        |error|
-                            Ok(
-                                make_api_response(
-                                    Err(
-                                        HTTPError::API(
-                                            HTTPAPIError::ReloadCommands {
-                                                message: error.to_string(),
-                                            },
-                                        )
-                                    )
-                                )
-                            )
-                    )
-                    .unwrap()
+    warp::get().and(warp::path("commands")).map(move || {
+        commands
+            .write()
+            .unwrap()
+            .reload()
+            .map(|_| make_api_response_ok())
+            .or_else::<Response<String>, _>(|error| {
+                Ok(make_api_response(Err(HTTPError::API(
+                    HTTPAPIError::ReloadCommands {
+                        message: error.to_string(),
+                    },
+                ))))
+            })
+            .unwrap()
     })
 }
 
@@ -543,29 +542,19 @@ fn api_reload_config_filter(
     cfg: Arc<RwLock<Cfg>>,
     http_notify_channel: tokio::sync::mpsc::Sender<()>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
-    warp::get()
-        .and(warp::path("config"))
-        .then(
-            move || {
-                let cfg = cfg.clone();
-                let http_notify_channel = http_notify_channel.clone();
-                async move {
-                    if let Err(reason) = cfg.write().unwrap().try_reload() {
-                        return make_api_response(
-                            Err(
-                                HTTPError::API(
-                                    HTTPAPIError::ReloadConfig {
-                                        message: reason.to_string(),
-                                    },
-                                )
-                            )
-                        );
-                    };
-                    http_notify_channel.send(()).await.unwrap();
-                    make_api_response_ok()
-                }
-            }
-        )
+    warp::get().and(warp::path("config")).then(move || {
+        let cfg = cfg.clone();
+        let http_notify_channel = http_notify_channel.clone();
+        async move {
+            if let Err(reason) = cfg.write().unwrap().try_reload() {
+                return make_api_response(Err(HTTPError::API(HTTPAPIError::ReloadConfig {
+                    message: reason.to_string(),
+                })));
+            };
+            http_notify_channel.send(()).await.unwrap();
+            make_api_response_ok()
+        }
+    })
 }
 
 fn api_set_password_filter(
@@ -578,14 +567,12 @@ fn api_set_password_filter(
         .then(
             move |cfg: Arc<RwLock<Cfg>>, password: SetPassword| async move {
                 try_set_password(cfg, password)
-                    .map(|_| { make_api_response_ok() })
-                    .or_else::<Response<String>, _>(
-                        |error| {
-                            Ok(make_api_response(Err(HTTPError::API(error))))
-                        }
-                    )
+                    .map(|_| make_api_response_ok())
+                    .or_else::<Response<String>, _>(|error| {
+                        Ok(make_api_response(Err(HTTPError::API(error))))
+                    })
                     .unwrap()
-            }
+            },
         )
 }
 
@@ -660,7 +647,9 @@ fn static_internal_filter(
         .untuple_one()
         .and(warp::path::tail())
         .and_then(|tail_path: Tail| async move {
-            if let Some((bytes, maybe_mime_type)) = www::handle_static(tail_path.as_str().to_string()) {
+            if let Some((bytes, maybe_mime_type)) =
+                www::handle_static(tail_path.as_str().to_string())
+            {
                 let mut response = Response::builder().status(StatusCode::OK);
                 if let Some(mime_type) = maybe_mime_type {
                     response = response.header(warp::http::header::CONTENT_TYPE, mime_type);
