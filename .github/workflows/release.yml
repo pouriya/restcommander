@@ -98,7 +98,7 @@ jobs:
       - name: Replace `${{ github.ref_name }}` to `latest` in release files
         shell: bash
         run: |
-          for filename in restcommander-**; do
+          for filename in restcommander-*; do
             newfilename=`echo $filename | sed 's/${{ github.ref_name }}/latest/g'`
             mv $filename $newfilename
           done
@@ -111,4 +111,4 @@ jobs:
           prerelease: false
           draft: false
           tag_name: latest
-          files: restcommander-
+          files: restcommander-*
