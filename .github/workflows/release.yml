@@ -79,6 +79,13 @@ jobs:
         shell: bash
         run: make deb TARGET=${{ matrix.target }}
       
+      - name: Fix Windows executable name
+        if: contains(matrix.os, 'windows-')
+        shell: bash
+        run: |
+          NAME=`ls restcommander-*`
+          mv $NAME $NAME-${{ matrix.os }}.exe
+
       - name: ls -lash .
         shell: bash
         run: ls -lash .
