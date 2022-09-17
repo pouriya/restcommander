@@ -11,7 +11,7 @@ on:
 
 jobs:
   publish:
-    name: Publishing for ${{ matrix.os }} (${{ matrix.target }})
+    name: ${{ matrix.os }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -58,7 +58,8 @@ jobs:
         if: contains(matrix.os, 'ubuntu-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y -qq pkg-config libssl-dev
+          sudo apt-get install -y -qq pkg-config libssl-dev liblzma-dev dpkg dpkg-dev
+          cargo install cargo-deb
 
       - name: Installing needed Linux dependencies for `musl`
         if: contains(matrix.os, 'ubuntu-') && contains(matrix.target, '-musl')
@@ -78,6 +79,10 @@ jobs:
         shell: bash
         run: make deb TARGET=${{ matrix.target }}
       
+      - name: ls -lash .
+        shell: bash
+        run: ls -lash .
+
       - name: Releasing assets
         uses: softprops/action-gh-release@v1
         with:
