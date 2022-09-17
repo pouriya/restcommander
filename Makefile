@@ -7,14 +7,23 @@ all: release deb
 	@ ls -sh *.deb
 	@ ls -sh restcommander-*
 
-release:
-	$(eval VERSION=$(shell git describe --tags))
+release: download-bootstrap
+	$(eval VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}'))
+	cargo fmt --check --quiet
 	cargo build --release
-	cp ./target/release/restcommander restcommander-${VERSION}
+	@ cp ./target/release/restcommander restcommander-${VERSION}
+
+tag: release
+	$(eval VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}'))
+	git checkout HEAD -- src/www/mod.rs
+	git status
+	git add .
+	git commit -m 'ver: ${VERSION}'
+	git tag ${VERSION}
 
 deb: release
 	cargo deb
-	cp ./target/debian/*.deb .
+	@ cp ./target/debian/*.deb .
 
 dev: download-bootstrap
 	cargo build
