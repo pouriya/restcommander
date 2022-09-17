@@ -16,7 +16,7 @@ fn main() {
         .write_all(
             r#"// Auto-generated via `build.rs`
 
-pub fn handle_static(uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
+pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
                 .as_bytes(),
         )
         .unwrap();
@@ -132,7 +132,7 @@ pub fn handle_static(uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
             format!("{}\n{}", source_code, match_line)
         });
     mod_rs_file
-        .write_all("\n    match uri.as_str() {".as_bytes())
+        .write_all("\n    match _uri.as_str() {".as_bytes())
         .unwrap();
     mod_rs_file.write_all(match_body.as_bytes()).unwrap();
     mod_rs_file
