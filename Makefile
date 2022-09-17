@@ -4,6 +4,7 @@ DEV_CFG=${DEV_DIR}config.toml
 BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
 TARGET=$(shell rustc -vV | awk '$$1 == "host:"{print $$2}')
 VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}')
+RELEASE_FILENAME_POSTFIX=
 
 
 all: release deb
@@ -12,7 +13,7 @@ all: release deb
 
 release: download-bootstrap
 	cargo build --release --target ${TARGET}
-	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}
+	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
 
 tag: release
 	git checkout HEAD -- src/www/mod.rs
@@ -24,7 +25,7 @@ tag: release
 
 deb: release
 	cargo deb --target ${TARGET}
-	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}.deb
+	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
 dev: download-bootstrap
 	cargo build --target ${TARGET}

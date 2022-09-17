@@ -72,19 +72,19 @@ jobs:
         uses: actions/checkout@v1
       
       - name: Running `make release`
-        run: make release TARGET=${{ matrix.target }}
+        run: make release TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=${{ matrix.os }}
 
       - name: Running `make deb` on Linux
         if: contains(matrix.os, 'ubuntu-')
         shell: bash
-        run: make deb TARGET=${{ matrix.target }}
-      
+        run: make deb TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=${{ matrix.os }}
+
       - name: Fix Windows executable name
         if: contains(matrix.os, 'windows-')
         shell: bash
         run: |
-          NAME=`ls restcommander-*`
-          mv $NAME $NAME-${{ matrix.os }}.exe
+          NAME=`ls restcommander-*` 
+          mv $NAME `echo $NAME | sed 's/.exe//'`.exe
 
       - name: ls -lash .
         shell: bash
