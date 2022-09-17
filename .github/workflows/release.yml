@@ -90,9 +90,20 @@ jobs:
         shell: bash
         run: ls -lash .
 
-      - name: Releasing assets
-        uses: softprops/action-gh-release@v1
+      - name: GitHub release for latest
+        uses: "marvinpinto/action-automatic-releases@latest"
         with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: true
+          title: "Latest Build"
           files: restcommander-*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+      - name: GitHub release for ${{  github.ref_name }}
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "${{  github.ref_name }}"
+          prerelease: true
+          title: "${{  github.ref_name }}"
+          files: restcommander-*
