@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en" class="h-100">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link id="favicon" rel="shortcut icon" type="image/x-icon" href="favicon.ico"/>
+    <link rel="stylesheet" href="bootstrap.min.css" />
+    <title>RestCommander</title>
+    <style>
+        .dropdown-menu .dropdown-menu {
+            top: -.5rem !important;
+        }
+        p {
+            white-space: pre-wrap !important;
+        }
+        #navigation-bar, .btn-secondary {
+            background-color: #141248;
+            border-radius: 0;
+        }
+        .btn-secondary:hover, .btn-secondary:focus, .btn-secondary:active, .btn-secondary.active {
+            background-color: #3c397b;
+            border-color: #3c397b;
+        }
+        .btn-check:focus + .btn-secondary, .btn-secondary:focus, .btn-check:focus + .btn-primary, .btn-primary:focus {
+            box-shadow: none;
+        }
+        .btn-primary, #run-button {
+            background-color: #384dc8;
+            border-color: #384dc8;
+        }
+        #command-result-text {
+            color: #0a3955;
+            background-color: #eaeaea;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+    <body onload="main()" class="d-flex h-100 text-center">
+        <div class="cover-container d-flex w-100 h-100 p-3 mx-auto flex-column justify-content">
+            <div class="row" role="navigation">
+                <div class="dropdown mt-0" id="navigation-bar" role="menu"></div>
+            </div>
+            <div id="command" class="justify-content mx-auto my-5">
+                <p id="guide" class="lead">Select a menu item to start</p>
+            </div>
+            <div id="command-result" class="justify-content m-auto"></div>
+            <footer class="mt-auto">
+                <div id="footer" class="mt-0 text-secondary"></div>
+            </footer>
+        </div>
+        <script src="bootstrap.bundle.min.js"></script>
+        <script src="commands.js" type="module"></script>
+    </body>
+</html>

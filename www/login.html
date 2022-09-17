@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <link id="favicon" rel="shortcut icon" type="image/x-icon" href="favicon.ico"/>
+    <link rel="stylesheet" href="bootstrap.min.css" />
+    <title>RestCommander</title>
+    <style>
+        html, body {
+            height: 100%;
+        }
+        body {
+            background-color: #141248;
+            background-image: url('banner-background.jpg');
+            background-repeat: repeat;
+            background-size: cover;
+        }
+        .btn-primary {
+            background-color: #384dc8;
+            border-color: #384dc8;
+        }
+        .btn-primary:hover, .btn-primary:focus, .btn-primary:active, .btn-primary.active {
+            background-color: #6477df;
+            border-color: #6477df;
+        }
+        .btn-outline-secondary {
+            color: #cdddec;
+        }
+    </style>
+</head>
+<body class="invisible" onload="main()">
+    <div class="h-100 d-flex align-items-center justify-content-center text-center">
+        <form id="login-form">
+            <h1 id="login-title" class="h1 mb-4 text-white">Login</h1>
+            <div class="form-outline mb-4">
+                <input type="text" name='username' id="username" class="form-control" placeholder="Username*" required />
+            </div>
+            <div class="form-outline mb-4">
+                <input type="password" name='password' id="password" class="form-control" placeholder="Password*" required />
+            </div>
+            <div id="captcha-image" class="invisible"></div>
+            <button id="captcha-renew" class="invisible"></button>
+            <div id="captcha-id" class="invisible"></div>
+            <div id="captcha-text" class="invisible"></div>
+            <button type="submit" class="btn btn-lg btn-primary btn-block mb-4 justify-content-center fw-bold">Login</button>
+            <div id="login-error" class="invisible mb-4 alert alert-danger" role="alert"></div>
+        </form>
+    </div>
+    <script src="bootstrap.bundle.min.js"></script>
+    <script src="login.js" type="module"></script>
+</body>
+</html>

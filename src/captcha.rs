@@ -83,12 +83,12 @@ impl Captcha {
 }
 
 impl Captcha {
-    pub fn generate(&mut self, hard: bool) -> Result<(String, String, Vec<u8>), io::Error> {
+    pub fn generate(&mut self, hard: bool) -> Result<(String, String, String), io::Error> {
         let captcha = captcha::by_name(
             if hard {
-                captcha::Difficulty::Hard
-            } else {
                 captcha::Difficulty::Medium
+            } else {
+                captcha::Difficulty::Easy
             },
             match thread_rng().gen_range(0..3) {
                 0 => captcha::CaptchaName::Amelia,
@@ -106,7 +106,7 @@ impl Captcha {
         Ok((
             id,
             captcha.chars().iter().collect::<String>(),
-            captcha.as_png().unwrap(),
+            captcha.as_base64().unwrap(),
         ))
     }
 

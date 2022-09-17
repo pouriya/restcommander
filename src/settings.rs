@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::env::current_dir;
 use std::fs;
 use std::io::Error;
@@ -416,6 +417,8 @@ pub struct CfgWWW {
     pub enabled: bool,
     #[serde(default = "CfgWWWDefault::html_title")]
     pub html_title: String,
+    #[serde(default = "CfgWWWDefault::configuration")]
+    pub configuration: HashMap<String, String>,
 }
 
 #[derive(Debug, Error)]
@@ -435,6 +438,9 @@ impl CfgWWWDefault {
     fn html_title() -> String {
         crate_name!().to_string()
     }
+    fn configuration() -> HashMap<String, String> {
+        HashMap::new()
+    }
 }
 
 impl Default for CfgWWW {
@@ -443,6 +449,7 @@ impl Default for CfgWWW {
             static_directory: CfgWWWDefault::static_directory(),
             enabled: CfgWWWDefault::enabled(),
             html_title: CfgWWWDefault::html_title(),
+            configuration: CfgWWWDefault::configuration(),
         }
     }
 }
@@ -598,6 +605,7 @@ impl TryFrom<CMDOptRun> for Cfg {
                         .unwrap_or(PathBuf::new()),
                     enabled: !command_line_options.disable_panel,
                     html_title: command_line_options.html_title,
+                    configuration: CfgWWWDefault::configuration(),
                 },
             },
             filename: None,

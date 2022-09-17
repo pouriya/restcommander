@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::fs;
-use std::io::ErrorKind;
 use std::net::Ipv4Addr;
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -24,11 +22,13 @@ use thiserror::Error;
 use tokio::sync::mpsc::Receiver;
 
 use warp;
+use warp::fs::File;
 use warp::http::header::{HeaderMap, AUTHORIZATION, LOCATION};
 use warp::http::{Response, StatusCode};
+use warp::hyper::{Body};
 use warp::path::Tail;
 use warp::reject::Reject;
-use warp::{Filter, Rejection};
+use warp::{Filter, Rejection, Reply};
 
 use crate::captcha;
 use crate::cmd;
@@ -42,19 +42,37 @@ use crate::www;
 
 pub static API_RUN_BASE_PATH: &str = "/api/run";
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum HTTPError {
     #[error(transparent)]
     Authentication(#[from] HTTPAuthenticationError),
     #[error(transparent)]
     API(#[from] HTTPAPIError),
-    #[error(transparent)]
-    Captcha(#[from] std::io::Error),
+    #[error("{0}")]
+    Deserialize(String),
+}
+
+impl HTTPError {
+    fn http_error_code(&self) -> i32 {
+        match self {
+            Self::Authentication(x) => x.http_error_code(),
+            Self::API(x) => x.http_error_code(),
+            Self::Deserialize(_) => 2000,
+        }
+    }
+
+    fn http_status_code(&self) -> StatusCode {
+        match self {
+            Self::Authentication(x) => x.http_status_code(),
+            Self::API(x) => x.http_status_code(),
+            Self::Deserialize(_) => StatusCode::BAD_REQUEST,
+        }
+    }
 }
 
 impl Reject for HTTPError {}
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum HTTPAuthenticationError {
     #[error("could not decode authorization header value {data:?} to base64 ({source:?})")]
     Base64Decode {
@@ -76,14 +94,18 @@ pub enum HTTPAuthenticationError {
     #[error("invalid CAPTCHA form")]
     InvalidCaptchaForm,
     #[error("Could not found HTTP Cookie header")]
-    CookieNotFound,
+    TokenNotFound,
     #[error("HTTP Cookie is expired")]
-    CookieExpired,
+    TokenExpired,
     #[error("HTTP Cookie is invalid")]
-    InvalidCookie,
+    InvalidToken,
+    #[error("Authentication required")]
+    Required,
+    #[error("{0}")]
+    Captcha(String),
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum HTTPAPIError {
     #[error("{message:?}")]
     CommandNotFound { message: String },
@@ -135,7 +157,7 @@ impl HTTPAPIError {
 impl HTTPAuthenticationError {
     fn http_error_code(&self) -> i32 {
         match self {
-            // keep 2001 for "Authentication required"
+            Self::Required => 2001,
             Self::Base64Decode { .. } => 2002,
             Self::UsernameOrPasswordIsNotFound { .. } => 2003,
             Self::UsernameOrPasswordIsNotSet { .. } => 2004,
@@ -144,14 +166,16 @@ impl HTTPAuthenticationError {
             Self::InvalidUsernameOrPassword => 2007,
             Self::InvalidCaptcha => 2008,
             Self::InvalidCaptchaForm => 2009,
-            Self::CookieNotFound => 2010,
-            Self::CookieExpired => 2011,
-            Self::InvalidCookie => 2012,
+            Self::TokenNotFound => 2010,
+            Self::TokenExpired => 2011,
+            Self::InvalidToken => 2012,
+            Self::Captcha(_) => 2012,
         }
     }
 
     fn http_status_code(&self) -> StatusCode {
         match self {
+            Self::Required => StatusCode::UNAUTHORIZED,
             Self::Base64Decode { .. } => StatusCode::BAD_REQUEST,
             Self::UsernameOrPasswordIsNotFound { .. } => StatusCode::UNAUTHORIZED,
             Self::UsernameOrPasswordIsNotSet { .. } => StatusCode::CONFLICT,
@@ -160,9 +184,10 @@ impl HTTPAuthenticationError {
             Self::InvalidUsernameOrPassword => StatusCode::UNAUTHORIZED,
             Self::InvalidCaptcha => StatusCode::UNAUTHORIZED,
             Self::InvalidCaptchaForm => StatusCode::BAD_REQUEST,
-            Self::CookieNotFound => StatusCode::UNAUTHORIZED,
-            Self::CookieExpired => StatusCode::UNAUTHORIZED,
-            Self::InvalidCookie => StatusCode::UNAUTHORIZED,
+            Self::TokenNotFound => StatusCode::UNAUTHORIZED,
+            Self::TokenExpired => StatusCode::UNAUTHORIZED,
+            Self::InvalidToken => StatusCode::UNAUTHORIZED,
+            Self::Captcha(_) => StatusCode::NOT_ACCEPTABLE,
         }
     }
 }
@@ -209,10 +234,13 @@ pub async fn setup(
 
     let api_run_filter =
         warp::path("run").and(api_run_command_filter(cfg.clone(), commands.clone()));
-    let api_reload_filter =
-        warp::path("reload").and(api_reload_commands_filter(commands.clone()).or(
-            api_reload_config_filter(cfg.clone(), http_start_sender.clone()),
-        ));
+    let api_reload_filter = warp::path("reload").and(
+        api_reload_commands_filter(commands.clone())
+            .or(api_reload_config_filter(
+                cfg.clone(), http_start_sender.clone()
+            ))
+            .unify(),
+    );
     let maybe_captcha = if cfg
         .read()
         .unwrap()
@@ -237,36 +265,45 @@ pub async fn setup(
     } else {
         None
     };
+    let api_public_filter = warp::path("public").and(
+        api_captcha_filter(maybe_captcha.clone())
+            .or(api_configuration_filter(cfg.clone()))
+            .unify(),
+    );
     let tokens = Arc::new(RwLock::new(HashMap::new()));
+    let api_auth_filter = warp::path("auth").and(
+        api_auth_test_filter(tokens.clone())
+            .or(api_auth_token(
+                cfg.clone(),
+                maybe_captcha.clone(),
+                tokens.clone(),
+            ))
+            .unify(),
+    );
     let api_filter = warp::path("api").and(
-        warp::path("auth")
-            .and(
-                authentication_filter(cfg.clone(), tokens.clone(), maybe_captcha.clone(), true)
-                    .untuple_one()
-                    .and(api_auth_filter(tokens.clone())),
-            )
-            .or(
-                authentication_filter(cfg.clone(), tokens.clone(), maybe_captcha.clone(), false)
-                    .untuple_one()
-                    .and(
-                        api_run_filter
-                            .or(api_reload_filter)
-                            .or(api_get_commands_filter(commands.clone()))
-                            .or(api_set_password_filter(cfg.clone()))
-                            .or(api_test_auth()),
-                    ),
-            ),
+        api_public_filter
+            .or(api_auth_filter)
+            .unify()
+            .or(authentication_with_token_filter(tokens.clone())
+                .untuple_one()
+                .and(
+                    api_run_filter
+                        .or(api_reload_filter)
+                        .unify()
+                        .or(api_get_commands_filter(commands.clone()))
+                        .unify()
+                        .or(api_set_password_filter(cfg.clone()))
+                        .unify(),
+                )),
     );
     let static_filter = warp::path("static").and(
-        static_index_html_filter(cfg.clone())
-            .or(static_external_filter(cfg.clone()).or(static_internal_filter(cfg.clone()))),
+        static_external_filter(cfg.clone())
+            .or(static_internal_filter(cfg.clone()))
+            .unify(),
     );
-    let dynamic_captcha = warp::path("dynamic").and(captcha_filter(maybe_captcha.clone()));
-
     let routes = api_filter
         .or(static_filter)
         .or(redirect_root_to_index_html_filter(cfg.clone()))
-        .or(dynamic_captcha)
         .recover(handle_rejection)
         .with(warp::log::custom(http_logging));
     if server_options.tls_cert_file.clone().is_some()
@@ -331,12 +368,94 @@ pub async fn maybe_handle_message(channel_receiver: &mut Receiver<()>) -> Result
     }
 }
 
-fn authentication_filter(
-    cfg: Arc<RwLock<Cfg>>,
+fn api_auth_test_filter(
     tokens: Arc<RwLock<HashMap<String, u32>>>,
-    maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
-    allow_basic_auth: bool,
+) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
+    warp::path("test")
+        .and(authentication_with_token_filter(tokens))
+        .map(|_| make_api_response_ok())
+}
+
+fn authentication_with_token_filter(
+    tokens: Arc<RwLock<HashMap<String, u32>>>,
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
+    extract_token_filter().and_then(move |token: String| {
+        let tokens = tokens.clone();
+        async move {
+            authentication_with_token(tokens, token)
+                .map_err(|error| warp::reject::custom(HTTPError::Authentication(error)))
+        }
+    })
+}
+
+fn api_auth_token(
+    cfg: Arc<RwLock<Cfg>>,
+    maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
+    tokens: Arc<RwLock<HashMap<String, u32>>>,
+) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
+    warp::path("token")
+        .and(extract_basic_authentication_filter())
+        .map(
+            move |authorization_value: String, form: HashMap<String, String>| {
+                authentication_with_basic(cfg.clone(), maybe_captcha.clone(), authorization_value, form)
+            },
+        )
+        .map(move |result: Result<_, HTTPAuthenticationError>| {
+            if let Err(error) = result {
+                return make_api_response(Err(HTTPError::Authentication(error)))
+            }
+            let token = {
+                let username = uuid::Uuid::new_v4().to_string();
+                let password = uuid::Uuid::new_v4().to_string();
+                base64::encode(format!("{}:{}", username, password))
+            };
+            let timestamp = chrono::Local::now().second() + 60;
+            tokens
+                .clone()
+                .write()
+                .unwrap()
+                .insert(token.clone(), timestamp);
+            make_api_response_with_headers(
+                Ok(serde_json::json!({ "token": token })),
+                Some({
+                    let mut headers = warp::http::HeaderMap::new();
+                    headers.insert(
+                        warp::http::header::SET_COOKIE,
+                        format!("token={}; Path=/; Max-Age=3600; SameSite=None; Secure;", token)
+                            .parse()
+                            .unwrap(),
+                    );
+                    headers
+                }),
+            )
+        })
+}
+
+fn extract_token_filter() -> impl Filter<Extract = (String,), Error = Rejection> + Clone {
+    warp::cookie::cookie::<String>("token")
+        .or(
+            warp::header::<String>(warp::http::header::AUTHORIZATION.as_str()).and_then(
+                |authorization_value: String| async move {
+                    match authorization_value
+                        .as_str()
+                        .splitn(2, ' ')
+                        .collect::<Vec<&str>>()[..]
+                    {
+                        ["Bearer", token] => Ok(token.to_string()),
+                        _ => Err(warp::reject::custom(HTTPError::Authentication(
+                            HTTPAuthenticationError::InvalidBasicAuthentication {
+                                header_value: authorization_value,
+                            },
+                        ))),
+                    }
+                },
+            ),
+        )
+        .unify()
+}
+
+fn extract_basic_authentication_filter(
+) -> impl Filter<Extract = (String, HashMap<String, String>), Error = Infallible> + Clone {
     warp::header::<String>(warp::http::header::AUTHORIZATION.as_str())
         .or(warp::any().map(|| String::new()))
         .unify()
@@ -346,32 +465,6 @@ fn authentication_filter(
                     .or(warp::any().map(|| HashMap::new()))
                     .unify(),
             ),
-        )
-        .and(
-            warp::cookie::cookie("token")
-                .or(warp::any().map(|| "".to_string()))
-                .unify(),
-        )
-        .and_then(
-            move |authorization_value: String, form: HashMap<String, String>, cookie: String| {
-                let cfg = cfg.clone();
-                let tokens = tokens.clone();
-                let maybe_captcha = maybe_captcha.clone();
-                async move {
-                    match try_authenticate(
-                        cfg,
-                        tokens,
-                        maybe_captcha,
-                        authorization_value,
-                        form,
-                        cookie,
-                        allow_basic_auth,
-                    ) {
-                        Err(reason) => Err(warp::reject::custom(HTTPError::Authentication(reason))),
-                        Ok(_) => Ok(()),
-                    }
-                }
-            },
         )
 }
 
@@ -396,6 +489,7 @@ fn api_run_command_filter(
         .map(move || (cfg.clone(), commands.clone()))
         .and(warp::path::tail())
         .and(warp::body::json())
+        // .map(|x, y, z| {(x, y, z)})
         .and_then(
             move |state: (Arc<RwLock<Cfg>>, Arc<RwLock<Command>>),
                   tail: Tail,
@@ -418,18 +512,30 @@ fn api_run_command_filter(
 fn api_reload_commands_filter(
     commands: Arc<RwLock<Command>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
-    warp::get().and(warp::path("commands")).and_then(move || {
-        let commands = commands.clone();
-        async move {
-            if let Err(reason) = commands.write().unwrap().reload() {
-                return Err(warp::reject::custom(HTTPError::API(
-                    HTTPAPIError::ReloadCommands {
-                        message: reason.to_string(),
-                    },
-                )));
-            };
-            Ok(make_api_response_ok())
-        }
+    warp::get()
+        .and(warp::path("commands"))
+        .map(
+            move || {
+                commands
+                    .write()
+                    .unwrap()
+                    .reload()
+                    .map(|_| { make_api_response_ok() })
+                    .or_else::<Response<String>, _>(
+                        |error|
+                            Ok(
+                                make_api_response(
+                                    Err(
+                                        HTTPError::API(
+                                            HTTPAPIError::ReloadCommands {
+                                                message: error.to_string(),
+                                            },
+                                        )
+                                    )
+                                )
+                            )
+                    )
+                    .unwrap()
     })
 }
 
@@ -437,21 +543,29 @@ fn api_reload_config_filter(
     cfg: Arc<RwLock<Cfg>>,
     http_notify_channel: tokio::sync::mpsc::Sender<()>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
-    warp::get().and(warp::path("config")).and_then(move || {
-        let cfg = cfg.clone();
-        let http_notify_channel = http_notify_channel.clone();
-        async move {
-            if let Err(reason) = cfg.write().unwrap().try_reload() {
-                return Err(warp::reject::custom(HTTPError::API(
-                    HTTPAPIError::ReloadConfig {
-                        message: reason.to_string(),
-                    },
-                )));
-            };
-            http_notify_channel.send(()).await.unwrap();
-            Ok(make_api_response_ok())
-        }
-    })
+    warp::get()
+        .and(warp::path("config"))
+        .then(
+            move || {
+                let cfg = cfg.clone();
+                let http_notify_channel = http_notify_channel.clone();
+                async move {
+                    if let Err(reason) = cfg.write().unwrap().try_reload() {
+                        return make_api_response(
+                            Err(
+                                HTTPError::API(
+                                    HTTPAPIError::ReloadConfig {
+                                        message: reason.to_string(),
+                                    },
+                                )
+                            )
+                        );
+                    };
+                    http_notify_channel.send(()).await.unwrap();
+                    make_api_response_ok()
+                }
+            }
+        )
 }
 
 fn api_set_password_filter(
@@ -461,66 +575,18 @@ fn api_set_password_filter(
         .and(warp::path("setPassword"))
         .map(move || cfg.clone())
         .and(warp::body::json())
-        .and_then(
+        .then(
             move |cfg: Arc<RwLock<Cfg>>, password: SetPassword| async move {
-                match try_set_password(cfg, password) {
-                    Err(reason) => Err(warp::reject::custom(HTTPError::API(reason))),
-                    Ok(response) => Ok(response),
-                }
-            },
+                try_set_password(cfg, password)
+                    .map(|_| { make_api_response_ok() })
+                    .or_else::<Response<String>, _>(
+                        |error| {
+                            Ok(make_api_response(Err(HTTPError::API(error))))
+                        }
+                    )
+                    .unwrap()
+            }
         )
-}
-
-fn api_test_auth() -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
-    warp::get()
-        .and(warp::path("testAuth"))
-        .then(|| async move { make_api_response_ok() })
-}
-
-fn api_auth_filter(
-    tokens: Arc<RwLock<HashMap<String, u32>>>,
-) -> impl Filter<Extract = (Response<String>,), Error = Infallible> + Clone {
-    warp::any().then(move || {
-        let token = {
-            let username = uuid::Uuid::new_v4().to_string();
-            let password = uuid::Uuid::new_v4().to_string();
-            base64::encode(format!("{}:{}", username, password))
-        };
-        let timestamp = chrono::Local::now().second() + 1000;
-        tokens
-            .clone()
-            .write()
-            .unwrap()
-            .insert(token.clone(), timestamp);
-        async move {
-            make_api_response_with_headers(
-                serde_json::json!({ "token": token }),
-                StatusCode::OK,
-                Some({
-                    let mut headers = warp::http::HeaderMap::new();
-                    headers.insert(
-                        warp::http::header::SET_COOKIE,
-                        format!("token={}; Path=/; HttpOnly; Max-Age=1000", token)
-                            .parse()
-                            .unwrap(),
-                    );
-                    headers
-                }),
-                None,
-            )
-        }
-    })
-}
-
-fn static_index_html_filter(
-    cfg: Arc<RwLock<Cfg>>,
-) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
-    warp::get()
-        .and(warp::path::path("index.html"))
-        .then(move || {
-            let cfg = cfg.clone();
-            async move { maybe_read_index_html_file(cfg) }
-        })
 }
 
 fn redirect_root_to_index_html_filter(
@@ -551,7 +617,7 @@ fn redirect_root_to_index_html_filter(
 
 fn static_external_filter(
     cfg: Arc<RwLock<Cfg>>,
-) -> impl Filter<Extract = (warp::fs::File,), Error = Rejection> + Clone {
+) -> impl Filter<Extract = (Response<Body>,), Error = Rejection> + Clone {
     let static_directory = cfg
         .clone()
         .read()
@@ -574,11 +640,12 @@ fn static_external_filter(
         })
         .untuple_one()
         .and(warp::fs::dir(static_directory))
+        .map(|file: File| file.into_response())
 }
 
 fn static_internal_filter(
     cfg: Arc<RwLock<Cfg>>,
-) -> impl Filter<Extract = (Response<Vec<u8>>,), Error = Rejection> + Clone {
+) -> impl Filter<Extract = (Response<Body>,), Error = Rejection> + Clone {
     warp::get()
         .and_then(move || {
             let cfg = cfg.clone();
@@ -593,70 +660,74 @@ fn static_internal_filter(
         .untuple_one()
         .and(warp::path::tail())
         .and_then(|tail_path: Tail| async move {
-            if let Some(bytes) = www::handle_static(tail_path.as_str().to_string()) {
-                Ok(Response::builder()
-                    .status(StatusCode::OK)
-                    .body(bytes)
-                    .unwrap())
+            if let Some((bytes, maybe_mime_type)) = www::handle_static(tail_path.as_str().to_string()) {
+                let mut response = Response::builder().status(StatusCode::OK);
+                if let Some(mime_type) = maybe_mime_type {
+                    response = response.header(warp::http::header::CONTENT_TYPE, mime_type);
+                }
+                Ok(response.body(Body::from(bytes)).unwrap())
             } else {
                 Err(warp::reject::not_found())
             }
         })
 }
 
-fn captcha_filter(
+fn api_captcha_filter(
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
-) -> impl Filter<Extract = (Response<Vec<u8>>,), Error = Rejection> + Clone {
-    warp::get().and(warp::path("captcha")).and_then(move || {
-        let maybe_captcha_tmp = maybe_captcha.clone();
-        async move {
-            if let Some(captcha) = maybe_captcha_tmp {
-                match captcha.write().unwrap().generate(true) {
-                    Ok((_, _, png_image)) => Ok(Response::builder()
-                        .header(warp::http::header::CONTENT_TYPE, "image/png")
-                        .status(StatusCode::OK)
-                        .body(png_image)
-                        .unwrap()),
-                    Err(error) => Err(warp::reject::custom(HTTPError::Captcha(error))),
-                }
-            } else {
-                Err(warp::reject::custom(HTTPError::Captcha(
-                    std::io::Error::from(std::io::ErrorKind::Unsupported),
-                )))
+) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
+    warp::get().and(warp::path("captcha")).map(move || {
+        if let Some(captcha) = maybe_captcha.clone() {
+            match captcha.write().unwrap().generate(true) {
+                Ok((id, _, png_image)) => make_api_response_ok_with_result(
+                    serde_json::json!({"id": id, "image": png_image}),
+                ),
+                Err(error) => make_api_response(Err(HTTPError::Authentication(
+                    HTTPAuthenticationError::Captcha(error.to_string()),
+                ))),
             }
+        } else {
+            make_api_response(Err(HTTPError::Authentication(
+                HTTPAuthenticationError::Captcha(
+                    std::io::Error::from(std::io::ErrorKind::Unsupported).to_string(),
+                ),
+            )))
         }
     })
 }
 
-fn try_authenticate(
+fn api_configuration_filter(
     cfg: Arc<RwLock<Cfg>>,
-    tokens: Arc<RwLock<HashMap<String, u32>>>,
+) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
+    warp::path("configuration").map(move || {
+        make_api_response_ok_with_result(serde_json::Value::Object(
+            cfg.clone()
+                .read()
+                .unwrap()
+                .config_value
+                .www
+                .configuration
+                .clone()
+                .into_iter()
+                .fold(serde_json::Map::new(), |mut acc, item| {
+                    acc.insert(item.0, serde_json::Value::String(item.1));
+                    acc
+                }),
+        ))
+    })
+}
+
+fn authentication_with_basic(
+    cfg: Arc<RwLock<Cfg>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
     authorization_value: String,
     form: HashMap<String, String>,
-    cookie: String,
-    allow_basic_auth: bool,
 ) -> Result<(), HTTPAuthenticationError> {
-    debug!("allow_basic_auth={}", allow_basic_auth);
     let server_cfg = cfg.read().unwrap().config_value.server.clone();
     if server_cfg.password_sha512.is_empty() && server_cfg.username.is_empty() {
         return Ok(());
     };
     if server_cfg.password_sha512.is_empty() || server_cfg.username.is_empty() {
         return Err(HTTPAuthenticationError::UsernameOrPasswordIsNotSet);
-    };
-    if !allow_basic_auth {
-        if cookie.is_empty() {
-            return Err(HTTPAuthenticationError::CookieNotFound);
-        };
-        return if let Some(expire_time) = tokens.clone().read().unwrap().get(cookie.as_str()) {
-            if expire_time > &chrono::Local::now().second() {
-                return Ok(());
-            };
-            Err(HTTPAuthenticationError::CookieExpired)
-        } else {
-            Err(HTTPAuthenticationError::InvalidCookie)
-        };
     };
     match authorization_value
         .as_str()
@@ -731,6 +802,23 @@ fn try_authenticate(
     }
 }
 
+fn authentication_with_token(
+    tokens: Arc<RwLock<HashMap<String, u32>>>,
+    token: String,
+) -> Result<(), HTTPAuthenticationError> {
+    if token.is_empty() {
+        return Err(HTTPAuthenticationError::TokenNotFound);
+    };
+    return if let Some(expire_time) = tokens.clone().read().unwrap().get(token.as_str()) {
+        if expire_time > &chrono::Local::now().second() {
+            return Ok(());
+        };
+        Err(HTTPAuthenticationError::TokenExpired)
+    } else {
+        Err(HTTPAuthenticationError::InvalidToken)
+    };
+}
+
 fn maybe_run_command(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
@@ -766,56 +854,16 @@ fn maybe_run_command(
     } else {
         command_output.decoded_stdout.unwrap()
     };
-    Ok(make_api_response_with_stats(
-        http_response_body,
-        http_status_code,
+    Ok(make_api_response_with_header_and_stats(
+        Ok(http_response_body),
+        None,
         if command_input.statistics {
             Some(command_output.stats)
         } else {
             None
         },
-        if http_status_code == StatusCode::OK {
-            None
-        } else {
-            Some(1001)
-        },
+        Some(http_status_code),
     ))
-}
-
-fn maybe_read_index_html_file(cfg: Arc<RwLock<Cfg>>) -> Response<String> {
-    let cfg_value = cfg.read().unwrap().config_value.clone();
-    let (status_code, mut body) = if !cfg_value.www.enabled {
-        (
-            StatusCode::FORBIDDEN,
-            "<html><body>Service Unavailable</body></html>".to_string(),
-        )
-    } else if cfg_value.www.static_directory.to_str().unwrap().is_empty() {
-        (StatusCode::OK, www::get_index_html())
-    } else {
-        let filename = cfg_value.www.static_directory.join("index.html");
-        match fs::read_to_string(filename.clone()) {
-            Ok(data) => (StatusCode::OK, data),
-            Err(reason) if reason.kind() == ErrorKind::NotFound => {
-                (StatusCode::OK, www::get_index_html())
-            }
-            Err(reason) => {
-                error!("could not read file {:?}: {:?}", filename, reason);
-                (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "<html><body>Service Unavailable</body></html>".to_string(),
-                )
-            }
-        }
-    };
-    if status_code == StatusCode::OK {
-        body = if !cfg_value.server.http_base_path.is_empty() {
-            body.replace("{{BASE_PATH}}", cfg_value.server.http_base_path.as_str())
-        } else {
-            body.replace("{{BASE_PATH}}", "/")
-        };
-        body = body.replace("{{TITLE}}", cfg_value.www.html_title.as_str())
-    };
-    Response::builder().status(status_code).body(body).unwrap()
 }
 
 fn make_environment_variables_map(cfg: Arc<RwLock<Cfg>>) -> HashMap<String, String> {
@@ -886,101 +934,82 @@ fn try_set_password(
 }
 
 fn make_api_response_ok() -> Response<String> {
-    make_api_response_with_header_and_stats(
-        serde_json::Value::Null,
-        StatusCode::OK,
-        None,
-        None,
-        None,
-    )
+    make_api_response_with_header_and_stats(Ok(serde_json::Value::Null), None, None, None)
 }
 
 fn make_api_response_ok_with_result(result: serde_json::Value) -> Response<String> {
-    make_api_response_with_header_and_stats(result, StatusCode::OK, None, None, None)
+    make_api_response_with_header_and_stats(Ok(result), None, None, None)
 }
 
-fn make_api_response(
-    result_or_reason: serde_json::Value,
-    status_code: StatusCode,
-    maybe_error_code: Option<i32>,
-) -> Response<String> {
-    make_api_response_with_header_and_stats(
-        result_or_reason,
-        status_code,
-        None,
-        None,
-        maybe_error_code,
-    )
-}
-
-fn make_api_response_with_stats(
-    result_or_reason: serde_json::Value,
-    status_code: StatusCode,
-    maybe_statistics: Option<CommandStats>,
-    maybe_error_code: Option<i32>,
-) -> Response<String> {
-    make_api_response_with_header_and_stats(
-        result_or_reason,
-        status_code,
-        None,
-        maybe_statistics,
-        maybe_error_code,
-    )
+fn make_api_response(result: Result<serde_json::Value, HTTPError>) -> Response<String> {
+    make_api_response_with_header_and_stats(result, None, None, None)
 }
 
 fn make_api_response_with_headers(
-    result_or_reason: serde_json::Value,
-    status_code: StatusCode,
+    result: Result<serde_json::Value, HTTPError>,
     maybe_headers: Option<HeaderMap>,
-    maybe_error_code: Option<i32>,
 ) -> Response<String> {
-    make_api_response_with_header_and_stats(
-        result_or_reason,
-        status_code,
-        maybe_headers,
-        None,
-        maybe_error_code,
-    )
+    make_api_response_with_header_and_stats(result, maybe_headers, None, None)
 }
 
 fn make_api_response_with_header_and_stats(
-    result_or_reason: serde_json::Value,
-    status_code: StatusCode,
+    result: Result<serde_json::Value, HTTPError>,
     maybe_headers: Option<HeaderMap>,
     maybe_statistics: Option<CommandStats>,
-    maybe_error_code: Option<i32>,
+    maybe_status_code: Option<StatusCode>,
 ) -> Response<String> {
     let mut body = json!(
-        {"ok": if status_code == StatusCode::OK {true} else {false}}
-    );
-    if !result_or_reason.is_null() {
-        body.as_object_mut().unwrap().insert(
-            if status_code == StatusCode::OK {
-                "result"
+        {
+            "ok": if let Some(ref status_code) = maybe_status_code {
+                status_code == &StatusCode::OK
             } else {
-                "reason"
+                result.is_ok()
             }
-            .to_string(),
-            result_or_reason,
-        );
-    };
+        }
+    );
+    body.as_object_mut().unwrap().insert(
+        "result".to_string(),
+        result
+            .clone()
+            .or_else::<serde_json::Value, _>(|error| {
+                Ok(serde_json::Value::String(error.to_string()))
+            })
+            .unwrap(),
+    );
+    if body
+        .as_object_mut()
+        .unwrap()
+        .get("result")
+        .unwrap()
+        .is_null()
+    {
+        body.as_object_mut().unwrap().remove("result");
+    }
     if let Some(statistics) = maybe_statistics {
         body.as_object_mut().unwrap().insert(
             "statistics".to_string(),
             serde_json::to_value(&statistics).unwrap(),
         );
     };
-    let mut response = warp::http::Response::builder().status(status_code);
+    let mut response =
+        warp::http::Response::builder().status(if let Some(status_code) = maybe_status_code {
+            status_code
+        } else if let Err(ref error) = result {
+            error.http_status_code()
+        } else {
+            StatusCode::OK
+        });
     let headers_mut = response.headers_mut().unwrap();
     if let Some(headers) = maybe_headers {
         for (header, header_value) in headers.iter() {
             headers_mut.insert(header.clone(), header_value.clone());
         }
     };
-    if let Some(error_code) = maybe_error_code {
-        body.as_object_mut()
-            .unwrap()
-            .insert("code".to_string(), serde_json::Value::from(error_code));
+    if let Err(error) = result {
+        body.as_object_mut().unwrap().insert(
+            "code".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(error.http_error_code())),
+        );
     };
     headers_mut.insert(
         warp::http::header::CONTENT_TYPE,
@@ -992,72 +1021,32 @@ fn make_api_response_with_header_and_stats(
 }
 
 async fn handle_rejection(rejection: Rejection) -> Result<Response<String>, Rejection> {
-    let response = if let Some(HTTPError::API(api_error)) = rejection.find::<HTTPError>() {
-        make_api_response(
-            serde_json::Value::from(api_error.to_string()),
-            api_error.http_status_code(),
-            Some(api_error.http_error_code()),
-        )
-    } else if let Some(HTTPError::Authentication(authentication_error)) =
-        rejection.find::<HTTPError>()
-    {
-        let status_code = authentication_error.http_status_code();
-        let mut headers = HeaderMap::new();
-        if status_code == StatusCode::UNAUTHORIZED {
-            headers.insert(
-                "WWW-Authenticate",
-                "Basic realm=\"Restricted\", charset=\"UTF-8\""
-                    .parse()
-                    .unwrap(),
-            );
-        };
-        make_api_response_with_headers(
-            serde_json::Value::from(authentication_error.to_string()),
-            status_code,
-            Some(headers),
-            Some(authentication_error.http_error_code()),
-        )
+    let response = if let Some(http_error) = rejection.find::<HTTPError>() {
+        make_api_response(Err(http_error.clone()))
     } else if let Some(body_deserialize_error) =
         rejection.find::<warp::filters::body::BodyDeserializeError>()
     {
-        make_api_response(
-            serde_json::Value::from(body_deserialize_error.to_string()),
-            StatusCode::BAD_REQUEST,
-            Some(2000),
-        )
+        make_api_response(Err(HTTPError::Deserialize(
+            body_deserialize_error.to_string(),
+        )))
     } else if let Some(missing_header) = rejection.find::<warp::reject::MissingHeader>() {
         if missing_header.name() == AUTHORIZATION.as_str() {
             let mut headers = HeaderMap::new();
-            headers.insert(
-                "WWW-Authenticate",
-                "Basic realm=\"Restricted\", charset=\"UTF-8\""
-                    .parse()
-                    .unwrap(),
-            );
+            headers.insert("WWW-Authenticate", "Bearer".parse().unwrap());
             make_api_response_with_headers(
-                serde_json::Value::from("Authentication required"),
-                StatusCode::UNAUTHORIZED,
+                Err(HTTPError::Authentication(HTTPAuthenticationError::Required)),
                 Some(headers),
-                Some(2001),
             )
         } else {
-            make_api_response(
-                serde_json::Value::from(missing_header.to_string()),
-                StatusCode::BAD_REQUEST,
-                Some(2000),
-            )
+            make_api_response(Err(HTTPError::Deserialize(format!(
+                "missing header {:?}",
+                missing_header.to_string()
+            ))))
         }
-    } else if let Some(method_not_allowed) = rejection.find::<warp::reject::MethodNotAllowed>() {
-        make_api_response(
-            serde_json::Value::from(method_not_allowed.to_string()),
-            StatusCode::METHOD_NOT_ALLOWED,
-            Some(2000),
-        )
-    } else if let Some(HTTPError::Captcha(captcha_error)) = rejection.find::<HTTPError>() {
-        Response::builder()
-            .status(StatusCode::NOT_ACCEPTABLE)
-            .body(captcha_error.to_string())
-            .unwrap()
+    } else if let Some(_) = rejection.find::<warp::reject::MethodNotAllowed>() {
+        make_api_response(Err(HTTPError::Deserialize(
+            "method not allowed".to_string(),
+        )))
     } else {
         if !rejection.is_not_found() {
             error!("unhandled rejection {:?}", rejection);
