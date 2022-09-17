@@ -2,31 +2,32 @@ DEV_CMD=./target/debug/restcommander
 DEV_DIR=tmp/
 DEV_CFG=${DEV_DIR}config.toml
 BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
+TARGET=$(shell rustc -vV | awk '$$1 == "host:"{print $$2}')
+VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}')
+
 
 all: release deb
 	@ ls -sh *.deb
 	@ ls -sh restcommander-*
 
 release: download-bootstrap
-	$(eval VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}'))
-	cargo fmt --check --quiet
-	cargo build --release
-	@ cp ./target/release/restcommander restcommander-${VERSION}
+	cargo build --release --target ${TARGET}
+	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}
 
 tag: release
-	$(eval VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}'))
 	git checkout HEAD -- src/www/mod.rs
+	cargo fmt --check --quiet
 	git status
 	git add .
 	git commit -m 'ver: ${VERSION}'
 	git tag ${VERSION}
 
 deb: release
-	cargo deb
-	@ cp ./target/debian/*.deb .
+	cargo deb --target ${TARGET}
+	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}.deb
 
 dev: download-bootstrap
-	cargo build
+	cargo build --target ${TARGET}
 
 setup-dev: dev ${DEV_DIR} ${DEV_CFG}
 
@@ -84,7 +85,6 @@ lint:
 	cargo clippy --no-deps
 
 archive:
-	$(eval VERSION=$(shell git describe --tags))
 	$(eval ARCHIVE_GENERIC_EXCLUDE=--exclude='restcommander' --exclude='*.deb' --exclude='*.tar.gz' --exclude='target' --exclude='tmp' --exclude='src/www/*')
 	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} -zcvf restcommander-${VERSION}.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}.tar.gz .
 	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} --exclude='.git' -zcvf restcommander-${VERSION}-src.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}-src.tar.gz .

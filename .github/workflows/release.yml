@@ -11,7 +11,7 @@ on:
 
 jobs:
   publish:
-    name: Publishing for ${{ matrix.os }}
+    name: Publishing for ${{ matrix.os }} (${{ os.target }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -71,33 +71,18 @@ jobs:
       - name: Checking out sources
         uses: actions/checkout@v1
       
-      - name: Running make
+      - name: Running `make release`
         uses: actions-rs/cargo@v1
-        with:
-          command: build
-          toolchain: stable
-          args: --release --target ${{ matrix.target }}
+        run: make release TARGET=${{ matrix.target }}
 
-      - name: Packaging final binary
+      - name: Running `make deb` on Linux
         shell: bash
-        run: |
-          cd target/${{ matrix.target }}/release
-          ls -lash .
-          RELEASE_NAME=restcommander-${{ matrix.target }}${{ matrix.binary_postfix }}
-          mv restcommander $RELEASE_NAME
-          tar czvf $RELEASE_NAME.tar.gz $RELEASE_NAME
-          if [[ ${{ runner.os }} == 'Windows' ]]; then
-            certutil -hashfile $RELEASE_NAME.tar.gz sha256 | grep -E [A-Fa-f0-9]{64} > $RELEASE_NAME.sha256
-          else
-            shasum -a 256 $RELEASE_NAME.tar.gz > $RELEASE_NAME.sha256
-          fi
-          ls -lash *.tar.gz
+        run: make deb TARGET=${{ matrix.target }}
       
       - name: Releasing assets
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-          #  target/${{ matrix.target }}/release/spotify-tui-${{ matrix.artifact_prefix }}.tar.gz
-          #  target/${{ matrix.target }}/release/spotify-tui-${{ matrix.artifact_prefix }}.sha256
+          files:
+            - restcommander-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
