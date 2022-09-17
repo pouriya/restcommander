@@ -1,5 +1,3 @@
-# This is a basic workflow to help you get started with Actions
-
 name: Release
 
 on:
@@ -10,47 +8,107 @@ on:
   workflow_dispatch:
 
 jobs:
-  pre-release:
-    name: Build release
-    runs-on: "ubuntu-latest"
+  publish:
+    name: ${{ matrix.os }} (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-12
+            target: x86_64-apple-darwin
+          - os: macos-11
+            target: x86_64-apple-darwin
+
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-20.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-18.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-18.04
+            target: x86_64-unknown-linux-musl
+
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+          - os: windows-2019
+            target: x86_64-pc-windows-msvc
 
     steps:
+      - name: Installing Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
 
-    - uses: actions/checkout@v3
+      - name: Installing needed macOS dependencies
+        if: contains(matrix.os, 'macos-')
+        run: |
+          brew install openssl@1.1
+          brew install make
 
-#     - run: sudo apt-get update
-#     - run: sudo apt-get install -y dpkg dpkg-dev liblzma-dev
+      - name: Installing needed Linux dependencies
+        if: contains(matrix.os, 'ubuntu-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -qq pkg-config libssl-dev liblzma-dev dpkg dpkg-dev
+          cargo install cargo-deb
 
-    - name: Install cargo deb
-      run: cargo install cargo-deb
+      - name: Installing needed Linux dependencies for `musl`
+        if: contains(matrix.os, 'ubuntu-') && contains(matrix.target, '-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y -qq musl-dev musl-tools
+          rustup target add ${{ matrix.target }}
 
-    - name: Build release
-      run: make
+      - name: Checking out sources
+        uses: actions/checkout@v1
+      
+      - name: Running `make release`
+        run: make release TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
 
-    - name: Rename release file
-      run: cp restcommander restcommander-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu
+      - name: Running `make deb` on Linux
+        if: contains(matrix.os, 'ubuntu-')
+        shell: bash
+        run: make deb TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
 
-    - name: List of files
-      run: ls -lash
+      - name: Rename Windows executable
+        if: contains(matrix.os, 'windows-')
+        shell: bash
+        run: |
+          NAME=`ls restcommander-*` 
+          mv $NAME `echo $NAME | sed 's/.exe//'`.exe
 
-    - name: Make GitHub release for latest
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "latest"
-        prerelease: true
-        title: "Latest Build"
-        files: |
-          restcommander-*
-          *.deb
+      - name: ls -lash .
+        shell: bash
+        run: ls -lash .
 
-    - name: Make GitHub release for tag name
-      uses: "marvinpinto/action-automatic-releases@latest"
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "${{  github.ref_name }}"
-        prerelease: true
-        title: "${{  github.ref_name }}"
-        files: |
-          restcommander-*
-          *.deb
+      - name: Releasing assets for `${{ github.ref_name }}`
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: restcommander-*
+
+      - name: Replace `${{ github.ref_name }}` to `latest` in release files
+        shell: bash
+        run: |
+          for filename in restcommander-*; do
+            newfilename=`echo $filename | sed 's/${{ github.ref_name }}/latest/g'`
+            mv $filename $newfilename
+          done
+
+      - name: Releasing assets for latest
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          prerelease: false
+          draft: false
+          tag_name: latest
+          files: restcommander-*
