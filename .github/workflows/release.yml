@@ -1,5 +1,3 @@
-# This is a basic workflow to help you get started with Actions
-
 name: Release
 
 on:
@@ -10,15 +8,6 @@ on:
   workflow_dispatch:
 
 jobs:
-#  remove-latest-tag:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: dev-drprasad/delete-tag-and-release@v0.2.0
-#        with:
-#          delete_release: true
-#          tag_name: latest  
-#        env:
-#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   publish:
     name: ${{ matrix.os }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -26,7 +15,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-12
+            target: x86_64-apple-darwin
+          - os: macos-11
             target: x86_64-apple-darwin
 
           - os: ubuntu-22.04
@@ -42,7 +33,7 @@ jobs:
           - os: ubuntu-18.04
             target: x86_64-unknown-linux-musl
 
-          - os: windows-latest
+          - os: windows-2022
             target: x86_64-pc-windows-msvc
           - os: windows-2019
             target: x86_64-pc-windows-msvc
@@ -85,7 +76,7 @@ jobs:
         shell: bash
         run: make deb TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
 
-      - name: Fix Windows executable name
+      - name: Rename Windows executable
         if: contains(matrix.os, 'windows-')
         shell: bash
         run: |
@@ -96,7 +87,7 @@ jobs:
         shell: bash
         run: ls -lash .
 
-      - name: Releasing assets for ${{ github.ref_name }}
+      - name: Releasing assets for `${{ github.ref_name }}`
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -104,9 +95,13 @@ jobs:
           tag_name: ${{ github.ref_name }}
           files: restcommander-*
 
-      - name: Replace ${{ github.ref_name }} to `latest` in release files
+      - name: Replace `${{ github.ref_name }}` to `latest` in release files
         shell: bash
-        run: rename 's/${{ github.ref_name }}/latest/g' restcommander-*
+        run: |
+          for filename in restcommander-**; do
+            newfilename=`echo $filename | sed 's/${{ github.ref_name }}/latest/g'`
+            mv $filename $newfilename
+          done
 
       - name: Releasing assets for latest
         uses: softprops/action-gh-release@v1
