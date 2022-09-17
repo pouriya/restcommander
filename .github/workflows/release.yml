@@ -49,29 +49,27 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Installing needed ${{ matrix.os }} dependencies
+      - name: Installing needed macOS dependencies
         if: contains(matrix.os, 'macos-')
-        run: brew install openssl@1.1
+        run: |
+          brew install openssl@1.1
+          brew install make
 
-      - name: Installing needed ${{ matrix.os }} dependencies
+      - name: Installing needed Linux dependencies
         if: contains(matrix.os, 'ubuntu-')
         run: |
           sudo apt-get update
           sudo apt-get install -y -qq pkg-config libssl-dev
 
-      - name: Installing needed ${{ matrix.os }} dependencies for `musl`
+      - name: Installing needed Linux dependencies for `musl`
         if: contains(matrix.os, 'ubuntu-') && contains(matrix.target, '-musl')
         run: |
           sudo apt-get update
           sudo apt-get install -y -qq musl-dev musl-tools
+          rustup target add ${{ matrix.target }}
 
       - name: Checking out sources
         uses: actions/checkout@v1
-
-      - name: Install ${{ matrix.target }}
-        shell: bash
-        run: |
-          rustup target add ${{ matrix.target }}
       
       - name: Running make
         uses: actions-rs/cargo@v1
@@ -85,13 +83,15 @@ jobs:
         run: |
           cd target/${{ matrix.target }}/release
           ls -lash .
-          RELEASE_NAME=restcommander-${{ matrix.artifact_postfix }}
-          tar czvf $RELEASE_NAME.tar.gz $BINARY_NAME
+          RELEASE_NAME=restcommander-${{ matrix.target }}${{ matrix.binary_postfix }}
+          mv restcommander $RELEASE_NAME
+          tar czvf $RELEASE_NAME.tar.gz $RELEASE_NAME
           if [[ ${{ runner.os }} == 'Windows' ]]; then
             certutil -hashfile $RELEASE_NAME.tar.gz sha256 | grep -E [A-Fa-f0-9]{64} > $RELEASE_NAME.sha256
           else
             shasum -a 256 $RELEASE_NAME.tar.gz > $RELEASE_NAME.sha256
           fi
+          ls -lash *.tar.gz
       
       - name: Releasing assets
         uses: softprops/action-gh-release@v1
