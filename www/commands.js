@@ -821,15 +821,15 @@ async function main() {
     }
     const configuration = await new Api(ApiOpts).configuration(true)
     if (configuration !== false) {
-        if ('serviceName' in configuration) {
-            document.title = configuration.serviceName
+        if ('service_name' in configuration) {
+            document.title = configuration.service_name
         } else {
-            console.log('Could not found `serviceName` in server configuration')
+            console.log('Could not found `service_name` in server configuration')
         }
-        if ('bannerFooter' in configuration) {
-            document.getElementById('footer').innerHTML = configuration.bannerFooter
+        if ('footer' in configuration) {
+            document.getElementById('footer').innerHTML = configuration.footer
         } else {
-            console.log('Could not found `bannerFooter` in server configuration')
+            console.log('Could not found `footer` in server configuration')
         }
     }
     drawNavbar()

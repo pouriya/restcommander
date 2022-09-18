@@ -6,14 +6,13 @@ level_name = "info"
 [server]
 ## Default value: "127.0.0.1"
 host = "0.0.0.0"
-
 ## Default value: 1995
 port = 1995
 
-## If `username` and `password_file` and `password_sha512` are set to empty or commented, no authentication is required.
+## If `username` and `password_file` and `password_sha512` are set to empty strings or they are commented,
+## no authentication is required.
 ## If you specify both `password_sha512` and `password_file`, The `password_sha512` field will be ignored.
 ## If you specify `password_sha512`, You can not use /api/setPassword endpoint to change the password.
-##
 username = "admin"
 ## If you want to be able to use /api/setPassword endpoint, Make sure that the RestCommander program has enough permissions
 ## to write to your specified `password_file`.
@@ -25,6 +24,8 @@ password_file = "/etc/restcommander/password-file.sha512"
 tls_cert_file = "/etc/restcommander/cert.pem"
 ## You can get a test key file via `restcommander sample self-signed-key` command.
 tls_key_file = "/etc/restcommander/key.pem"
+## If you specify `captcha_file`, CAPTCHA is required to get new bearer token.
+## You can disable CAPTCHA by commenting this field.
 captcha_file = "/var/cache/twisted/captcha.txt"
 
 [commands]
@@ -34,13 +35,22 @@ root_directory = "/srv/restcommander/scripts"
 
 [www]
 ## If `static_directory` is set, You can override RestCommander files:
-##  index.html
-##  style.css
-##  panel.js
+##  index.html, index.js
+##  login.html, login.js
+##  commands.html, commands.js
+##  restcommander-background-image.jpg
 ##  favicon.ico
-##  inconsolata.woff2 (default font file)
-##  and serve your own file. Note that subdirectories are skipped!
+##  bootstrap.bundle.min.js, bootstrap.min.css
+##  api.js, utils.js
+## And serve your own files.
 static_directory = "/srv/restcommander/www"
-html_title = "Rest Commander"
-## By default the web dashboard is enabled. You can disable it and just use the Rest API.
+## By default the web dashboard is enabled. You can disable it and just use the REST API.
 enabled = true
+
+## You can access `www.configuration` key-values from REST API `/public/configuration` endpoint.
+[www.configuration]
+## RestCommander default dashboard uses the following key-values:
+service_name = "RestCommander"
+banner_title = "Simple, Flexible and Reliable"
+banner_text = "RestCommander helps you run your own scripts simply from its web dashboard or REST API"
+footer = "Hosted on <a href=\"https://github.com/pouriya/RestCommander\" target=\"_blank\">GitHub</a>"

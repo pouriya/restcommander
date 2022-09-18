@@ -12,7 +12,7 @@ print("INFO This is a log message.", file=stderr)
 
 # With exit-code 0 it gives HTTP 200 status code with body {"ok":true, "result":"Hello World!"}
 print("Hello World!")
-# If you change exit_code, it gives HTTP 4** ot 5** status code with body {"ok":false, "reason":"Hello World!"}
+# If you change exit_code, it gives HTTP 4** ot 5** status code with body {"ok":false, "result":"Hello World!"}
 # Process exit-code to HTTP status-code mapping:
 # 0     -> 200 (OK)
 # 1     -> 500 (INTERNAL_SERVER_ERROR)

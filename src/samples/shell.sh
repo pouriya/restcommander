@@ -9,7 +9,7 @@ echo "INFO This is a log message." >&2
 
 # With exit-code 0 it gives HTTP 200 status code with body {"ok":true, "result":"Hello World!"}
 echo "Hello World!"
-# If you change exit_code, it gives HTTP 4** ot 5** status code with body {"ok":false, "reason":"Hello World!"}
+# If you change exit_code, it gives HTTP 4** ot 5** status code with body {"ok":false, "result":"Hello World!"}
 # Process exit-code to HTTP status-code mapping:
 # 0     -> 200 (OK)
 # 1     -> 500 (INTERNAL_SERVER_ERROR)

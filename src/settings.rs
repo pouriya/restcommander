@@ -69,8 +69,6 @@ pub struct CMDOptRun {
     pub password_file: Option<PathBuf>,
     #[structopt(long, env = "RESTCOMMANDER_STATIC_DIRECTORY")]
     pub static_directory: Option<PathBuf>,
-    #[structopt(long, default_value=crate_name!(), env="RESTCOMMANDER_HTTP_HTML_TITLE")]
-    pub html_title: String,
     #[structopt(long, env = "RESTCOMMANDER_ENABLE_PANEL")]
     pub disable_panel: bool,
     #[structopt(long, parse(from_os_str), env = "RESTCOMMANDER_TLS_CERT_PATH")]
@@ -415,8 +413,6 @@ pub struct CfgWWW {
     pub static_directory: PathBuf,
     #[serde(default = "CfgWWWDefault::enabled")]
     pub enabled: bool,
-    #[serde(default = "CfgWWWDefault::html_title")]
-    pub html_title: String,
     #[serde(default = "CfgWWWDefault::configuration")]
     pub configuration: HashMap<String, String>,
 }
@@ -435,9 +431,6 @@ impl CfgWWWDefault {
     fn enabled() -> bool {
         true
     }
-    fn html_title() -> String {
-        crate_name!().to_string()
-    }
     fn configuration() -> HashMap<String, String> {
         HashMap::new()
     }
@@ -448,7 +441,6 @@ impl Default for CfgWWW {
         Self {
             static_directory: CfgWWWDefault::static_directory(),
             enabled: CfgWWWDefault::enabled(),
-            html_title: CfgWWWDefault::html_title(),
             configuration: CfgWWWDefault::configuration(),
         }
     }
@@ -604,7 +596,6 @@ impl TryFrom<CMDOptRun> for Cfg {
                         .static_directory
                         .unwrap_or(PathBuf::new()),
                     enabled: !command_line_options.disable_panel,
-                    html_title: command_line_options.html_title,
                     configuration: CfgWWWDefault::configuration(),
                 },
             },

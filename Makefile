@@ -1,8 +1,8 @@
-DEV_CMD=./target/debug/restcommander
+TARGET=$(shell rustc -vV | awk '$$1 == "host:"{print $$2}')
+DEV_CMD=./target/${TARGET}/debug/restcommander
 DEV_DIR=tmp/
 DEV_CFG=${DEV_DIR}config.toml
 BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
-TARGET=$(shell rustc -vV | awk '$$1 == "host:"{print $$2}')
 VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}')
 RELEASE_FILENAME_POSTFIX=
 
@@ -53,16 +53,17 @@ ${DEV_DIR}:
 	cp www/* ${DEV_DIR}www/ && rm -rf ${DEV_DIR}www/bootstrap-version.txt ${DEV_DIR}www/README.md
 
 ${DEV_CFG}:
-	${DEV_CMD} sample config > ${DEV_CFG}.1
-	awk '$$1 == "level_name" {$$3="\"debug\""}{print $$0}' ${DEV_CFG}.1 > ${DEV_CFG}.2
-	awk '$$1 == "host" {$$3="\"127.0.0.1\""}{print $$0}' ${DEV_CFG}.2 > ${DEV_CFG}.1
-	awk '$$1 == "password_file" {$$3="\"password-file.sha512\""}{print $$0}' ${DEV_CFG}.1 > ${DEV_CFG}.2
-	awk '$$1 == "tls_cert_file" {$$3="\"cert.pem\""}{print $$0}' ${DEV_CFG}.2 > ${DEV_CFG}.1
-	awk '$$1 == "tls_key_file" {$$3="\"key.pem\""}{print $$0}' ${DEV_CFG}.1 > ${DEV_CFG}.2
-	awk '$$1 == "root_directory" {$$3="\"scripts\""}{print $$0}' ${DEV_CFG}.2 > ${DEV_CFG}.1
-	awk '$$1 == "static_directory" {$$3="\"www\""}{print $$0}' ${DEV_CFG}.1 > ${DEV_CFG}.2
-	awk '$$1 == "captcha_file" {$$3="\"captcha.txt\""}{print $$0}' ${DEV_CFG}.2 > ${DEV_CFG}
-	rm -rf ${DEV_CFG}.1 ${DEV_CFG}.2
+	${DEV_CMD} sample config > ${DEV_CFG}
+	cat ${DEV_CFG}                                                             \
+    | awk '$$1 == "level_name" {$$3="\"debug\""}{print $$0}'                   \
+    | awk '$$1 == "host" {$$3="\"127.0.0.1\""}{print $$0}'                     \
+    | awk '$$1 == "password_file" {$$3="\"password-file.sha512\""}{print $$0}' \
+    | awk '$$1 == "tls_cert_file" {$$3="\"cert.pem\""}{print $$0}'             \
+    | awk '$$1 == "tls_key_file" {$$3="\"key.pem\""}{print $$0}'               \
+    | awk '$$1 == "root_directory" {$$3="\"scripts\""}{print $$0}'             \
+    | awk '$$1 == "static_directory" {$$3="\"www\""}{print $$0}'               \
+    | awk '$$1 == "captcha_file" {$$3="\"captcha.txt\""}{print $$0}' > ${DEV_CFG}.tmp
+	mv ${DEV_CFG}.tmp ${DEV_CFG}
 	${DEV_CMD} sha512 admin > ${DEV_DIR}password-file.sha512
 	${DEV_CMD} sample self-signed-key > ${DEV_DIR}key.pem
 	${DEV_CMD} sample self-signed-cert > ${DEV_DIR}cert.pem

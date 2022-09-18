@@ -14,6 +14,7 @@ output = configuration['options']['Output']
 decoded = False
 try:
     output = json_decode(output)
+    print('DEBUG Received a test request with exit-code {} and output {!r}'.format(exit_code, output), file=stderr)
     decoded = True
 except Exception as error:
     print('ERROR Could not decode value as JSON: {}'.format(error), file=stderr)
