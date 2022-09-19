@@ -445,8 +445,7 @@ async function makeCommandOptionsInputs(options, httpPath) {
                 requestOptions[pair[0]] = value;
             };
             updateResultBeforeRequest()
-            var requestBody = {'options': requestOptions}
-            const runResult = await new Api(ApiOpts).run(httpPath, requestBody)
+            const runResult = await new Api(ApiOpts).run(httpPath, requestOptions)
             updateResultAfterRequest(runResult)
             if (runResult.status === 401) {
                 changeLogoutToLogin()
@@ -806,7 +805,7 @@ function changeLogoutToLogin() {
         setAttributes(
             helpElement,
             {
-                'class': 'btn btn-sm btn-primary fw-bold',
+                'class': 'mb-5 btn btn-sm btn-primary fw-bold',
                 'href': 'login.html'
             }
         )

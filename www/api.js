@@ -110,8 +110,7 @@ class Api {
     }
 
     async run(http_path, options, filterFunction) {
-        options['statistics'] = true
-        return this.fetch(http_path, filterFunction, 'POST', {}, JSON.stringify(options))
+        return this.fetch(http_path, filterFunction, 'POST', {'X-RESTCOMMANDER-STATISTICS': "true"}, JSON.stringify(options))
     }
 
     async reloadConfig(filterFunction) {

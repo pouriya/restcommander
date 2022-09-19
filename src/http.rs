@@ -32,6 +32,8 @@ use warp::{Filter, Rejection, Reply};
 
 use crate::captcha;
 use crate::cmd;
+use crate::cmd::runner::CommandOptionValue;
+use crate::cmd::runner::CommandOptionsValue;
 use crate::cmd::{Command, CommandInput, CommandStats};
 use crate::settings::Cfg;
 use crate::utils;
@@ -497,18 +499,58 @@ fn api_run_command_filter(
     warp::post()
         .map(move || (cfg.clone(), commands.clone()))
         .and(warp::path::tail())
-        .and(warp::body::json())
-        // .map(|x, y, z| {(x, y, z)})
+        .and(
+            warp::body::json()
+                .or(warp::body::form()
+                    .or(warp::any().map(|| CommandInput::default().options))
+                    .unify())
+                .unify(),
+        )
+        .and(
+            warp::query::query()
+                .or(warp::any().map(|| CommandInput::default().options))
+                .unify(),
+        )
+        .and(warp::header::headers_cloned().map(|headers: HeaderMap| {
+            let mut input = CommandInput::default();
+            headers
+                .into_iter()
+                .for_each(|(maybe_header_name, header_value)| {
+                    if maybe_header_name.is_none() {
+                        return ();
+                    }
+                    let header_name = maybe_header_name.unwrap().to_string().to_uppercase();
+                    if header_name.as_str() == "X-RESTCOMMANDER-STATISTICS" {
+                        input.statistics = true;
+                        return ();
+                    };
+                    if header_name.starts_with("X-") && header_name.len() > 2 {
+                        if let Ok(header_value_str) = header_value.to_str() {
+                            input.options.insert(
+                                header_name,
+                                CommandOptionValue::String(header_value_str[2..].to_string()),
+                            );
+                        };
+                    };
+                });
+            input
+        }))
         .and_then(
             move |state: (Arc<RwLock<Cfg>>, Arc<RwLock<Command>>),
                   tail: Tail,
-                  command_input: CommandInput| {
+                  command_options_from_body: CommandOptionsValue,
+                  command_options_from_uri: CommandOptionsValue,
+                  mut command_input_from_headers: CommandInput| {
+                unify_options(
+                    &mut command_input_from_headers.options,
+                    [command_options_from_uri, command_options_from_body].to_vec(),
+                );
                 async move {
                     match maybe_run_command(
                         state.0,
                         state.1,
                         tail.as_str().to_string(),
-                        command_input,
+                        command_input_from_headers,
                     ) {
                         Err(reason) => Err(warp::reject::custom(HTTPError::API(reason))),
                         Ok(response) => Ok(response),
@@ -825,11 +867,12 @@ fn maybe_run_command(
             message: reason.to_string(),
         }
     })?;
-    let input =
+    let mut input =
         cmd::check_input(&command, &command_input).map_err(|reason| HTTPAPIError::CheckInput {
             message: reason.to_string(),
         })?;
     let env_map = make_environment_variables_map(cfg.clone());
+    input.configuration = Some(cfg.clone().read().unwrap().config_value.clone());
     let command_output = cmd::run_command(&command, &input, env_map).map_err(|reason| {
         HTTPAPIError::InitializeCommand {
             message: reason.to_string(),
@@ -868,7 +911,7 @@ fn make_environment_variables_map(cfg: Arc<RwLock<Cfg>>) -> HashMap<String, Stri
                 },
             ),
             (
-                "SERVER_POST".to_string(),
+                "SERVER_PORT".to_string(),
                 cfg_instance.server.port.to_string(),
             ),
             (
@@ -886,10 +929,31 @@ fn make_environment_variables_map(cfg: Arc<RwLock<Cfg>>) -> HashMap<String, Stri
                     .to_string(),
             ),
             (
+                "SERVER_TLS".to_string(),
+                cfg_instance
+                    .server
+                    .tls_key_file
+                    .map(|_| "1")
+                    .or(Some("0"))
+                    .unwrap()
+                    .to_string(),
+            ),
+            (
                 "LOGGING_LEVEL_NAME".to_string(),
                 cfg_instance.logging.level_name.to_log_level().to_string(),
             ),
-            // ("FILENAME".to_string(), cfg.read().unwrap().filename.),
+            (
+                "FILENAME".to_string(),
+                cfg.read()
+                    .unwrap()
+                    .filename
+                    .as_ref()
+                    .or(Some(&PathBuf::new()))
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            ),
         ]
         .map(|item| (format!("RESTCOMMANDER_CONFIG_{}", item.0), item.1)),
     )
@@ -920,6 +984,21 @@ fn try_set_password(
     })?;
     cfg.write().unwrap().config_value.server.password_sha512 = password_sha512;
     Ok(make_api_response_ok())
+}
+
+fn unify_options(
+    options: &mut CommandOptionsValue,
+    options_list: Vec<CommandOptionsValue>,
+) -> &mut CommandOptionsValue {
+    for options_list_item in options_list {
+        for (option, value) in options_list_item {
+            if options.contains_key(option.as_str()) {
+                trace!("Replacing option {:?} with {:?}", option, value)
+            };
+            options.insert(option, value);
+        }
+    }
+    options
 }
 
 fn make_api_response_ok() -> Response<String> {
