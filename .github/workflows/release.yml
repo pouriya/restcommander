@@ -8,6 +8,36 @@ on:
   workflow_dispatch:
 
 jobs:
+  publish-installer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking out sources
+        uses: actions/checkout@v1
+      
+      - name: Replace version inside `install.sh`
+        shell: bash
+        run: |
+          cp ./tools/install.sh .
+          sed -i "s|_version=\"latest\"|_version=\"${{ github.ref_name }}\"|g" install.sh
+      
+      - name: Releasing `install.sh` for `${{ github.ref_name }}`
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: install.sh
+
+      - name: Releasing `install.sh` for latest
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          prerelease: false
+          draft: false
+          tag_name: latest
+          files: tools/install.sh
+
   publish:
     name: ${{ matrix.os }} (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
@@ -58,6 +88,11 @@ jobs:
           sudo apt-get install -y -qq pkg-config libssl-dev liblzma-dev dpkg dpkg-dev
           cargo install cargo-deb
 
+      - name: Installing needed Windows dependencies
+        if: contains(matrix.os, 'windows-')
+        run: |
+          rustup target add ${{ matrix.target }}
+
       - name: Installing needed Linux dependencies for `musl`
         if: contains(matrix.os, 'ubuntu-') && contains(matrix.target, '-musl')
         run: |
@@ -83,21 +118,13 @@ jobs:
           NAME=`ls restcommander-*` 
           mv $NAME `echo $NAME | sed 's/.exe//'`.exe
 
-      - name: Replace version inside `install.sh`
-        shell: bash
-        run: |
-          cp ./tools/install.sh .
-          sed -i "s|_version=\"latest\"|_version=\"${{ github.ref_name }}\"|g" install.sh
-
       - name: Releasing assets for `${{ github.ref_name }}`
         uses: softprops/action-gh-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
-          files: |
-            restcommander-*
-            install.sh
+          files: restcommander-*
 
       - name: Replace `${{ github.ref_name }}` to `latest` in release files
         shell: bash
@@ -115,6 +142,4 @@ jobs:
           prerelease: false
           draft: false
           tag_name: latest
-          files: |
-            restcommander-*
-            tools/install.sh
+          files: restcommander-*
