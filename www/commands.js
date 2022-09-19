@@ -17,8 +17,9 @@ async function drawNavbar() {
 async function doDrawNavbar(commands, parentElement, depth) {
     var count = 0;
     for (const key in commands) {
-        count++
-        const command = commands[key]
+        count++;
+        const command = commands[key];
+        const keyName = key.replace('-', ' ').replace('_', ' ')
         if (depth === 1) {
             const id = 'dropdownMenuLink-'+ depth.toString() + '-' + count.toString()
             var aElement = document.createElement('a')
@@ -34,7 +35,7 @@ async function doDrawNavbar(commands, parentElement, depth) {
                      'aria-expanded': 'false'
                 }
             )
-            aElement.innerHTML = key
+            aElement.innerHTML = keyName
             parentElement.appendChild(aElement)
             var ulElement = document.createElement('ul')
             setAttributes(
@@ -45,7 +46,8 @@ async function doDrawNavbar(commands, parentElement, depth) {
                 }
             )
             if (command.is_directory) {
-                await doDrawNavbar(command.commands, ulElement, depth+1)
+                await console.log(command)
+                await doDrawNavbar(command[commands], ulElement, depth+1)
             } else {
                 var liElement = document.createElement('li')
                 var aElement = document.createElement('a')
@@ -56,8 +58,8 @@ async function doDrawNavbar(commands, parentElement, depth) {
                         'href': "#"
                     }
                 )
-                aElement.innerHTML = key
-                await addCommandClickEventListener(key, command, aElement)
+                aElement.innerHTML = keyName
+                await addCommandClickEventListener(keyName, command, aElement)
                 liElement.appendChild(aElement)
                 ulElement.appendChild(liElement)
             }
@@ -84,7 +86,7 @@ async function doDrawNavbar(commands, parentElement, depth) {
                         'aria-expanded': 'false'
                     }
                 )
-                aElement.innerHTML = key + ' »'
+                aElement.innerHTML = keyName + ' »'
                 liElement.appendChild(aElement)
                 var ulElement = document.createElement('ul')
                 setAttributes(
@@ -107,8 +109,8 @@ async function doDrawNavbar(commands, parentElement, depth) {
                         'href': "#"
                     }
                 )
-                aElement.innerHTML = key
-                await addCommandClickEventListener(key, command, aElement)
+                aElement.innerHTML = keyName
+                await addCommandClickEventListener(keyName, command, aElement)
                 liElement.appendChild(aElement)
                 parentElement.appendChild(liElement)
             }
