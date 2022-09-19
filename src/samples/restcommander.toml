@@ -5,7 +5,7 @@ level_name = "info"
 
 [server]
 ## Default value: "127.0.0.1"
-host = "0.0.0.0"
+host = "127.0.0.1"
 ## Default value: 1995
 port = 1995
 
@@ -16,21 +16,21 @@ port = 1995
 username = "admin"
 ## If you want to be able to use /api/setPassword endpoint, Make sure that the RestCommander program has enough permissions
 ## to write to your specified `password_file`.
-password_file = "/etc/restcommander/password-file.sha512"
+password_file = "password-file.sha512"
 # password_sha512 = "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd472634dfac71cd34ebc35d16ab7fb8a90c81f975113d6c7538dc69dd8de9077ec" # sha512 of word "admin"
 
 ## If you specify `tls_cert_file` and `tls_key_file` fields, RestCommander tries to serve everything over HTTPS.
 ## You can get a test cert file via `restcommander sample self-signed-cert` command.
-tls_cert_file = "/etc/restcommander/cert.pem"
+tls_cert_file = "cert.pem"
 ## You can get a test key file via `restcommander sample self-signed-key` command.
-tls_key_file = "/etc/restcommander/key.pem"
+tls_key_file = "key.pem"
 ## If you specify `captcha_file`, CAPTCHA is required to get new bearer token.
 ## You can disable CAPTCHA by commenting this field.
-captcha_file = "/var/cache/twisted/captcha.txt"
+captcha_file = "captcha.txt"
 
 [commands]
 ## Root directory to load command files and directories and their information files.
-root_directory = "/srv/restcommander/scripts"
+root_directory = "scripts"
 
 
 [www]
@@ -43,7 +43,7 @@ root_directory = "/srv/restcommander/scripts"
 ##  bootstrap.bundle.min.js, bootstrap.min.css
 ##  api.js, utils.js
 ## And serve your own files.
-static_directory = "/srv/restcommander/www"
+static_directory = "www"
 ## By default the web dashboard is enabled. You can disable it and just use the REST API.
 enabled = true
 

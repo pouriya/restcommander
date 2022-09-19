@@ -34,9 +34,9 @@ jobs:
             target: x86_64-unknown-linux-musl
 
           - os: windows-2022
-            target: x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-gnu
           - os: windows-2019
-            target: x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-gnu
 
     steps:
       - name: Installing Rust toolchain
@@ -83,9 +83,11 @@ jobs:
           NAME=`ls restcommander-*` 
           mv $NAME `echo $NAME | sed 's/.exe//'`.exe
 
-      - name: ls -lash .
+      - name: Replace version inside `install.sh`
         shell: bash
-        run: ls -lash .
+        run: |
+          cp ./tools/install.sh .
+          sed -i "s|_version=\"latest\"|_version=\"${{ github.ref_name }}\"|g" install.sh
 
       - name: Releasing assets for `${{ github.ref_name }}`
         uses: softprops/action-gh-release@v1
@@ -93,7 +95,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
-          files: restcommander-*
+          files: |
+            restcommander-*
+            install.sh
 
       - name: Replace `${{ github.ref_name }}` to `latest` in release files
         shell: bash
@@ -111,4 +115,6 @@ jobs:
           prerelease: false
           draft: false
           tag_name: latest
-          files: restcommander-*
+          files: |
+            restcommander-*
+            tools/install.sh

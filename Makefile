@@ -54,15 +54,7 @@ ${DEV_DIR}:
 
 ${DEV_CFG}:
 	${DEV_CMD} sample config > ${DEV_CFG}
-	cat ${DEV_CFG}                                                             \
-    | awk '$$1 == "level_name" {$$3="\"debug\""}{print $$0}'                   \
-    | awk '$$1 == "host" {$$3="\"127.0.0.1\""}{print $$0}'                     \
-    | awk '$$1 == "password_file" {$$3="\"password-file.sha512\""}{print $$0}' \
-    | awk '$$1 == "tls_cert_file" {$$3="\"cert.pem\""}{print $$0}'             \
-    | awk '$$1 == "tls_key_file" {$$3="\"key.pem\""}{print $$0}'               \
-    | awk '$$1 == "root_directory" {$$3="\"scripts\""}{print $$0}'             \
-    | awk '$$1 == "static_directory" {$$3="\"www\""}{print $$0}'               \
-    | awk '$$1 == "captcha_file" {$$3="\"captcha.txt\""}{print $$0}' > ${DEV_CFG}.tmp
+	cat ${DEV_CFG} | awk '$$1 == "level_name" {$$3="\"debug\""}{print $$0}' > ${DEV_CFG}.tmp
 	mv ${DEV_CFG}.tmp ${DEV_CFG}
 	${DEV_CMD} sha512 admin > ${DEV_DIR}password-file.sha512
 	${DEV_CMD} sample self-signed-key > ${DEV_DIR}key.pem
@@ -71,8 +63,11 @@ ${DEV_CFG}:
 exit-code-status-code-mapping:
 	./tools/exit-code-status-code-mapping
 
-clean:
-	rm -rf ${DEV_DIR} restcommander *.deb *.tar.gz
+clean: clean-dev
+	rm -rf restcommander-*
+
+clean-dev:
+	rm -rf ${DEV_DIR}
 
 dist-clean: clean
 	cargo clean
@@ -92,4 +87,4 @@ archive:
 	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} --exclude='.git' -zcvf restcommander-${VERSION}-src.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}-src.tar.gz .
 	ls -sh *.tar.gz
 
-.PHONY: all release deb dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint
+.PHONY: all release tag deb dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
