@@ -1,3 +1,4 @@
+use md5::compute;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
@@ -9,6 +10,45 @@ const BOOTSTRAP_CSS_FILENAME: &str = "bootstrap.min.css";
 const BOOTSTRAP_VERSION_FILENAME: &str = "bootstrap-version.txt";
 
 fn main() {
+    // Check `www` files and compute and compare its files and their correspond files inside `src/www/`:
+    fs::read_dir("www")
+        .unwrap()
+        .try_for_each(|file_path| {
+            let file_path = file_path.unwrap().path();
+            let file_name = file_path.file_name().unwrap();
+            if file_name != OsStr::new("README.md")
+                && file_name != OsStr::new(BOOTSTRAP_VERSION_FILENAME)
+            {
+                let destination_file_name = PathBuf::from("src").join(file_path.clone());
+                if destination_file_name.exists() {
+                    let (data, destination_data) = (
+                        fs::read(file_path.clone()).unwrap(),
+                        fs::read(destination_file_name.clone()).unwrap(),
+                    );
+                    if compute(data) == compute(destination_data) {
+                        Ok(())
+                    } else {
+                        println!("cargo:warning={:?} content changed", file_path);
+                        Err(())
+                    }
+                } else {
+                    println!("cargo:warning=New file {:?} found", file_path);
+                    Err(())
+                }
+            } else {
+                Ok(())
+            }
+        })
+        .map(|_| {
+            // No Change & No new file:
+            // println!("cargo:warning=No file is changed inside `www` directory!");
+            exit(0)
+        })
+        .or_else::<(), _>(|_| {
+            // Skip the error:
+            Ok(())
+        })
+        .unwrap();
     let mod_rs_filename = PathBuf::from("src").join("www").join("mod.rs");
     let mut mod_rs_file = fs::File::create(mod_rs_filename.clone()).unwrap();
     // Start function body:
