@@ -5,6 +5,6 @@
 restcommander-*
 *.deb
 *.tar.gz
-www/bootstrap.bundle.min.js
-www/bootstrap.min.css
-src/www
+/www/bootstrap.bundle.min.js
+/www/bootstrap.min.css
+/src/www/
