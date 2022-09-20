@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -29,6 +29,8 @@ use warp::hyper::Body;
 use warp::path::Tail;
 use warp::reject::Reject;
 use warp::{Filter, Rejection, Reply};
+
+use wildmatch::WildMatch;
 
 use crate::captcha;
 use crate::cmd;
@@ -105,6 +107,8 @@ pub enum HTTPAuthenticationError {
     Required,
     #[error("{0}")]
     Captcha(String),
+    #[error("Invalid IP {0}")]
+    InvalidIP(String),
 }
 
 #[derive(Error, Debug, Clone)]
@@ -172,6 +176,7 @@ impl HTTPAuthenticationError {
             Self::TokenExpired => 2011,
             Self::InvalidToken => 2012,
             Self::Captcha(_) => 2012,
+            Self::InvalidIP(_) => 2013,
         }
     }
 
@@ -190,6 +195,7 @@ impl HTTPAuthenticationError {
             Self::TokenExpired => StatusCode::UNAUTHORIZED,
             Self::InvalidToken => StatusCode::UNAUTHORIZED,
             Self::Captcha(_) => StatusCode::NOT_ACCEPTABLE,
+            Self::InvalidIP(_) => StatusCode::UNAUTHORIZED,
         }
     }
 }
@@ -274,7 +280,7 @@ pub async fn setup(
             .unify(),
     );
     let tokens = Arc::new(RwLock::new(HashMap::new()));
-    let api_auth_filter = warp::path("auth").and(
+    let api_auth_filter = warp::path("auth").and(check_ip_address(cfg.clone())).and(
         api_auth_test_filter(tokens.clone())
             .or(api_auth_token(
                 cfg.clone(),
@@ -287,17 +293,19 @@ pub async fn setup(
         api_public_filter
             .or(api_auth_filter)
             .unify()
-            .or(authentication_with_token_filter(tokens.clone())
-                .untuple_one()
-                .and(
-                    api_run_filter
-                        .or(api_reload_filter)
-                        .unify()
-                        .or(api_get_commands_filter(commands.clone()))
-                        .unify()
-                        .or(api_set_password_filter(cfg.clone()))
-                        .unify(),
-                )),
+            .or(check_ip_address(cfg.clone()).and(
+                authentication_with_token_filter(tokens.clone())
+                    .untuple_one()
+                    .and(
+                        api_run_filter
+                            .or(api_reload_filter)
+                            .unify()
+                            .or(api_get_commands_filter(commands.clone()))
+                            .unify()
+                            .or(api_set_password_filter(cfg.clone()))
+                            .unify(),
+                    ),
+            )),
     );
     let static_filter = warp::path("static").and(
         static_external_filter(cfg.clone())
@@ -745,6 +753,36 @@ fn api_configuration_filter(
                 }),
         ))
     })
+}
+
+fn check_ip_address(cfg: Arc<RwLock<Cfg>>) -> impl Filter<Extract = (), Error = Rejection> + Clone {
+    warp::addr::remote()
+        .and_then(move |maybe_address: Option<SocketAddr>| {
+            let cfg = cfg.clone();
+            async move {
+                let ip_whitelist = cfg
+                    .clone()
+                    .read()
+                    .unwrap()
+                    .config_value
+                    .server
+                    .ip_whitelist
+                    .clone();
+                if ip_whitelist.is_empty() {
+                    return Ok(());
+                }
+                let ip = maybe_address.unwrap().ip().to_string();
+                for wildcard_ip in ip_whitelist {
+                    if WildMatch::new(wildcard_ip.as_str()).matches(ip.as_str()) {
+                        return Ok(());
+                    }
+                }
+                Err(warp::reject::custom(HTTPError::Authentication(
+                    HTTPAuthenticationError::InvalidIP(ip),
+                )))
+            }
+        })
+        .untuple_one()
 }
 
 fn authentication_with_basic(

@@ -40,6 +40,8 @@ rand = "0.8"
 uuid = { version = "1.1", features = ["v4", "fast-rng"] }
 # Time:
 chrono = "0.4"
+# IP checker:
+wildmatch = "2.1"
 
 [profile.release]
 opt-level = 'z'     # Optimize for size.

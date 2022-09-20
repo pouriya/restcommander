@@ -23,7 +23,7 @@ fn main() {
                 if destination_file_name.exists() {
                     let (data, destination_data) = (
                         fs::read(file_path.clone()).unwrap(),
-                        fs::read(destination_file_name.clone()).unwrap(),
+                        fs::read(destination_file_name).unwrap(),
                     );
                     if compute(data) == compute(destination_data) {
                         Ok(())
@@ -44,11 +44,7 @@ fn main() {
             // println!("cargo:warning=No file is changed inside `www` directory!");
             exit(0)
         })
-        .or_else::<(), _>(|_| {
-            // Skip the error:
-            Ok(())
-        })
-        .unwrap();
+        .unwrap_or(());
     let mod_rs_filename = PathBuf::from("src").join("www").join("mod.rs");
     let mut mod_rs_file = fs::File::create(mod_rs_filename.clone()).unwrap();
     // Start function body:
@@ -137,37 +133,35 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
             );
             println!("cargo:warning={:?} -> {:?}", from, to);
             fs::copy(from, to.clone()).unwrap();
-            if extension == OsStr::new("html") {
-                if !has_bootstrap_js || !has_bootstrap_css {
-                    let mut data = fs::read_to_string(to.clone()).unwrap();
-                    let bootstrap_version =
-                        fs::read_to_string(PathBuf::from("www").join(BOOTSTRAP_VERSION_FILENAME))
-                            .unwrap()
-                            .trim()
-                            .to_string();
-                    if !has_bootstrap_js {
-                        data = data.replace(
-                            format!("\"{}\"", BOOTSTRAP_JS_FILENAME).as_str(),
-                            format!(
-                                "\"https://cdn.jsdelivr.net/npm/bootstrap@{}/dist/js/{}\"",
-                                bootstrap_version, BOOTSTRAP_JS_FILENAME
-                            )
-                            .as_str(),
-                        );
-                    }
-                    if !has_bootstrap_css {
-                        data = data.replace(
-                            format!("\"{}\"", BOOTSTRAP_CSS_FILENAME).as_str(),
-                            format!(
-                                "\"https://cdn.jsdelivr.net/npm/bootstrap@{}/dist/css/{}\"",
-                                bootstrap_version, BOOTSTRAP_CSS_FILENAME
-                            )
-                            .as_str(),
-                        );
-                    }
-                    fs::write(to.clone(), data).unwrap();
-                    println!("cargo:warning=Updated bootstrap link(s) inside {:?}", to)
+            if extension == OsStr::new("html") && !has_bootstrap_js || !has_bootstrap_css {
+                let mut data = fs::read_to_string(to.clone()).unwrap();
+                let bootstrap_version =
+                    fs::read_to_string(PathBuf::from("www").join(BOOTSTRAP_VERSION_FILENAME))
+                        .unwrap()
+                        .trim()
+                        .to_string();
+                if !has_bootstrap_js {
+                    data = data.replace(
+                        format!("\"{}\"", BOOTSTRAP_JS_FILENAME).as_str(),
+                        format!(
+                            "\"https://cdn.jsdelivr.net/npm/bootstrap@{}/dist/js/{}\"",
+                            bootstrap_version, BOOTSTRAP_JS_FILENAME
+                        )
+                        .as_str(),
+                    );
                 }
+                if !has_bootstrap_css {
+                    data = data.replace(
+                        format!("\"{}\"", BOOTSTRAP_CSS_FILENAME).as_str(),
+                        format!(
+                            "\"https://cdn.jsdelivr.net/npm/bootstrap@{}/dist/css/{}\"",
+                            bootstrap_version, BOOTSTRAP_CSS_FILENAME
+                        )
+                        .as_str(),
+                    );
+                }
+                fs::write(to.clone(), data).unwrap();
+                println!("cargo:warning=Updated bootstrap link(s) inside {:?}", to)
             }
             format!("{}\n{}", source_code, match_line)
         });

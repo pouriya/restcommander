@@ -27,6 +27,10 @@ tls_key_file = "key.pem"
 ## If you specify `captcha_file`, CAPTCHA is required to get new bearer token.
 ## You can disable CAPTCHA by commenting this field.
 captcha_file = "captcha.txt"
+## What IP addresses can access the dashboard and REST API? Also wildcard characters `?` and `*` are supported.
+## Default value: []
+## Example: ["127.0.0.1", "192.168.*"]
+ip_whitelist = []
 
 [commands]
 ## Root directory to load command files and directories and their information files.
