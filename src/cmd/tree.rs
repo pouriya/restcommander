@@ -60,11 +60,6 @@ pub enum CommandOptionInfoValueType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CommandOptionValues {
-    pub parameters: HashMap<String, CommandOptionValue>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CommandOptionValue {
     None,
