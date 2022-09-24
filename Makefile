@@ -71,6 +71,7 @@ exit-code-status-code-mapping:
 
 clean: clean-dev
 	rm -rf restcommander-*
+	mv src/www/mod.rs www_mod.rs && rm -rf src/www/* && mv www_mod.rs src/www/mod.rs
 
 clean-dev:
 	rm -rf ${DEV_DIR}
