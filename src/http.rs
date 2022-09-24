@@ -25,6 +25,7 @@ use warp;
 use warp::fs::File;
 use warp::http::header::{HeaderMap, AUTHORIZATION, LOCATION};
 use warp::http::{Response, StatusCode};
+use warp::hyper::body::Bytes;
 use warp::hyper::Body;
 use warp::path::Tail;
 use warp::reject::Reject;
@@ -83,25 +84,25 @@ pub enum HTTPAuthenticationError {
         data: String,
         source: base64::DecodeError,
     },
-    #[error("username or password is not set in server configuration")]
+    #[error("Username or password is not set in server configuration")]
     UsernameOrPasswordIsNotSet,
-    #[error("could not found username or password in {data:?}")]
+    #[error("Could not found username or password in {data:?}")]
     UsernameOrPasswordIsNotFound { data: String },
-    #[error("unknown authentication method {method:?}")]
+    #[error("Unknown authentication method {method:?}")]
     UnknownMethod { method: String },
-    #[error("invalid basic authentication with header value {header_value:?}")]
+    #[error("Invalid basic authentication with header value {header_value:?}")]
     InvalidBasicAuthentication { header_value: String },
-    #[error("invalid username or password")]
+    #[error("Invalid username or password")]
     InvalidUsernameOrPassword,
     #[error("invalid CAPTCHA")]
     InvalidCaptcha,
-    #[error("invalid CAPTCHA form")]
+    #[error("Invalid CAPTCHA form")]
     InvalidCaptchaForm,
     #[error("Could not found HTTP Cookie header")]
     TokenNotFound,
-    #[error("HTTP Cookie is expired")]
+    #[error("Token is expired")]
     TokenExpired,
-    #[error("HTTP Cookie is invalid")]
+    #[error("Token is invalid")]
     InvalidToken,
     #[error("Authentication required")]
     Required,
@@ -508,58 +509,124 @@ fn api_run_command_filter(
         .map(move || (cfg.clone(), commands.clone()))
         .and(warp::path::tail())
         .and(
-            warp::body::json()
-                .or(warp::body::form()
-                    .or(warp::any().map(|| CommandInput::default().options))
-                    .unify())
-                .unify(),
-        )
-        .and(
-            warp::query::query()
-                .or(warp::any().map(|| CommandInput::default().options))
-                .unify(),
-        )
-        .and(warp::header::headers_cloned().map(|headers: HeaderMap| {
-            let mut input = CommandInput::default();
-            headers
-                .into_iter()
-                .for_each(|(maybe_header_name, header_value)| {
-                    if maybe_header_name.is_none() {
-                        return ();
+            // We want to try to decode Body if its length > 0
+            // If we do not do this, for empty bodies and `Content-type: application/json`, We need to post `{}` to make it work
+            warp::header::<usize>(warp::http::header::CONTENT_LENGTH.as_str())
+                .and_then(|length| async move {
+                    if length > 0 {
+                        Ok(())
+                    } else {
+                        Err(warp::reject::reject())
                     }
-                    let header_name = maybe_header_name.unwrap().to_string().to_uppercase();
-                    if header_name.as_str() == "X-RESTCOMMANDER-STATISTICS" {
-                        input.statistics = true;
-                        return ();
-                    };
-                    if header_name.starts_with("X-") && header_name.len() > 2 {
-                        if let Ok(header_value_str) = header_value.to_str() {
-                            input.options.insert(
-                                header_name,
-                                CommandOptionValue::String(header_value_str[2..].to_string()),
-                            );
-                        };
-                    };
-                });
-            input
-        }))
+                })
+                .untuple_one()
+                .and(
+                    warp::header::exact(
+                        warp::http::header::CONTENT_TYPE.as_str(),
+                        "application/json",
+                    )
+                    .or(warp::header::exact(
+                        warp::http::header::CONTENT_TYPE.as_str(),
+                        "application/x-www-form-urlencoded",
+                    ))
+                    .unify()
+                    .and(
+                        warp::body::bytes()
+                            .and(warp::header::<String>(
+                                warp::http::header::CONTENT_TYPE.as_str(),
+                            ))
+                            .and_then(|bytes: Bytes, content_type: String| async move {
+                                if &content_type == "application/json" {
+                                    serde_json::from_slice::<CommandOptionsValue>(&bytes).map_err(
+                                        |error| {
+                                            warp::reject::custom(HTTPError::Deserialize(
+                                                error.to_string(),
+                                            ))
+                                        },
+                                    )
+                                } else {
+                                    serde_urlencoded::from_bytes::<CommandOptionsValue>(&bytes)
+                                        .map_err(|error| {
+                                            warp::reject::custom(HTTPError::Deserialize(
+                                                error.to_string(),
+                                            ))
+                                        })
+                                }
+                            }),
+                    ),
+                ),
+        )
+        .and(warp::query::query::<CommandOptionsValue>())
+        .and(
+            warp::header::headers_cloned()
+                .and(warp::addr::remote())
+                .map(|headers: HeaderMap, maybe_address: Option<SocketAddr>| {
+                    let mut options = CommandOptionsValue::new();
+                    let mut statistics = false;
+                    headers
+                        .into_iter()
+                        .for_each(|(maybe_header_name, header_value)| {
+                            if maybe_header_name.is_none() {
+                                return ();
+                            }
+                            let header_name = maybe_header_name.unwrap().to_string();
+                            if header_name.to_uppercase().as_str() == "X-RESTCOMMANDER-STATISTICS" {
+                                statistics = true;
+                                return;
+                            };
+                            if let Ok(header_value_str) = header_value.to_str() {
+                                options.insert(
+                                    if header_name.to_uppercase().starts_with("X-")
+                                        && header_name.len() > 2
+                                    {
+                                        header_name[2..].to_string()
+                                    } else {
+                                        format!(
+                                            "RESTCOMMANDER_HEADER_{}",
+                                            header_name
+                                                .to_string()
+                                                .to_uppercase()
+                                                .replace("-", "_")
+                                        )
+                                    },
+                                    serde_json::from_str::<CommandOptionValue>(header_value_str)
+                                        .unwrap_or_else(|_| {
+                                            CommandOptionValue::String(header_value_str.to_string())
+                                        }),
+                                );
+                            }
+                        });
+                    let address = maybe_address.unwrap();
+                    options.insert(
+                        "RESTCOMMANDER_CLIENT_IP".to_string(),
+                        CommandOptionValue::String(address.clone().ip().to_string()),
+                    );
+                    options.insert(
+                        "RESTCOMMANDER_CLIENT_PORT".to_string(),
+                        CommandOptionValue::Integer(address.port() as i64),
+                    );
+                    (options, statistics)
+                }),
+        )
         .and_then(
             move |state: (Arc<RwLock<Cfg>>, Arc<RwLock<Command>>),
                   tail: Tail,
                   command_options_from_body: CommandOptionsValue,
                   command_options_from_uri: CommandOptionsValue,
-                  mut command_input_from_headers: CommandInput| {
-                unify_options(
-                    &mut command_input_from_headers.options,
-                    [command_options_from_uri, command_options_from_body].to_vec(),
+                  (command_input_from_headers, statistics)| {
+                let mut input = CommandInput::default();
+                input.statistics = statistics;
+                input.options = unify_options(
+                    [
+                        command_input_from_headers,
+                        command_options_from_uri,
+                        command_options_from_body,
+                        add_configuration_to_options(state.0.clone()),
+                    ]
+                    .to_vec(),
                 );
                 async move {
-                    match maybe_run_command(
-                        state.0,
-                        state.1,
-                        tail.as_str().to_string(),
-                        command_input_from_headers,
-                    ) {
+                    match maybe_run_command(state.1, tail.as_str().to_string(), input) {
                         Err(reason) => Err(warp::reject::custom(HTTPError::API(reason))),
                         Ok(response) => Ok(response),
                     }
@@ -889,7 +956,6 @@ fn authentication_with_token(
 }
 
 fn maybe_run_command(
-    cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
     command_path: String,
     command_input: CommandInput,
@@ -905,12 +971,11 @@ fn maybe_run_command(
             message: reason.to_string(),
         }
     })?;
-    let mut input =
+    let input =
         cmd::check_input(&command, &command_input).map_err(|reason| HTTPAPIError::CheckInput {
             message: reason.to_string(),
         })?;
-    let env_map = make_environment_variables_map(cfg.clone());
-    input.configuration = Some(cfg.clone().read().unwrap().config_value.clone());
+    let env_map = make_environment_variables_map_from_options(input.options.clone());
     let command_output = cmd::run_command(&command, &input, env_map).map_err(|reason| {
         HTTPAPIError::InitializeCommand {
             message: reason.to_string(),
@@ -936,29 +1001,52 @@ fn maybe_run_command(
     ))
 }
 
-fn make_environment_variables_map(cfg: Arc<RwLock<Cfg>>) -> HashMap<String, String> {
-    let cfg_instance = cfg.read().unwrap().config_value.clone();
-    HashMap::from(
-        [
-            (
-                "SERVER_HOST".to_string(),
-                if cfg_instance.server.host.as_str() == "0.0.0.0" {
-                    "127.0.0.1".to_string()
-                } else {
-                    cfg_instance.server.host.clone()
+fn make_environment_variables_map_from_options(
+    options: CommandOptionsValue,
+) -> HashMap<String, String> {
+    options
+        .into_iter()
+        .fold(HashMap::new(), |mut env_map, (key, value)| {
+            env_map.insert(
+                key,
+                match value {
+                    CommandOptionValue::Bool(x) => x.to_string(),
+                    CommandOptionValue::Integer(x) => x.to_string(),
+                    CommandOptionValue::Float(x) => x.to_string(),
+                    CommandOptionValue::None => "".to_string(),
+                    CommandOptionValue::String(x) => x,
                 },
-            ),
-            (
-                "SERVER_PORT".to_string(),
-                cfg_instance.server.port.to_string(),
-            ),
-            (
-                "SERVER_HTTP_BASE_PATH".to_string(),
-                cfg_instance.server.http_base_path,
-            ),
-            ("SERVER_USERNAME".to_string(), cfg_instance.server.username),
-            (
-                "COMMANDS_ROOT_DIRECTORY".to_string(),
+            );
+            env_map
+        })
+}
+
+fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
+    let cfg_instance = cfg.read().unwrap().config_value.clone();
+    CommandOptionsValue::from([
+        (
+            "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
+            CommandOptionValue::String(if cfg_instance.server.host.as_str() == "0.0.0.0" {
+                "127.0.0.1".to_string()
+            } else {
+                cfg_instance.server.host.clone()
+            }),
+        ),
+        (
+            "RESTCOMMANDER_CONFIG_SERVER_PORT".to_string(),
+            CommandOptionValue::Integer(cfg_instance.server.port as i64),
+        ),
+        (
+            "RESTCOMMANDER_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
+            CommandOptionValue::String(cfg_instance.server.http_base_path),
+        ),
+        (
+            "RESTCOMMANDER_CONFIG_SERVER_USERNAME".to_string(),
+            CommandOptionValue::String(cfg_instance.server.username),
+        ),
+        (
+            "RESTCOMMANDER_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
+            CommandOptionValue::String(
                 cfg_instance
                     .commands
                     .root_directory
@@ -966,22 +1054,24 @@ fn make_environment_variables_map(cfg: Arc<RwLock<Cfg>>) -> HashMap<String, Stri
                     .unwrap()
                     .to_string(),
             ),
-            (
-                "SERVER_TLS".to_string(),
+        ),
+        (
+            "RESTCOMMANDER_CONFIG_SERVER_HTTPS".to_string(),
+            CommandOptionValue::Bool(
                 cfg_instance
                     .server
                     .tls_key_file
-                    .map(|_| "1")
-                    .or(Some("0"))
-                    .unwrap()
-                    .to_string(),
+                    .map(|_| true)
+                    .unwrap_or(false),
             ),
-            (
-                "LOGGING_LEVEL_NAME".to_string(),
-                cfg_instance.logging.level_name.to_log_level().to_string(),
-            ),
-            (
-                "FILENAME".to_string(),
+        ),
+        (
+            "RESTCOMMANDER_CONFIG_LOGGING_LEVEL_NAME".to_string(),
+            CommandOptionValue::String(cfg_instance.logging.level_name.to_log_level().to_string()),
+        ),
+        (
+            "RESTCOMMANDER_CONFIGURATION_FILENAME".to_string(),
+            CommandOptionValue::String(
                 cfg.read()
                     .unwrap()
                     .filename
@@ -992,9 +1082,8 @@ fn make_environment_variables_map(cfg: Arc<RwLock<Cfg>>) -> HashMap<String, Stri
                     .unwrap()
                     .to_string(),
             ),
-        ]
-        .map(|item| (format!("RESTCOMMANDER_CONFIG_{}", item.0), item.1)),
-    )
+        ),
+    ])
 }
 
 fn try_set_password(
@@ -1024,15 +1113,17 @@ fn try_set_password(
     Ok(make_api_response_ok())
 }
 
-fn unify_options(
-    options: &mut CommandOptionsValue,
-    options_list: Vec<CommandOptionsValue>,
-) -> &mut CommandOptionsValue {
+fn unify_options(options_list: Vec<CommandOptionsValue>) -> CommandOptionsValue {
+    let mut options = CommandOptionsValue::new();
     for options_list_item in options_list {
-        for (option, value) in options_list_item {
+        for (option, mut value) in options_list_item {
             if options.contains_key(option.as_str()) {
                 trace!("Replacing option {:?} with {:?}", option, value)
             };
+            if let CommandOptionValue::String(ref value_string) = value {
+                value = serde_json::from_str::<CommandOptionValue>(value_string)
+                    .unwrap_or_else(|_| value)
+            }
             options.insert(option, value);
         }
     }

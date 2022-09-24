@@ -60,11 +60,6 @@ pub enum CommandOptionInfoValueType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CommandOptionValues {
-    pub parameters: HashMap<String, CommandOptionValue>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CommandOptionValue {
     None,
@@ -193,12 +188,7 @@ impl Command {
             });
         };
         let mut command = Self {
-            name: root_directory
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
+            name: String::new(),
             file_path: root_directory.clone(),
             info_file_path: Default::default(),
             http_path: http_base_path.clone(),

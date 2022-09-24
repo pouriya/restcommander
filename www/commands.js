@@ -16,10 +16,12 @@ async function drawNavbar() {
 
 async function doDrawNavbar(commands, parentElement, depth) {
     var count = 0;
+    await console.log('depth', depth, '|', 'command count:', Object.keys(commands).length)
     for (const key in commands) {
         count++;
         const command = commands[key];
         const keyName = key.replace('-', ' ').replace('_', ' ')
+        await console.log('count:', count, '|', 'keyName:', keyName)
         if (depth === 1) {
             const id = 'dropdownMenuLink-'+ depth.toString() + '-' + count.toString()
             var aElement = document.createElement('a')
@@ -46,8 +48,7 @@ async function doDrawNavbar(commands, parentElement, depth) {
                 }
             )
             if (command.is_directory) {
-                await console.log(command)
-                await doDrawNavbar(command[commands], ulElement, depth+1)
+                await doDrawNavbar(command.commands, ulElement, depth+1)
             } else {
                 var liElement = document.createElement('li')
                 var aElement = document.createElement('a')
@@ -478,7 +479,7 @@ function updateResultAfterRequest(runResult) {
         }
     )
     var statusCodeTextSmallElement = document.createElement('small')
-    statusCodeTextElement.innerHTML = 'Status code: '
+    statusCodeTextElement.innerHTML = 'Status: '
     var statusCodeElement =  document.createElement('span')
     var statusCodeClass = 'text-success'
     if (runResult.ok == false) {
@@ -489,6 +490,9 @@ function updateResultAfterRequest(runResult) {
         {'class': statusCodeClass}
     )
     statusCodeElement.innerHTML = runResult.status.toString().bold()
+    if (runResult.message !== undefined) {
+        statusCodeElement.innerHTML += ' ' + runResult.message.bold()
+    }
     statusCodeTextSmallElement.appendChild(statusCodeElement)
     statusCodeTextElement.appendChild(statusCodeTextSmallElement)
     var statusCodeDivElement = document.createElement('div')

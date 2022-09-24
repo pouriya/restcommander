@@ -272,6 +272,9 @@ impl CheckValue for CfgServer {
             _ => (),
         };
         if !self.password_file.to_str().unwrap().is_empty() {
+            if self.password_file.is_relative() {
+                self.password_file = current_dir().unwrap().join(self.password_file.clone())
+            }
             let password = fs::read(self.password_file.clone()).map_err(|reason| {
                 CfgServerCheckError::ReadPasswordFile {
                     filename: self.password_file.clone(),
@@ -483,9 +486,9 @@ pub enum CfgLoggingLevelName {
     Trace,
     Debug,
     Info,
-    Warn,
     Warning,
     Error,
+    Off,
 }
 
 impl Default for CfgLoggingLevelName {
@@ -503,7 +506,8 @@ impl std::str::FromStr for CfgLoggingLevelName {
             "debug" => Ok(Self::Debug),
             "info" => Ok(Self::Info),
             "error" => Ok(Self::Error),
-            warning if warning == "warning" || warning == "warn" => Ok(Self::Warning),
+            "warning" | "warn" => Ok(Self::Warning),
+            "off" => Ok(Self::Off),
             unknown => Err(format!("Unknown log level name {:?}", unknown)),
         }
     }
@@ -512,11 +516,12 @@ impl std::str::FromStr for CfgLoggingLevelName {
 impl CfgLoggingLevelName {
     pub fn to_log_level(&self) -> log::LevelFilter {
         match self {
-            CfgLoggingLevelName::Trace => LevelFilter::Trace,
-            CfgLoggingLevelName::Debug => LevelFilter::Debug,
-            CfgLoggingLevelName::Info => LevelFilter::Info,
-            CfgLoggingLevelName::Error => LevelFilter::Error,
-            _ => LevelFilter::Warn,
+            Self::Trace => LevelFilter::Trace,
+            Self::Debug => LevelFilter::Debug,
+            Self::Info => LevelFilter::Info,
+            Self::Error => LevelFilter::Error,
+            Self::Warning => LevelFilter::Warn,
+            Self::Off => LevelFilter::Off,
         }
     }
 }
@@ -546,7 +551,7 @@ pub enum CMDSample {
 
 #[derive(Debug, Clone, StructOpt)]
 pub struct CMDSha512 {
-    #[structopt(about = "input to be encoded. If empty, It prompt to ask input.")]
+    #[structopt(about = "input to be encoded. If empty, It prompts to ask input.")]
     input: Option<String>,
 }
 
@@ -567,7 +572,11 @@ impl TryFrom<PathBuf> for Cfg {
     fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
         Ok(Cfg {
             config_value: CfgValue::try_from(path.clone())?,
-            filename: Some(path),
+            filename: Some(if path.is_relative() {
+                current_dir().unwrap().join(path)
+            } else {
+                path
+            }),
         })
     }
 }
