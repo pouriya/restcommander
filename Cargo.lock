@@ -1252,6 +1252,7 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
+ "serde_urlencoded",
  "serde_yaml",
  "sha2",
  "structopt",
