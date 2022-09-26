@@ -318,9 +318,11 @@ pub async fn setup(
         .or(redirect_root_to_index_html_filter(cfg.clone()))
         .recover(handle_rejection)
         .with(warp::log::custom(http_logging));
+    let mut has_tls = false;
     if server_options.tls_cert_file.clone().is_some()
         && server_options.tls_key_file.clone().is_some()
     {
+        has_tls = true;
         let server = warp::serve(routes)
             .tls()
             .cert_path(server_options.tls_cert_file.clone().unwrap())
@@ -366,8 +368,15 @@ pub async fn setup(
         Err(reason) => Err(reason),
     }?;
     info!(
-        "Started HTTP server on {}:{} with base path {:?}",
-        server_options.host, server_options.port, server_options.http_base_path
+        "Started server on {}{}:{}{}",
+        if has_tls {
+            "https://"
+        } else {
+            "http://"
+        },
+        server_options.host,
+        server_options.port,
+        server_options.http_base_path
     );
     Ok((http_stop_sender, http_start_receiver))
 }

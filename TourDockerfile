@@ -8,9 +8,13 @@ RUN chmod a+x downloader.sh && ./downloader.sh
 COPY tools/docker/configuration.sh .
 RUN chmod a+x configuration.sh && ./configuration.sh
 
+RUN mkdir -p /restcommander/scripts/tour
+COPY tools/tour/scripts/* /restcommander/scripts/tour/
+
 FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION}
 COPY --from=builder /restcommander /restcommander
 COPY --from=builder /bin/restcommander /bin/restcommander
+RUN apk --no-cache add python3
 WORKDIR /restcommander
 VOLUME ["/restcommander", "/restcommander/scripts", "/restcommander/www"]
 EXPOSE 1995

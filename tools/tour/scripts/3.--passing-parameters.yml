@@ -1,0 +1,18 @@
+description: |
+  RestCommander collects parameters from URI query-string, HTTP headers and HTTP body and passes them to your script.  
+  Your script can read them from environment variables or from its <a href="https://en.wikipedia.org/wiki/Standard_streams" target="_blank">stdin</a>.
+  You can also define what parameters with what types your script wants inside its <i>.yml</i> file.
+  For example this script accepts a key <i>my_parameter</i> which is a string and reverses its value. 
+  You can see script source and its <i>.yml</i> file by running the following commands: 
+  <pre>
+  docker run --entrypoint=/bin/sh restcommander:tour cat /restcommander/scripts/tour/3.--passing-parameters
+  docker run --entrypoint=/bin/sh restcommander:tour cat /restcommander/scripts/tour/3.--passing-parameters.yml
+  </pre>
+  <small>After running commands go to the next example from above menu.</small>
+options:
+  my_parameter:
+    description: This can be a string.
+    required: true
+    value_type: string
+    size:
+      max: 10

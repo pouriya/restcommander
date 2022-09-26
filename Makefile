@@ -10,7 +10,7 @@ DOCKER_ALPINE_VERSION=latest
 DOCKER_IMAGE_VERSION=latest
 
 
-all: release deb
+all: release
 	@ ls -sh *.deb
 	@ ls -sh restcommander-*
 
@@ -18,15 +18,7 @@ release: download-bootstrap
 	cargo build --release --target ${TARGET}
 	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
 
-tag: release
-	git checkout HEAD -- src/www/mod.rs
-	cargo fmt --check --quiet
-	git status
-	git add .
-	git commit -m 'ver: ${VERSION}'
-	git tag ${VERSION}
-
-deb: release
+deb:
 	cargo deb --target ${TARGET}
 	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
@@ -54,9 +46,11 @@ ${DEV_DIR}:
 	mkdir -p ${DEV_DIR}
 	mkdir -p ${DEV_DIR}www
 	mkdir -p ${DEV_DIR}scripts
+	mkdir -p ${DEV_DIR}scripts/tour
 	${DEV_CMD} sample test-script > ${DEV_DIR}/scripts/test && chmod a+x ${DEV_DIR}scripts/test
 	${DEV_CMD} sample test-script-info > ${DEV_DIR}scripts/test.yml
 	cp www/* ${DEV_DIR}www/ && rm -rf ${DEV_DIR}www/bootstrap-version.txt ${DEV_DIR}www/README.md
+	cp tools/tour/scripts/* ${DEV_DIR}scripts/tour/
 
 ${DEV_CFG}:
 	${DEV_CMD} sample config > ${DEV_CFG}
@@ -94,4 +88,4 @@ archive:
 	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} --exclude='.git' -zcvf restcommander-${VERSION}-src.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}-src.tar.gz .
 	ls -sh *.tar.gz
 
-.PHONY: all release tag deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
+.PHONY: all release deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
