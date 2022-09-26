@@ -11,9 +11,18 @@ RUN chmod a+x configuration.sh && ./configuration.sh
 RUN mkdir -p /restcommander/scripts/tour
 COPY tools/tour/scripts/* /restcommander/scripts/tour/
 
+RUN apk --no-cache add curl tar
+RUN bat=bat-v0.22.1-x86_64-unknown-linux-musl                                                                   \
+    && curl -FfsL --output ${bat}.tar.gz https://github.com/sharkdp/bat/releases/download/v0.22.1/${bat}.tar.gz \
+    && tar -xf ${bat}.tar.gz                                                                                    \
+    && chmod a+x ${bat}/bat                                                                                     \
+    && mv ${bat}/bat /bin/bat
+
+
 FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION}
 COPY --from=builder /restcommander /restcommander
 COPY --from=builder /bin/restcommander /bin/restcommander
+COPY --from=builder /bin/bat /bin/bat
 RUN apk --no-cache add python3
 WORKDIR /restcommander
 VOLUME ["/restcommander", "/restcommander/scripts", "/restcommander/www"]

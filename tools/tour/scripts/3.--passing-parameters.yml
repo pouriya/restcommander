@@ -5,8 +5,8 @@ description: |
   For example this script accepts a key <i>my_parameter</i> which is a string and reverses its value. 
   You can see script source and its <i>.yml</i> file by running the following commands: 
   <pre>
-  docker run --entrypoint=/bin/sh restcommander:tour cat /restcommander/scripts/tour/3.--passing-parameters
-  docker run --entrypoint=/bin/sh restcommander:tour cat /restcommander/scripts/tour/3.--passing-parameters.yml
+  docker run --entrypoint=/bin/bat restcommander:tour scripts/tour/3.--passing-parameters
+  docker run --entrypoint=/bin/bat restcommander:tour scripts/tour/3.--passing-parameters.yml
   </pre>
   <small>After running commands go to the next example from above menu.</small>
 options:
