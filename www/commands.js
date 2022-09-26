@@ -20,7 +20,7 @@ async function doDrawNavbar(commands, parentElement, depth) {
     for (const key in commands) {
         count++;
         const command = commands[key];
-        const keyName = key.replace('-', ' ').replace('_', ' ')
+        const keyName = key.replaceAll('-', ' ').replaceAll('_', ' ')
         await console.log('count:', count, '|', 'keyName:', keyName)
         if (depth === 1) {
             const id = 'dropdownMenuLink-'+ depth.toString() + '-' + count.toString()
@@ -423,6 +423,7 @@ async function makeCommandOptionsInputs(options, httpPath) {
                     await console.log('skip empty string of key', pair[0]);
                     continue;
                 };
+                await console.log(pair)
                 var definition = options[pair[0]];
                 var typeName = definition.value_type;
                 if (typeof typeName !== 'string') {
@@ -593,15 +594,19 @@ async function makeInputString(optionName, definition) {
         defaultValue = definition.default_value;
     };
     var min_size = 0;
-    if ('min_size' in definition.value_type.string) {
-        if (definition.value_type.string.min_size != null) {
-            min_size = definition.value_type.string.min_size;
-        };
-    };
     var max_size = null;
-    if ('max_size' in definition.value_type.string) {
-            max_size = definition.value_type.string.max_size;
-    };
+    if ('size' in definition) {
+        if ('min' in definition.size) {
+            if (definition.size.min !== null) {
+                min_size = definition.size.min;
+            };
+        };
+        if ('max' in definition.size) {
+            if (definition.size.max !== null) {
+                max_size = definition.size.max;
+            };
+        };
+    }
 
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
@@ -643,16 +648,18 @@ async function makeInputInteger(optionName, definition) {
     var textArea = document.createElement('input');
     textArea.setAttribute('name', optionName);
     textArea.setAttribute('type', 'number');
-    if ('min_size' in definition.value_type.integer) {
-        if (definition.value_type.integer.min_size != null) {
-            textArea.setAttribute('min', definition.value_type.integer.min_size);
+    if ('size' in definition) {
+        if ('min' in definition.size) {
+            if (definition.size.min !== null) {
+                textArea.setAttribute('min', definition.size.min);
+            };
         };
-    };
-    if ('max_size' in definition.value_type.integer) {
-        if (definition.value_type.integer.max_size != null) {
-            textArea.setAttribute('max', definition.value_type.integer.max_size);
+        if ('max' in definition.size) {
+            if (definition.size.max !== null) {
+                textArea.setAttribute('max', definition.size.max);
+            };
         };
-    };
+    }
     if (defaultValue != null) {
         textArea.setAttribute('value', defaultValue);
     };
@@ -679,16 +686,19 @@ async function makeInputFloat(optionName, definition) {
     var textArea = document.createElement('input');
     textArea.setAttribute('name', optionName);
     textArea.setAttribute('type', 'number');
-    if ('min_size' in definition.value_type.float) {
-        if (definition.value_type.float.min_size != null) {
-            textArea.setAttribute('min', definition.value_type.float.min_size);
+    textArea.setAttribute('step', '0.000000001');
+    if ('size' in definition) {
+        if ('min' in definition.size) {
+            if (definition.size.min !== null) {
+                textArea.setAttribute('min', definition.size.min);
+            };
         };
-    };
-    if ('max_size' in definition.value_type.float) {
-        if (definition.value_type.float.max_size != null) {
-            textArea.setAttribute('max', definition.value_type.float.max_size);
+        if ('max' in definition.size) {
+            if (definition.size.max !== null) {
+                textArea.setAttribute('max', definition.size.max);
+            };
         };
-    };
+    }
     if (defaultValue != null) {
         textArea.setAttribute('value', defaultValue);
     };
@@ -756,7 +766,7 @@ function makeOptionHeader(name) {
         header,
         {'class': 'h3 mt-2 mb-1 text-capitalize text-start'}
     )
-    header.innerHTML = name
+    header.innerHTML = name.replaceAll('-', ' ').replaceAll('_', ' ')
     return header
 }
 

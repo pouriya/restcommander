@@ -22,7 +22,6 @@ class Api {
         console.log(endpoint)
         var url = this.options.url + endpoint
         if (endpoint.startsWith('/') === true) {
-            console.log('salam')
             url = endpoint
         }
         var headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}

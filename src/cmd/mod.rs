@@ -1,8 +1,9 @@
 use crate::cmd::errors::CommandError;
 pub use crate::cmd::runner::{CommandInput, CommandOutput, CommandStats};
 pub use crate::cmd::tree::{Command, CommandOptionInfo};
-use crate::cmd::tree::{CommandOptionInfoValueType, CommandOptionValue};
+use crate::cmd::tree::{CommandOptionInfoValueSize, CommandOptionInfoValueType, CommandOptionValue};
 use std::collections::HashMap;
+
 pub mod errors;
 pub mod runner;
 pub mod tree;
@@ -68,19 +69,26 @@ pub fn check_input(command: &Command, input: &CommandInput) -> Result<CommandInp
     for (option, definition) in &command.info.as_ref().unwrap().options {
         let new_value = if new_input.options.contains_key(option.as_str()) {
             let input_value = new_input.options.get(option.as_str()).unwrap();
-            check_definition(&option, &definition.value_type, input_value)?
+            check_definition(&option, &definition.value_type, input_value, &definition.size)?
         } else {
             if definition.default_value.is_none() {
-                // So it is required
-                if definition.required {
-                    return Err(format!(
-                        "required option {} is not given and has no default value",
-                        option
-                    ));
-                };
-                unreachable!();
-            };
-            definition.default_value.clone().unwrap()
+                match definition.value_type {
+                    CommandOptionInfoValueType::Bool => CommandOptionValue::Bool(false),
+                    CommandOptionInfoValueType::Any => CommandOptionValue::None,
+                    _ => {
+                        // So it is required
+                        if definition.required {
+                            return Err(format!(
+                                "required option {} is not given and has no default value",
+                                option
+                            ));
+                        };
+                        unreachable!();
+                    }
+                }
+            } else {
+                definition.default_value.clone().unwrap()
+            }
         };
         new_input.options.insert(option.clone(), new_value);
     }
@@ -92,62 +100,26 @@ fn check_definition(
     option: &str,
     definition: &CommandOptionInfoValueType,
     input: &CommandOptionValue,
+    maybe_size: &Option<CommandOptionInfoValueSize>,
 ) -> Result<CommandOptionValue, String> {
+    if let Some(size_definition) = maybe_size {
+        check_size(option, input, size_definition)?
+    }
     match (definition, input) {
         (CommandOptionInfoValueType::Any, value) => Ok(value.clone()),
         (CommandOptionInfoValueType::Bool, CommandOptionValue::Bool(flag)) => {
             Ok(CommandOptionValue::Bool(flag.clone()))
         }
-        (CommandOptionInfoValueType::String(string_options), CommandOptionValue::String(value)) => {
-            if string_options.max_size.is_some()
-                && value.len() > string_options.max_size.unwrap() as usize
-            {
-                return Err(format!(
-                    "size of option '{}' is bigger than max size",
-                    option
-                ));
-            };
-            if string_options.min_size.is_some()
-                && value.len() < string_options.min_size.unwrap() as usize
-            {
-                return Err(format!(
-                    "size of option '{}' is lower than min size",
-                    option
-                ));
-            };
+        (CommandOptionInfoValueType::String, CommandOptionValue::String(value)) => {
             Ok(CommandOptionValue::String(value.clone()))
         }
         (
-            CommandOptionInfoValueType::Integer(integer_options),
+            CommandOptionInfoValueType::Integer,
             CommandOptionValue::Integer(value),
         ) => {
-            if integer_options.max_size.is_some() && value > &integer_options.max_size.unwrap() {
-                return Err(format!(
-                    "size of option '{}' is bigger than max size",
-                    option
-                ));
-            };
-            if integer_options.min_size.is_some() && value < &integer_options.min_size.unwrap() {
-                return Err(format!(
-                    "size of option '{}' is lower than min size",
-                    option
-                ));
-            };
             Ok(CommandOptionValue::Integer(value.clone()))
         }
-        (CommandOptionInfoValueType::Float(float_options), CommandOptionValue::Float(value)) => {
-            if float_options.max_size.is_some() && value > &float_options.max_size.unwrap() {
-                return Err(format!(
-                    "size of option '{}' is bigger than max size",
-                    option
-                ));
-            };
-            if float_options.min_size.is_some() && value < &float_options.min_size.unwrap() {
-                return Err(format!(
-                    "size of option '{}' is lower than min size",
-                    option
-                ));
-            };
+        (CommandOptionInfoValueType::Float, CommandOptionValue::Float(value)) => {
             Ok(CommandOptionValue::Float(value.clone()))
         }
         (CommandOptionInfoValueType::AcceptedValueList(accepted_value_list), value) => {
@@ -182,9 +154,9 @@ fn check_definition(
         (x, y) => {
             let x_type = match x {
                 CommandOptionInfoValueType::Bool => "Boolean",
-                CommandOptionInfoValueType::String(_) => "String",
-                CommandOptionInfoValueType::Integer(_) => "Integer",
-                CommandOptionInfoValueType::Float(_) => "Float",
+                CommandOptionInfoValueType::String => "String",
+                CommandOptionInfoValueType::Integer => "Integer",
+                CommandOptionInfoValueType::Float => "Float",
                 CommandOptionInfoValueType::Any => "None",
                 _ => unreachable!(),
             };
@@ -201,4 +173,31 @@ fn check_definition(
             ))
         }
     }
+}
+
+fn check_size(
+    option: &str,
+    input: &CommandOptionValue,
+    size_definition: &CommandOptionInfoValueSize,
+) -> Result<(), String> {
+    let maybe_input_size = match input {
+        &CommandOptionValue::String(ref x) => Some((x.len() as f64).clone()),
+        &CommandOptionValue::Integer(ref x) => Some((*x as f64).clone()),
+        &CommandOptionValue::Float(ref x) => Some(x.clone()),
+        &CommandOptionValue::Bool(_) => None,
+        &CommandOptionValue::None => None,
+    };
+    if let Some(input_size) = maybe_input_size {
+        if let Some(min_size) = size_definition.min {
+            if input_size < (min_size as f64) {
+                return Err(format!("input size {} for option '{}' is lower than configured minimum size {}", input_size, option, min_size))
+            }
+        }
+        if let Some(max_size) = size_definition.max {
+            if input_size > (max_size as f64) {
+                return Err(format!("input size {} for option '{}' is bigger than configured maximum size {}", input_size, option, max_size))
+            }
+        }
+    }
+    Ok(())
 }
