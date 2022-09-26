@@ -12,10 +12,11 @@ RUN mkdir -p /restcommander/scripts/tour
 COPY tools/tour/scripts/* /restcommander/scripts/tour/
 
 RUN apk --no-cache add curl tar
-RUN bat=bat-v0.22.1-x86_64-unknown-linux-musl                                                                   \
-    && curl -FfsL --output ${bat}.tar.gz https://github.com/sharkdp/bat/releases/download/v0.22.1/${bat}.tar.gz \
-    && tar -xf ${bat}.tar.gz                                                                                    \
-    && chmod a+x ${bat}/bat                                                                                     \
+RUN set -xe                                                                                                      \
+    && bat=bat-v0.22.1-x86_64-unknown-linux-musl                                                                 \
+    && curl -fsSLv --output ${bat}.tar.gz https://github.com/sharkdp/bat/releases/download/v0.22.1/${bat}.tar.gz \
+    && tar -xf ${bat}.tar.gz                                                                                     \
+    && chmod a+x ${bat}/bat                                                                                      \
     && mv ${bat}/bat /bin/bat
 
 
