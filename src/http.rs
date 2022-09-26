@@ -369,11 +369,7 @@ pub async fn setup(
     }?;
     info!(
         "Started server on {}{}:{}{}",
-        if has_tls {
-            "https://"
-        } else {
-            "http://"
-        },
+        if has_tls { "https://" } else { "http://" },
         server_options.host,
         server_options.port,
         server_options.http_base_path

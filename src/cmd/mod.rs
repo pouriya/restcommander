@@ -1,7 +1,9 @@
 use crate::cmd::errors::CommandError;
 pub use crate::cmd::runner::{CommandInput, CommandOutput, CommandStats};
 pub use crate::cmd::tree::{Command, CommandOptionInfo};
-use crate::cmd::tree::{CommandOptionInfoValueSize, CommandOptionInfoValueType, CommandOptionValue};
+use crate::cmd::tree::{
+    CommandOptionInfoValueSize, CommandOptionInfoValueType, CommandOptionValue,
+};
 use std::collections::HashMap;
 
 pub mod errors;
@@ -69,7 +71,12 @@ pub fn check_input(command: &Command, input: &CommandInput) -> Result<CommandInp
     for (option, definition) in &command.info.as_ref().unwrap().options {
         let new_value = if new_input.options.contains_key(option.as_str()) {
             let input_value = new_input.options.get(option.as_str()).unwrap();
-            check_definition(&option, &definition.value_type, input_value, &definition.size)?
+            check_definition(
+                &option,
+                &definition.value_type,
+                input_value,
+                &definition.size,
+            )?
         } else {
             if definition.default_value.is_none() {
                 match definition.value_type {
@@ -113,10 +120,7 @@ fn check_definition(
         (CommandOptionInfoValueType::String, CommandOptionValue::String(value)) => {
             Ok(CommandOptionValue::String(value.clone()))
         }
-        (
-            CommandOptionInfoValueType::Integer,
-            CommandOptionValue::Integer(value),
-        ) => {
+        (CommandOptionInfoValueType::Integer, CommandOptionValue::Integer(value)) => {
             Ok(CommandOptionValue::Integer(value.clone()))
         }
         (CommandOptionInfoValueType::Float, CommandOptionValue::Float(value)) => {
@@ -190,12 +194,18 @@ fn check_size(
     if let Some(input_size) = maybe_input_size {
         if let Some(min_size) = size_definition.min {
             if input_size < (min_size as f64) {
-                return Err(format!("input size {} for option '{}' is lower than configured minimum size {}", input_size, option, min_size))
+                return Err(format!(
+                    "input size {} for option '{}' is lower than configured minimum size {}",
+                    input_size, option, min_size
+                ));
             }
         }
         if let Some(max_size) = size_definition.max {
             if input_size > (max_size as f64) {
-                return Err(format!("input size {} for option '{}' is bigger than configured maximum size {}", input_size, option, max_size))
+                return Err(format!(
+                    "input size {} for option '{}' is bigger than configured maximum size {}",
+                    input_size, option, max_size
+                ));
             }
         }
     }

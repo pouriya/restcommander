@@ -48,7 +48,7 @@ pub struct CommandOptionInfo {
     #[serde(default)]
     pub default_value: Option<CommandOptionValue>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub size: Option<CommandOptionInfoValueSize>
+    pub size: Option<CommandOptionInfoValueSize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -179,7 +179,12 @@ impl Command {
             });
         };
         let mut command = Self {
-            name: root_directory.file_name().unwrap_or(OsStr::new("")).to_str().unwrap().to_string(),
+            name: root_directory
+                .file_name()
+                .unwrap_or(OsStr::new(""))
+                .to_str()
+                .unwrap()
+                .to_string(),
             file_path: root_directory.clone(),
             info_file_path: Default::default(),
             http_path: http_base_path.clone(),
@@ -222,7 +227,10 @@ impl Command {
     }
 
     pub fn detect_command_info(command_filename: &PathBuf) -> Result<CommandInfo, CommandError> {
-        let mut info_filename = PathBuf::from(format!("{}.yaml", command_filename.clone().to_str().unwrap()));
+        let mut info_filename = PathBuf::from(format!(
+            "{}.yaml",
+            command_filename.clone().to_str().unwrap()
+        ));
         if !info_filename.exists() {
             info_filename.set_extension("yml");
         };
