@@ -7,7 +7,7 @@ VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$
 RELEASE_FILENAME_POSTFIX=
 DOCKER_REGISTRY=
 DOCKER_ALPINE_VERSION=latest
-DOCKER_IMAGE_VERSION=latest
+DOCKER_IMAGE_VERSION=${VERSION}
 
 
 all: release
@@ -18,12 +18,13 @@ release: download-bootstrap
 	cargo build --release --target ${TARGET}
 	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
 
-deb:
+deb: release
 	cargo deb --target ${TARGET}
 	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
 docker:
-	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} .
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} -t restcommander:latest .
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:tour -f TourDockerfile .
 
 dev: download-bootstrap
 	cargo build --target ${TARGET}
@@ -37,10 +38,16 @@ download-bootstrap: www/bootstrap.bundle.min.js www/bootstrap.min.css
 	@ ls -sh www/bootstrap.*
 
 www/bootstrap.bundle.min.js:
-	curl --silent --output www/bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
+	curl --silent --output bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
+	# Remove sourceMappingURL which is the last line in file:
+	head -n -1 bootstrap.bundle.min.js > www/bootstrap.bundle.min.js
+	rm -rf bootstrap.bundle.min.js
 
 www/bootstrap.min.css:
-	curl --silent --output www/bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
+	curl --silent --output bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
+	# Remove sourceMappingURL which is the last line in file:
+	head -n -1 bootstrap.min.css > www/bootstrap.min.css
+	rm -rf bootstrap.min.css
 
 ${DEV_DIR}:
 	mkdir -p ${DEV_DIR}
