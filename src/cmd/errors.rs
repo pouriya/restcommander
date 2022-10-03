@@ -80,4 +80,8 @@ pub enum CommandError {
         filename: PathBuf,
         message: io::Error,
     },
+    #[error("Could not found command information for command {filename:?}")]
+    NoCommandInfo { filename: PathBuf },
+    #[error("Could not found command state information for command {filename:?}")]
+    NoCommandState { filename: PathBuf },
 }

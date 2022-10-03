@@ -7,6 +7,9 @@
     <link rel="stylesheet" href="bootstrap.min.css" />
     <title>RestCommander</title>
     <style>
+        html, body {
+            scroll-behavior: smooth;
+        }
         .dropdown-menu .dropdown-menu {
             top: -.5rem !important;
         }
@@ -28,7 +31,7 @@
             background-color: #384dc8;
             border-color: #384dc8;
         }
-        #command-result-text {
+        #command-result-text, #command-state-text {
             color: #0a3955;
             background-color: #eaeaea;
             border-radius: 3px;
@@ -40,7 +43,7 @@
             <div class="row" role="navigation">
                 <div class="dropdown mt-0" id="navigation-bar" role="menu"></div>
             </div>
-            <div id="command" class="justify-content mx-auto my-5">
+            <div id="command" class="justify-content mx-auto my-3">
                 <p id="guide" class="lead">Select a menu item to start</p>
             </div>
             <div id="command-result" class="justify-content m-auto"></div>
