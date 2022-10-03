@@ -243,6 +243,8 @@ pub async fn setup(
 
     let api_run_filter =
         warp::path("run").and(api_run_command_filter(cfg.clone(), commands.clone()));
+    let api_state_filter =
+        warp::path("state").and(api_get_command_state_filter(cfg.clone(), commands.clone()));
     let api_reload_filter = warp::path("reload").and(
         api_reload_commands_filter(commands.clone())
             .or(api_reload_config_filter(
@@ -299,6 +301,8 @@ pub async fn setup(
                     .untuple_one()
                     .and(
                         api_run_filter
+                            .or(api_state_filter)
+                            .unify()
                             .or(api_reload_filter)
                             .unify()
                             .or(api_get_commands_filter(commands.clone()))
@@ -635,6 +639,23 @@ fn api_run_command_filter(
                         Err(reason) => Err(warp::reject::custom(HTTPError::API(reason))),
                         Ok(response) => Ok(response),
                     }
+                }
+            },
+        )
+}
+
+fn api_get_command_state_filter(
+    cfg: Arc<RwLock<Cfg>>,
+    commands: Arc<RwLock<Command>>,
+) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
+    warp::get()
+        .map(move || (cfg.clone(), commands.clone()))
+        .and(warp::path::tail())
+        .and_then(
+            |state: (Arc<RwLock<Cfg>>, Arc<RwLock<Command>>), tail: Tail| async move {
+                match maybe_get_command_state(state.0, state.1, tail.as_str().to_string()) {
+                    Err(reason) => Err(warp::reject::custom(HTTPError::API(reason))),
+                    Ok(response) => Ok(response),
                 }
             },
         )
@@ -1002,6 +1023,45 @@ fn maybe_run_command(
         } else {
             None
         },
+        Some(http_status_code),
+    ))
+}
+
+fn maybe_get_command_state(
+    cfg: Arc<RwLock<Cfg>>,
+    commands: Arc<RwLock<Command>>,
+    command_path: String,
+) -> Result<Response<String>, HTTPAPIError> {
+    let root_command = commands.read().unwrap().clone();
+    let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
+        .join(PathBuf::from(command_path))
+        .components()
+        .map(|x| x.as_os_str().to_str().unwrap().to_string())
+        .collect();
+    let command = cmd::search_for_command(&command_path_list, &root_command).map_err(|reason| {
+        HTTPAPIError::CommandNotFound {
+            message: reason.to_string(),
+        }
+    })?;
+    let command_output = cmd::get_state(
+        &command,
+        make_environment_variables_map_from_options(add_configuration_to_options(cfg.clone())),
+    )
+    .map_err(|reason| HTTPAPIError::InitializeCommand {
+        message: reason.to_string(),
+    })?;
+    let http_status_code = exit_code_to_status_code(command_output.exit_code);
+    let http_response_body = if command_output.stdout.is_empty() {
+        serde_json::Value::Null
+    } else if command_output.decoded_stdout.is_err() {
+        serde_json::Value::String(command_output.stdout)
+    } else {
+        command_output.decoded_stdout.unwrap()
+    };
+    Ok(make_api_response_with_header_and_stats(
+        Ok(http_response_body),
+        None,
+        None, // TODO
         Some(http_status_code),
     ))
 }

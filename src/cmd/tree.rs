@@ -31,8 +31,10 @@ pub struct CommandInfo {
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub current_state: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub state: Option<CommandInfoGetState>,
+    #[serde(default, skip_deserializing)]
+    pub support_state: bool,
     #[serde(default)]
     pub options: HashMap<String, CommandOptionInfo>,
 }
@@ -76,6 +78,13 @@ pub enum CommandOptionValue {
 pub struct CommandOptionInfoValueSize {
     pub min: Option<u64>,
     pub max: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandInfoGetState {
+    Options(Vec<String>),
+    Constant(String),
 }
 
 impl Command {
@@ -244,7 +253,8 @@ impl Command {
                     .unwrap()
                     .to_string(),
                 version: None,
-                current_state: None,
+                state: None,
+                support_state: false,
                 options: Default::default(),
             });
         };
@@ -268,17 +278,21 @@ impl Command {
                     .unwrap()
                     .to_string(),
                 version: None,
-                current_state: None,
+                state: None,
+                support_state: false,
                 options: Default::default(),
             });
         };
-        let command_info =
+        let mut command_info =
             serde_yaml::from_str::<CommandInfo>(&info_file_content).map_err(|reason| {
                 CommandError::DecodeCommandInfo {
                     filename: info_filename.clone(),
                     message: reason,
                 }
             })?;
+        if command_info.state.is_some() {
+            command_info.support_state = true;
+        }
         let mut check_options = Ok(command_info.clone());
         for (option, definition) in command_info.options {
             if !definition.required && definition.default_value.is_none() {

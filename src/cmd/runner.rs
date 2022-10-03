@@ -23,10 +23,32 @@ pub struct CommandOutput {
     pub instruction_list: Vec<CommandInstruction>,
 }
 
+impl CommandOutput {
+    pub fn new() -> Self {
+        Self {
+            exit_code: 0,
+            stdout: "".to_string(),
+            stderr: "".to_string(),
+            decoded_stdout: Ok(serde_json::Value::String(String::new())),
+            stats: CommandStats::new(),
+            instruction_list: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct CommandStats {
     pub duration: CommandStatsDuration,
     pub size: CommandStatsSize,
+}
+
+impl CommandStats {
+    pub fn new() -> Self {
+        Self {
+            duration: CommandStatsDuration::new(),
+            size: CommandStatsSize::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -37,11 +59,32 @@ pub struct CommandStatsDuration {
     pub logging: u64,
 }
 
+impl CommandStatsDuration {
+    pub fn new() -> Self {
+        Self {
+            total: 0,
+            start_process: 0,
+            write_to_stdin: 0,
+            logging: 0,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct CommandStatsSize {
     pub stdin: usize,
     pub stdout: usize,
     pub stderr: usize,
+}
+
+impl CommandStatsSize {
+    pub fn new() -> Self {
+        Self {
+            stdin: 0,
+            stdout: 0,
+            stderr: 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
