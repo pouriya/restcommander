@@ -423,12 +423,9 @@ async function makeCommandOptionsInputs(options, httpPath) {
                     await console.log('skip empty string of key', pair[0]);
                     continue;
                 };
-                await console.log(pair)
                 var definition = options[pair[0]];
                 var typeName = definition.value_type;
-                if (typeof typeName !== 'string') {
-                    typeName = Object.keys(definition.value_type)[0];
-                };
+                await console.log('Got type name', typeName, 'for key', pair[0])
                 var value = pair[1];
                 switch (typeName) {
                     case 'integer':
@@ -471,6 +468,13 @@ function updateResultBeforeRequest() {
 }
 
 function updateResultAfterRequest(runResult) {
+    var resultHeaderElement = document.createElement('h3')
+    setAttributes(
+        resultHeaderElement,
+        {'class': 'h3 my-0 text-capitalize text-center'}
+    )
+    resultHeaderElement.innerHTML = 'Result'
+
     var statusCodeTextElement = document.createElement('p')
     setAttributes(
         statusCodeTextElement,
@@ -499,7 +503,7 @@ function updateResultAfterRequest(runResult) {
     var statusCodeDivElement = document.createElement('div')
     setAttributes(
             statusCodeDivElement,
-            {'class': 'mt-0'}
+            {'class': 'my-0 py-0'}
         )
     statusCodeDivElement.appendChild(statusCodeTextElement)
 
@@ -523,6 +527,7 @@ function updateResultAfterRequest(runResult) {
 
     var resultElement = document.getElementById('command-result')
     resultElement.innerHTML = ''
+    resultElement.appendChild(resultHeaderElement)
     if (runResult.status !== 0) {
         resultElement.appendChild(statusCodeDivElement)
     }
