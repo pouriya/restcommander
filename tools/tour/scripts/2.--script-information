@@ -1,0 +1,14 @@
+#!/usr/bin/env python3
+
+from json import dumps as json_encode
+
+print(
+    json_encode(
+        [
+          "You can see this example\'s YAML file by running:",
+          "docker run --entrypoint=/bin/bat restcommander:tour scripts/tour/2.--script-information.yml",
+          "",
+          "Go to the next example from above menu."
+        ]
+    )
+)

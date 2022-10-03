@@ -1,0 +1,32 @@
+description: |
+  RestCommander supports 6 different types for your parameters.
+
+options:
+  key_1:
+    description: The value type is <i>string</i>
+    value_type: string
+    required: true
+  key_2:
+    description: The value type is <i>integer</i>
+    value_type: integer
+    required: true
+  key_3:
+    description: The value type is <i>float</i>
+    value_type: float
+    required: true
+  key_4:
+    description: The value type is <i>bool</i>
+    value_type: bool
+    required: true
+  key_5:
+    description: The value type is <i>any</i>
+    value_type: any
+    required: true
+  key_6:
+    description: The value type is <i>accepted_value_list</i> which is a list containing two or more strings.
+    required: true
+    value_type:
+      accepted_value_list:
+        - foo
+        - bar
+        - baz

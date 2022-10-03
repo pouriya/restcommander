@@ -7,10 +7,10 @@ VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$
 RELEASE_FILENAME_POSTFIX=
 DOCKER_REGISTRY=
 DOCKER_ALPINE_VERSION=latest
-DOCKER_IMAGE_VERSION=latest
+DOCKER_IMAGE_VERSION=${VERSION}
 
 
-all: release deb
+all: release
 	@ ls -sh *.deb
 	@ ls -sh restcommander-*
 
@@ -18,20 +18,13 @@ release: download-bootstrap
 	cargo build --release --target ${TARGET}
 	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
 
-tag: release
-	git checkout HEAD -- src/www/mod.rs
-	cargo fmt --check --quiet
-	git status
-	git add .
-	git commit -m 'ver: ${VERSION}'
-	git tag ${VERSION}
-
 deb: release
 	cargo deb --target ${TARGET}
 	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
 docker:
-	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} .
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} -t restcommander:latest .
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:tour -f TourDockerfile .
 
 dev: download-bootstrap
 	cargo build --target ${TARGET}
@@ -45,18 +38,26 @@ download-bootstrap: www/bootstrap.bundle.min.js www/bootstrap.min.css
 	@ ls -sh www/bootstrap.*
 
 www/bootstrap.bundle.min.js:
-	curl --silent --output www/bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
+	curl --silent --output bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
+	# Remove sourceMappingURL which is the last line in file:
+	head -n -1 bootstrap.bundle.min.js > www/bootstrap.bundle.min.js
+	rm -rf bootstrap.bundle.min.js
 
 www/bootstrap.min.css:
-	curl --silent --output www/bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
+	curl --silent --output bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
+	# Remove sourceMappingURL which is the last line in file:
+	head -n -1 bootstrap.min.css > www/bootstrap.min.css
+	rm -rf bootstrap.min.css
 
 ${DEV_DIR}:
 	mkdir -p ${DEV_DIR}
 	mkdir -p ${DEV_DIR}www
 	mkdir -p ${DEV_DIR}scripts
+	mkdir -p ${DEV_DIR}scripts/tour
 	${DEV_CMD} sample test-script > ${DEV_DIR}/scripts/test && chmod a+x ${DEV_DIR}scripts/test
 	${DEV_CMD} sample test-script-info > ${DEV_DIR}scripts/test.yml
 	cp www/* ${DEV_DIR}www/ && rm -rf ${DEV_DIR}www/bootstrap-version.txt ${DEV_DIR}www/README.md
+	cp tools/tour/scripts/* ${DEV_DIR}scripts/tour/
 
 ${DEV_CFG}:
 	${DEV_CMD} sample config > ${DEV_CFG}
@@ -94,4 +95,4 @@ archive:
 	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} --exclude='.git' -zcvf restcommander-${VERSION}-src.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}-src.tar.gz .
 	ls -sh *.tar.gz
 
-.PHONY: all release tag deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
+.PHONY: all release deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
