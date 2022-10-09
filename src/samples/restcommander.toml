@@ -32,6 +32,9 @@ captcha_case_sensitive = false
 ## Default value: []
 ## Example: ["127.0.0.1", "192.168.*"]
 ip_whitelist = []
+## You can use this API token for your application so you do not need pass CAPTCHA to get a new token.
+## Also you can use this token inside your scripts to call RestCommander API recursively!
+# api_token = "eb17ac80724e24be474c11af4657e923ce8e3fe40be2f06aeb89d47254c69c94fd472a424b6dea3dc74ed7fc962589d732545f01a5f293daa739a6f634ead336"
 
 [commands]
 ## Root directory to load command files and directories and their information files.

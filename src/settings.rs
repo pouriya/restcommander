@@ -80,6 +80,8 @@ pub struct CMDOptRun {
     pub captcha_file: Option<PathBuf>,
     #[structopt(long, env = "RESTCOMMANDER_CAPTCHA_CASE_SENSITIVE")]
     pub captcha_case_sensitive: bool,
+    #[structopt(long, env = "RESTCOMMANDER_API_TOKEN")]
+    pub api_token: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -201,6 +203,8 @@ pub struct CfgServer {
     pub captcha_case_sensitive: bool,
     #[serde(default = "CfgServerDefault::ip_whitelist")]
     pub ip_whitelist: Vec<String>,
+    #[serde(default = "CfgServerDefault::api_token")]
+    pub api_token: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -360,6 +364,9 @@ impl CfgServerDefault {
     fn ip_whitelist() -> Vec<String> {
         Vec::new()
     }
+    fn api_token() -> Option<String> {
+        None
+    }
 }
 
 impl Default for CfgServer {
@@ -376,6 +383,7 @@ impl Default for CfgServer {
             captcha_file: CfgServerDefault::captcha_file(),
             captcha_case_sensitive: CfgServerDefault::captcha_case_sensitive(),
             ip_whitelist: CfgServerDefault::ip_whitelist(),
+            api_token: CfgServerDefault::api_token(),
         }
     }
 }
@@ -616,6 +624,7 @@ impl TryFrom<CMDOptRun> for Cfg {
                     captcha_file: command_line_options.captcha_file,
                     captcha_case_sensitive: command_line_options.captcha_case_sensitive,
                     ip_whitelist: Vec::new(),
+                    api_token: command_line_options.api_token,
                 },
                 commands: CfgCommands {
                     root_directory: command_line_options.root_directory,
