@@ -36,6 +36,9 @@ ip_whitelist = []
 [commands]
 ## Root directory to load command files and directories and their information files.
 root_directory = "scripts"
+## Your scripts will receive `commands.configuration` key/values directly from env or stdin
+[commands.configuration]
+
 
 
 [www]

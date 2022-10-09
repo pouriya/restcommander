@@ -1088,7 +1088,7 @@ fn make_environment_variables_map_from_options(
 
 fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
     let cfg_instance = cfg.read().unwrap().config_value.clone();
-    CommandOptionsValue::from([
+    let mut options = CommandOptionsValue::from([
         (
             "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
             CommandOptionValue::String(if cfg_instance.server.host.as_str() == "0.0.0.0" {
@@ -1148,7 +1148,11 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
                     .to_string(),
             ),
         ),
-    ])
+    ]);
+    for (key, value) in cfg_instance.commands.configuration {
+        options.insert(key, value);
+    };
+    options
 }
 
 fn try_set_password(

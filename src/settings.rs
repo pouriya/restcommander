@@ -20,6 +20,7 @@ use serde_derive::{Deserialize, Serialize};
 use ttyaskpass::AskPass;
 
 use thiserror::Error;
+use crate::cmd::runner::CommandOptionsValue;
 
 use crate::samples;
 use crate::utils;
@@ -81,7 +82,7 @@ pub struct CMDOptRun {
     pub captcha_case_sensitive: bool,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Cfg {
     pub config_value: CfgValue,
     pub filename: Option<PathBuf>,
@@ -110,7 +111,7 @@ trait CheckValue {
     fn check_value(&mut self) -> Result<(), Self::Error>;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CfgValue {
     #[serde(default)]
     pub server: CfgServer,
@@ -379,10 +380,12 @@ impl Default for CfgServer {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CfgCommands {
     #[serde(default = "CfgCommandsDefault::root_directory")]
     pub root_directory: PathBuf,
+    #[serde(default = "CfgCommandsDefault::configuration")]
+    pub configuration: CommandOptionsValue,
 }
 
 struct CfgCommandsDefault {}
@@ -400,12 +403,16 @@ impl CfgCommandsDefault {
                 .into_boxed_str(),
         )
     }
+    fn configuration() -> CommandOptionsValue {
+        HashMap::default()
+    }
 }
 
 impl Default for CfgCommands {
     fn default() -> Self {
         Self {
             root_directory: CfgCommandsDefault::root_directory(),
+            configuration: CfgCommandsDefault::configuration(),
         }
     }
 }
@@ -612,6 +619,7 @@ impl TryFrom<CMDOptRun> for Cfg {
                 },
                 commands: CfgCommands {
                     root_directory: command_line_options.root_directory,
+                    configuration: CfgCommandsDefault::configuration(),
                 },
                 logging: CfgLogging {
                     level_name: command_line_options.log_level,
