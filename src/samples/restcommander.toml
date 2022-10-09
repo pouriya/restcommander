@@ -38,7 +38,7 @@ ip_whitelist = []
 root_directory = "scripts"
 ## Your scripts will receive `commands.configuration` key/values directly from env or stdin
 [commands.configuration]
-
+## foo = 1234
 
 
 [www]
