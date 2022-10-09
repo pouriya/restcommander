@@ -110,13 +110,23 @@ impl Captcha {
         ))
     }
 
-    pub fn compare_and_update(&mut self, id: String, text: String) -> Result<bool, io::Error> {
+    pub fn compare_and_update(&mut self, id: String, text: String, case_sensitive: bool) -> Result<bool, io::Error> {
+        let text = if case_sensitive {
+            text
+        } else {
+            text.to_lowercase()
+        };
         let mut result = false;
         let mut maybe_index = None;
         for (index, (other_id, other_text)) in self.captcha_list.iter().enumerate() {
             if &id == other_id {
                 maybe_index = Some(index);
-                if &text == other_text {
+                let other_text = if case_sensitive {
+                    other_text.to_owned()
+                } else {
+                    other_text.to_lowercase()
+                };
+                if text == other_text {
                     result = true;
                 };
                 break;

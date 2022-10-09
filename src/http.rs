@@ -931,7 +931,7 @@ fn authentication_with_basic(
                                     .unwrap()
                                     .write()
                                     .unwrap()
-                                    .compare_and_update(key.to_string(), value)
+                                    .compare_and_update(key.to_string(), value, server_cfg.captcha_case_sensitive)
                                     .map_err(|_error| HTTPAuthenticationError::InvalidCaptcha {})?
                                 {
                                     Ok(())

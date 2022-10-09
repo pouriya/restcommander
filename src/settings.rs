@@ -77,6 +77,8 @@ pub struct CMDOptRun {
     pub tls_key_file: Option<PathBuf>,
     #[structopt(long, parse(from_os_str), env = "RESTCOMMANDER_CAPTCHA_FILE")]
     pub captcha_file: Option<PathBuf>,
+    #[structopt(long, env = "RESTCOMMANDER_CAPTCHA_CASE_SENSITIVE")]
+    pub captcha_case_sensitive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -194,6 +196,8 @@ pub struct CfgServer {
     #[serde(default = "CfgServerDefault::tls_key_file")]
     pub tls_key_file: Option<PathBuf>,
     pub captcha_file: Option<PathBuf>,
+    #[serde(default = "CfgServerDefault::captcha_case_sensitive")]
+    pub captcha_case_sensitive: bool,
     #[serde(default = "CfgServerDefault::ip_whitelist")]
     pub ip_whitelist: Vec<String>,
 }
@@ -349,6 +353,9 @@ impl CfgServerDefault {
     fn captcha_file() -> Option<PathBuf> {
         None
     }
+    fn captcha_case_sensitive() -> bool {
+        false
+    }
     fn ip_whitelist() -> Vec<String> {
         Vec::new()
     }
@@ -366,6 +373,7 @@ impl Default for CfgServer {
             tls_cert_file: CfgServerDefault::tls_cert_file(),
             tls_key_file: CfgServerDefault::tls_key_file(),
             captcha_file: CfgServerDefault::captcha_file(),
+            captcha_case_sensitive: CfgServerDefault::captcha_case_sensitive(),
             ip_whitelist: CfgServerDefault::ip_whitelist(),
         }
     }
@@ -599,6 +607,7 @@ impl TryFrom<CMDOptRun> for Cfg {
                     tls_cert_file: command_line_options.tls_cert_file,
                     tls_key_file: command_line_options.tls_key_file,
                     captcha_file: command_line_options.captcha_file,
+                    captcha_case_sensitive: command_line_options.captcha_case_sensitive,
                     ip_whitelist: Vec::new(),
                 },
                 commands: CfgCommands {
