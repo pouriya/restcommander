@@ -19,8 +19,8 @@ use serde_derive::{Deserialize, Serialize};
 
 use ttyaskpass::AskPass;
 
-use thiserror::Error;
 use crate::cmd::runner::CommandOptionsValue;
+use thiserror::Error;
 
 use crate::samples;
 use crate::utils;

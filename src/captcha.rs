@@ -110,7 +110,12 @@ impl Captcha {
         ))
     }
 
-    pub fn compare_and_update(&mut self, id: String, text: String, case_sensitive: bool) -> Result<bool, io::Error> {
+    pub fn compare_and_update(
+        &mut self,
+        id: String,
+        text: String,
+        case_sensitive: bool,
+    ) -> Result<bool, io::Error> {
         let text = if case_sensitive {
             text
         } else {
