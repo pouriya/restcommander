@@ -38,13 +38,13 @@ download-bootstrap: www/bootstrap.bundle.min.js www/bootstrap.min.css
 www/bootstrap.bundle.min.js:
 	curl --silent --output bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
 	# Remove sourceMappingURL which is the last line in file:
-	head -n -1 bootstrap.bundle.min.js > www/bootstrap.bundle.min.js
+	cat bootstrap.bundle.min.js | tail -r | tail -n +2 | tail -r > www/bootstrap.bundle.min.js
 	rm -rf bootstrap.bundle.min.js
 
 www/bootstrap.min.css:
 	curl --silent --output bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
 	# Remove sourceMappingURL which is the last line in file:
-	head -n -1 bootstrap.min.css > www/bootstrap.min.css
+	cat bootstrap.min.css | tail -r | tail -n +2 | tail -r > www/bootstrap.min.css
 	rm -rf bootstrap.min.css
 
 ${DEV_DIR}:

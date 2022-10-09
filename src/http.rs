@@ -284,7 +284,7 @@ pub async fn setup(
     );
     let tokens = Arc::new(RwLock::new(HashMap::new()));
     let api_auth_filter = warp::path("auth").and(check_ip_address(cfg.clone())).and(
-        api_auth_test_filter(tokens.clone())
+        api_auth_test_filter(tokens.clone(), cfg.clone())
             .or(api_auth_token(
                 cfg.clone(),
                 maybe_captcha.clone(),
@@ -297,7 +297,7 @@ pub async fn setup(
             .or(api_auth_filter)
             .unify()
             .or(check_ip_address(cfg.clone()).and(
-                authentication_with_token_filter(tokens.clone())
+                authentication_with_token_filter(tokens.clone(), cfg.clone())
                     .untuple_one()
                     .and(
                         api_run_filter
@@ -391,19 +391,22 @@ pub async fn maybe_handle_message(channel_receiver: &mut Receiver<()>) -> Result
 
 fn api_auth_test_filter(
     tokens: Arc<RwLock<HashMap<String, u32>>>,
+    cfg: Arc<RwLock<Cfg>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
     warp::path("test")
-        .and(authentication_with_token_filter(tokens))
+        .and(authentication_with_token_filter(tokens, cfg.clone()))
         .map(|_| make_api_response_ok())
 }
 
 fn authentication_with_token_filter(
     tokens: Arc<RwLock<HashMap<String, u32>>>,
+    cfg: Arc<RwLock<Cfg>>,
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
     extract_token_filter().and_then(move |token: String| {
         let tokens = tokens.clone();
+        let cfg = cfg.clone();
         async move {
-            authentication_with_token(tokens, token)
+            authentication_with_token(tokens, token, cfg)
                 .map_err(|error| warp::reject::custom(HTTPError::Authentication(error)))
         }
     })
@@ -931,7 +934,11 @@ fn authentication_with_basic(
                                     .unwrap()
                                     .write()
                                     .unwrap()
-                                    .compare_and_update(key.to_string(), value)
+                                    .compare_and_update(
+                                        key.to_string(),
+                                        value,
+                                        server_cfg.captcha_case_sensitive,
+                                    )
                                     .map_err(|_error| HTTPAuthenticationError::InvalidCaptcha {})?
                                 {
                                     Ok(())
@@ -967,10 +974,16 @@ fn authentication_with_basic(
 fn authentication_with_token(
     tokens: Arc<RwLock<HashMap<String, u32>>>,
     token: String,
+    cfg: Arc<RwLock<Cfg>>,
 ) -> Result<(), HTTPAuthenticationError> {
     if token.is_empty() {
         return Err(HTTPAuthenticationError::TokenNotFound);
     };
+    if let Some(api_token) = cfg.read().unwrap().config_value.server.api_token.clone() {
+        if token == api_token {
+            return Ok(());
+        }
+    }
     return if let Some(expire_time) = tokens.clone().read().unwrap().get(token.as_str()) {
         if expire_time > &chrono::Local::now().second() {
             return Ok(());
@@ -1088,7 +1101,7 @@ fn make_environment_variables_map_from_options(
 
 fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
     let cfg_instance = cfg.read().unwrap().config_value.clone();
-    CommandOptionsValue::from([
+    let mut options = CommandOptionsValue::from([
         (
             "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
             CommandOptionValue::String(if cfg_instance.server.host.as_str() == "0.0.0.0" {
@@ -1108,6 +1121,10 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
         (
             "RESTCOMMANDER_CONFIG_SERVER_USERNAME".to_string(),
             CommandOptionValue::String(cfg_instance.server.username),
+        ),
+        (
+            "RESTCOMMANDER_CONFIG_SERVER_API_TOKEN".to_string(),
+            CommandOptionValue::String(cfg_instance.server.api_token.unwrap_or_default()),
         ),
         (
             "RESTCOMMANDER_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
@@ -1148,7 +1165,11 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
                     .to_string(),
             ),
         ),
-    ])
+    ]);
+    for (key, value) in cfg_instance.commands.configuration {
+        options.insert(key, value);
+    }
+    options
 }
 
 fn try_set_password(
