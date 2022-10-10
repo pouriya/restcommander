@@ -239,7 +239,7 @@ pub enum CMDSample {"#
             .write_all(
                 r#"}
 
-pub fn maybe_print(sample_name: CMDSample) {
+pub fn maybe_print(_sample_name: CMDSample) {
     let sample_data = "There is no sample to print".to_string();
     println!("{}", sample_data);
 }
