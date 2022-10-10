@@ -8,6 +8,7 @@ repository = "https://github.com/pouriya/RestCommander"
 
 [build-dependencies]
 md5 = "0.7"
+capitalize = "0.1"
 
 [dependencies]
 thiserror = "1.*"
