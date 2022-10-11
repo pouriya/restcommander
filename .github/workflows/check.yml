@@ -4,7 +4,6 @@ on: [push, pull_request]
 
 jobs:
   docker:
-    needs: publish-installer
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
