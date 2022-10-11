@@ -109,9 +109,26 @@ jobs:
           NAME=`ls restcommander-*` 
           mv $NAME `echo $NAME | sed 's/.exe//'`.exe
 
-      - name: Archive artifacts
+      - name: Archive Linux artifacts
+        if: contains(matrix.os, 'ubuntu-')
         uses: actions/upload-artifact@v3
         with:
-          name: releases
+          name: linux-releases
+          path: restcommander-*
+          retention-days: 10
+
+      - name: Archive Windows artifacts
+        if: contains(matrix.os, 'windows-')
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-releases
+          path: restcommander-*
+          retention-days: 10
+
+      - name: Archive macOS artifacts
+        if: contains(matrix.os, 'macos-')
+        uses: actions/upload-artifact@v3
+        with:
+          name: macos-releases
           path: restcommander-*
           retention-days: 10
