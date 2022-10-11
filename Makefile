@@ -80,7 +80,11 @@ update-self-signed-certificate:
 
 lint:
 	cargo fmt --verbose --check
-	cargo clippy --no-deps
+	cargo check --target ${TARGET}
+#	cargo clippy --no-deps
+
+test:
+	cargo test --target ${TARGET}
 
 archive:
 	$(eval ARCHIVE_GENERIC_EXCLUDE=--exclude='restcommander' --exclude='*.deb' --exclude='*.tar.gz' --exclude='target' --exclude='tmp' --exclude='src/www/*')
@@ -88,4 +92,4 @@ archive:
 	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} --exclude='.git' -zcvf restcommander-${VERSION}-src.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}-src.tar.gz .
 	ls -sh *.tar.gz
 
-.PHONY: all release deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
+.PHONY: all release deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint test archive clean-dev
