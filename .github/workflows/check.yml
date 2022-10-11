@@ -114,3 +114,4 @@ jobs:
         with:
           name: releases
           path: restcommander-*
+          retention-days: 10
