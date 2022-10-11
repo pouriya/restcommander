@@ -1,10 +1,11 @@
 /target
-.idea
-*.iml
 /tmp
+/src/www/
+/src/samples/
+/www/bootstrap.bundle.min.js
+/www/bootstrap.min.css
 restcommander-*
 *.deb
 *.tar.gz
-/www/bootstrap.bundle.min.js
-/www/bootstrap.min.css
-/src/www/
+.idea
+*.iml

@@ -1,3 +1,4 @@
+use crate::samples::{maybe_print, CMDSample};
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::fs;
@@ -22,7 +23,6 @@ use ttyaskpass::AskPass;
 use crate::cmd::runner::CommandOptionsValue;
 use thiserror::Error;
 
-use crate::samples;
 use crate::utils;
 
 #[derive(Debug, Clone, StructOpt)]
@@ -36,9 +36,8 @@ use crate::utils;
 ]
 pub enum CMDOpt {
     Config(CMDOptCfg),
-    Run(CMDOptRun),
+    Live(CMDOptRun),
     Sample(CMDSample),
-    #[structopt(about = "Prints hex-encoded sha512 of input")]
     Sha512(CMDSha512),
 }
 
@@ -550,29 +549,7 @@ impl CfgLoggingLevelName {
 }
 
 #[derive(Debug, Clone, StructOpt)]
-#[structopt(about = "Script and configuration samples")]
-pub enum CMDSample {
-    #[structopt(about = "Configuration with default values set.")]
-    Config,
-    #[structopt(about = "Simple Python sample.")]
-    Python,
-    #[structopt(about = "Simple Unix shell sample.")]
-    Shell,
-    #[structopt(about = "Simple Perl sample.")]
-    Perl,
-    #[structopt(about = "A self-signed private key.")]
-    SelfSignedKey,
-    #[structopt(about = "A self-signed certificate.")]
-    SelfSignedCert,
-    #[structopt(about = "A Systemd service file.")]
-    SystemdService,
-    #[structopt(about = "A script to test service HTTP API status-code and body.")]
-    TestScript,
-    #[structopt(about = "YAML info of test-script sample.")]
-    TestScriptInfo,
-}
-
-#[derive(Debug, Clone, StructOpt)]
+#[structopt(about = "Prints hex-encoded sha512 of input")]
 pub struct CMDSha512 {
     #[structopt(about = "input to be encoded. If empty, It prompts to ask input.")]
     input: Option<String>,
@@ -668,8 +645,11 @@ pub fn try_setup() -> Result<Cfg, Option<String>> {
             println!("{}", utils::to_sha512(input));
             Err(None)
         }
-        CMDOpt::Sample(sample_name) => Err(samples::maybe_print(sample_name)),
-        CMDOpt::Run(options) => Ok(Cfg::try_from(options).map_err(|reason| Some(reason))?),
+        CMDOpt::Sample(sample_name) => {
+            maybe_print(sample_name);
+            Err(None)
+        }
+        CMDOpt::Live(options) => Ok(Cfg::try_from(options).map_err(|reason| Some(reason))?),
         CMDOpt::Config(config_file) => Ok(
             Cfg::try_from(config_file.config_file).map_err(|reason| Some(reason.to_string()))?
         ),
