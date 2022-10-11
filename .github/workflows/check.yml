@@ -91,8 +91,8 @@ jobs:
       - name: Lint
         run: make lint VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }}
 
-      - name: Build development version
-        run: make dev VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
+      - name: Build
+        run: make release VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
 
       - name: Test
         run: make test VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }}
