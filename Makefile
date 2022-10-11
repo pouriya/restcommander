@@ -79,8 +79,8 @@ update-self-signed-certificate:
 	echo '\n\n\n\n\n\n\n\n\n\n\n\n\n\n' | openssl req -new -x509 -nodes -days 3650 -key samples/self-signed-key.pem -out samples/self-signed-cert.pem
 
 lint:
-	cargo check --target ${TARGET}
 	cargo fmt --verbose --check
+	cargo check --target ${TARGET}
 #	cargo clippy --no-deps
 
 test:
