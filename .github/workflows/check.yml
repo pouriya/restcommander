@@ -89,18 +89,18 @@ jobs:
         uses: actions/checkout@v1
 
       - name: Lint
-        run: make lint VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }}
+        run: make lint VERSION=test TARGET=${{ matrix.target }}
 
       - name: Build
-        run: make release VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
+        run: make release VERSION=test TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
 
       - name: Test
-        run: make test VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }}
+        run: make test VERSION=test TARGET=${{ matrix.target }}
 
       - name: Build Debian package
         if: contains(matrix.os, 'ubuntu-')
         shell: bash
-        run: make deb VERSION=${{ github.ref_name }} TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
+        run: make deb VERSION=test TARGET=${{ matrix.target }} RELEASE_FILENAME_POSTFIX=-${{ matrix.os }}
 
       - name: Rename Windows executable
         if: contains(matrix.os, 'windows-')
