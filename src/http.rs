@@ -390,7 +390,7 @@ pub async fn maybe_handle_message(channel_receiver: &mut Receiver<()>) -> Result
 }
 
 fn api_auth_test_filter(
-    tokens: Arc<RwLock<HashMap<String, u32>>>,
+    tokens: Arc<RwLock<HashMap<String, usize>>>,
     cfg: Arc<RwLock<Cfg>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
     warp::path("test")
@@ -399,19 +399,18 @@ fn api_auth_test_filter(
 }
 
 fn authentication_with_token_filter(
-    tokens: Arc<RwLock<HashMap<String, u32>>>,
+    tokens: Arc<RwLock<HashMap<String, usize>>>,
     cfg: Arc<RwLock<Cfg>>,
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
-    let have_password = !cfg
-        .read()
-        .unwrap()
-        .config_value
-        .server
-        .password_sha512
-        .is_empty()
-        .clone();
+    let cfg2 = cfg.clone();
     warp::any()
-        .map(move || have_password)
+        .map(move || !cfg2.read()
+            .unwrap()
+            .config_value
+            .server
+            .password_sha512
+            .is_empty()
+            .clone())
         .and_then(|have_password: bool| async move {
             if have_password {
                 Err(warp::reject::reject())
@@ -433,8 +432,9 @@ fn authentication_with_token_filter(
 fn api_auth_token(
     cfg: Arc<RwLock<Cfg>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
-    tokens: Arc<RwLock<HashMap<String, u32>>>,
+    tokens: Arc<RwLock<HashMap<String, usize>>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
+    let token_timeout = cfg.read().unwrap().config_value.server.token_timeout.clone();
     warp::path("token")
         .and(extract_basic_authentication_filter())
         .map(
@@ -452,7 +452,7 @@ fn api_auth_token(
                 return make_api_response(Err(HTTPError::Authentication(error)));
             }
             let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
-            let timestamp = chrono::Local::now().second() + 60;
+            let timestamp = chrono::Local::now().second() as usize + token_timeout;
             tokens
                 .clone()
                 .write()
@@ -465,8 +465,9 @@ fn api_auth_token(
                     headers.insert(
                         warp::http::header::SET_COOKIE,
                         format!(
-                            "token={}; Path=/; Max-Age=3600; SameSite=None; Secure;",
-                            token
+                            "token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
+                            token,
+                            token_timeout,
                         )
                         .parse()
                         .unwrap(),
@@ -986,7 +987,7 @@ fn authentication_with_basic(
 }
 
 fn authentication_with_token(
-    tokens: Arc<RwLock<HashMap<String, u32>>>,
+    tokens: Arc<RwLock<HashMap<String, usize>>>,
     token: String,
     cfg: Arc<RwLock<Cfg>>,
 ) -> Result<(), HTTPAuthenticationError> {
@@ -1003,7 +1004,7 @@ fn authentication_with_token(
         }
     }
     return if let Some(expire_time) = tokens.clone().read().unwrap().get(token.as_str()) {
-        if expire_time > &chrono::Local::now().second() {
+        if expire_time > &(chrono::Local::now().second() as usize) {
             return Ok(());
         };
         Err(HTTPAuthenticationError::TokenExpired)

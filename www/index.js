@@ -27,10 +27,15 @@ async function main() {
         }
     }
     const testAuth = await new Api(ApiOpts).testAuth(true)
-    if (testAuth !== false) {
-        document.location = '/static/commands.html'
-        return
+    var nextPageLink = '/static/commands.html'
+    var nextPageName = 'Commands'
+    if (testAuth === false) {
+        nextPageLink = '/static/login.html'
+        nextPageName = 'Login'
     }
+    var nextPageLinkElement = document.getElementById('next-page-link')
+    nextPageLinkElement.setAttribute('href', nextPageLink)
+    nextPageLinkElement.innerHTML = nextPageName
     document.body.className = 'visible ' + document.body.className.replace('invisible', '')
 }
 
