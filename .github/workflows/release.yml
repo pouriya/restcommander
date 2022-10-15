@@ -75,7 +75,7 @@ jobs:
           files: tools/install.sh
 
   publish:
-    name: ${{ matrix.os }} [${{ matrix.target }}]
+    name: ${{ matrix.os }} [${{ matrix.name }}]
     needs: remove-latest
     runs-on: ${{ matrix.os }}
     strategy:
@@ -84,26 +84,36 @@ jobs:
         include:
           - os: macos-12
             target: x86_64-apple-darwin
+            name: x86_64
           - os: macos-11
             target: x86_64-apple-darwin
+            name: x86_64
 
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            name: x86_64-GNU
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-musl
+            name: x86_64-MUSL
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
+            name: x86_64-GNU
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-musl
+            name: x86_64-MUSL
 
           - os: windows-2022
             target: x86_64-pc-windows-gnu
+            name: x86_64-GNU
           - os: windows-2022
             target: x86_64-pc-windows-msvc
+            name: x86_64-MSVC
           - os: windows-2019
             target: x86_64-pc-windows-gnu
+            name: x86_64-GNU
           - os: windows-2019
             target: x86_64-pc-windows-msvc
+            name: x86_64-MSVC
 
     steps:
       - name: Installing Rust toolchain
@@ -176,13 +186,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          prerelease: false
-          draft: false
           tag_name: latest
           files: restcommander-*
 
   remove-latest:
-    name: Remove previous latest tag and release
+    name: Remove previous latest tag
     runs-on: ubuntu-latest
     steps:
       - uses: dev-drprasad/delete-tag-and-release@v0.2.0

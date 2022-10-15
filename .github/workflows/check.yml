@@ -28,7 +28,7 @@ jobs:
           file: TourDockerfile
 
   build:
-    name: ${{ matrix.os }} [${{ matrix.target }}]
+    name: ${{ matrix.os }} [${{ matrix.name }}]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -36,26 +36,36 @@ jobs:
         include:
           - os: macos-12
             target: x86_64-apple-darwin
+            name: x86_64
           - os: macos-11
             target: x86_64-apple-darwin
+            name: x86_64
 
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            name: x86_64-GNU
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-musl
+            name: x86_64-MUSL
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
+            name: x86_64-GNU
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-musl
+            name: x86_64-MUSL
 
           - os: windows-2022
             target: x86_64-pc-windows-gnu
+            name: x86_64-GNU
           - os: windows-2022
             target: x86_64-pc-windows-msvc
+            name: x86_64-MSVC
           - os: windows-2019
             target: x86_64-pc-windows-gnu
+            name: x86_64-GNU
           - os: windows-2019
             target: x86_64-pc-windows-msvc
+            name: x86_64-MSVC
 
     steps:
       - name: Installing Rust toolchain
@@ -119,7 +129,17 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: linux-releases
-          path: restcommander-*
+          path: |
+            restcommander-*
+            !restcommander-*.deb
+          retention-days: 10
+
+      - name: Archive Debian package artifacts
+        if: contains(matrix.os, 'ubuntu-')
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-releases
+          path: restcommander-*.deb
           retention-days: 10
 
       - name: Archive Windows artifacts
