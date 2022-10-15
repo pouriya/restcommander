@@ -76,6 +76,7 @@ jobs:
 
   publish:
     name: ${{ matrix.os }} [${{ matrix.target }}]
+    needs: remove-latest
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -179,3 +180,14 @@ jobs:
           draft: false
           tag_name: latest
           files: restcommander-*
+
+  remove-latest:
+    name: Remove previous latest tag and release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dev-drprasad/delete-tag-and-release@v0.2.0
+        with:
+          delete_release: true
+          tag_name: latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
