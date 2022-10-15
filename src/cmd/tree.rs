@@ -76,8 +76,8 @@ pub enum CommandOptionValue {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommandOptionInfoValueSize {
-    pub min: Option<u64>,
-    pub max: Option<u64>,
+    pub min: Option<i64>,
+    pub max: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

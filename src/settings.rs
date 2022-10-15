@@ -81,6 +81,8 @@ pub struct CMDOptRun {
     pub captcha_case_sensitive: bool,
     #[structopt(long, env = "RESTCOMMANDER_API_TOKEN")]
     pub api_token: Option<String>,
+    #[structopt(long, default_value = "604800", env = "RESTCOMMANDER_PORT")]
+    pub token_timeout: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -204,6 +206,8 @@ pub struct CfgServer {
     pub ip_whitelist: Vec<String>,
     #[serde(default = "CfgServerDefault::api_token")]
     pub api_token: Option<String>,
+    #[serde(default = "CfgServerDefault::token_timeout")]
+    pub token_timeout: usize,
 }
 
 #[derive(Debug, Error)]
@@ -274,9 +278,17 @@ impl CheckValue for CfgServer {
             !self.password_sha512.is_empty(),
             !self.password_file.to_str().unwrap().is_empty(),
         ) {
-            (true, false, false) => return Err(CfgServerCheckError::PasswordOrPasswordFileIsNotSet),
-            (false, true, _) => warn!("configuration contains `password` but `username` field is not set. Using `admin` as default username."),
-            (false, _, true) => warn!("configuration contains `password_file` but `username` field is not set. Using `admin` as default username."),
+            (true, false, false) => {
+                return Err(CfgServerCheckError::PasswordOrPasswordFileIsNotSet)
+            }
+            (false, true, _) => {
+                warn!("configuration contains `password` but `username` field is not set. Using `admin` as default username.");
+                self.username = "admin".to_string();
+            }
+            (false, _, true) => {
+                warn!("configuration contains `password_file` but `username` field is not set. Using `admin` as default username.");
+                self.username = "admin".to_string();
+            }
             _ => (),
         };
         if !self.password_file.to_str().unwrap().is_empty() {
@@ -366,6 +378,9 @@ impl CfgServerDefault {
     fn api_token() -> Option<String> {
         None
     }
+    fn token_timeout() -> usize {
+        604800
+    }
 }
 
 impl Default for CfgServer {
@@ -383,6 +398,7 @@ impl Default for CfgServer {
             captcha_case_sensitive: CfgServerDefault::captcha_case_sensitive(),
             ip_whitelist: CfgServerDefault::ip_whitelist(),
             api_token: CfgServerDefault::api_token(),
+            token_timeout: CfgServerDefault::token_timeout(),
         }
     }
 }
@@ -602,6 +618,7 @@ impl TryFrom<CMDOptRun> for Cfg {
                     captcha_case_sensitive: command_line_options.captcha_case_sensitive,
                     ip_whitelist: Vec::new(),
                     api_token: command_line_options.api_token,
+                    token_timeout: command_line_options.token_timeout,
                 },
                 commands: CfgCommands {
                     root_directory: command_line_options.root_directory,

@@ -9,16 +9,16 @@ configuration = ''
 for line in stdin:
     configuration += line
 configuration = json_decode(configuration)
-exit_code = configuration['options']['ExitCode']
-output = configuration['options']['Output']
+exit_code = configuration['exit_code']
+output = configuration['output']
 decoded = False
 try:
     output = json_decode(output)
-    print('DEBUG Received a test request with exit-code {} and output {!r}'.format(exit_code, output), file=stderr)
+    print('TRACE Received a test request with exit-code {} and output {!r}'.format(exit_code, output), file=stderr)
     decoded = True
 except Exception as error:
-    print('ERROR Could not decode value as JSON: {}'.format(error), file=stderr)
-    output = 'Your `output` could not be decoded to JSON: {}'.format(error)
+    print('ERROR Could not decode {!r} value as JSON: {}'.format(output, error), file=stderr)
+    output = 'Your `output` {!r} could not be decoded to JSON: {}'.format(output, error)
 
 if not decoded:
     exit_code = 2
