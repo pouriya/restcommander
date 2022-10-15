@@ -404,13 +404,16 @@ fn authentication_with_token_filter(
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
     let cfg2 = cfg.clone();
     warp::any()
-        .map(move || !cfg2.read()
-            .unwrap()
-            .config_value
-            .server
-            .password_sha512
-            .is_empty()
-            .clone())
+        .map(move || {
+            !cfg2
+                .read()
+                .unwrap()
+                .config_value
+                .server
+                .password_sha512
+                .is_empty()
+                .clone()
+        })
         .and_then(|have_password: bool| async move {
             if have_password {
                 Err(warp::reject::reject())
@@ -434,7 +437,13 @@ fn api_auth_token(
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
     tokens: Arc<RwLock<HashMap<String, usize>>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
-    let token_timeout = cfg.read().unwrap().config_value.server.token_timeout.clone();
+    let token_timeout = cfg
+        .read()
+        .unwrap()
+        .config_value
+        .server
+        .token_timeout
+        .clone();
     warp::path("token")
         .and(extract_basic_authentication_filter())
         .map(
@@ -466,8 +475,7 @@ fn api_auth_token(
                         warp::http::header::SET_COOKIE,
                         format!(
                             "token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
-                            token,
-                            token_timeout,
+                            token, token_timeout,
                         )
                         .parse()
                         .unwrap(),

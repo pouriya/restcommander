@@ -278,15 +278,17 @@ impl CheckValue for CfgServer {
             !self.password_sha512.is_empty(),
             !self.password_file.to_str().unwrap().is_empty(),
         ) {
-            (true, false, false) => return Err(CfgServerCheckError::PasswordOrPasswordFileIsNotSet),
+            (true, false, false) => {
+                return Err(CfgServerCheckError::PasswordOrPasswordFileIsNotSet)
+            }
             (false, true, _) => {
                 warn!("configuration contains `password` but `username` field is not set. Using `admin` as default username.");
                 self.username = "admin".to_string();
-            },
+            }
             (false, _, true) => {
                 warn!("configuration contains `password_file` but `username` field is not set. Using `admin` as default username.");
                 self.username = "admin".to_string();
-            },
+            }
             _ => (),
         };
         if !self.password_file.to_str().unwrap().is_empty() {
