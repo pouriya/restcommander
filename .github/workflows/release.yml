@@ -9,6 +9,7 @@ on:
 
 jobs:
   docker:
+    name: Docker
     needs: publish-installer
     runs-on: ubuntu-latest
     steps:
@@ -42,6 +43,7 @@ jobs:
 
 
   publish-installer:
+    name: Publish installer script
     needs: publish
     runs-on: ubuntu-latest
     steps:
@@ -73,7 +75,7 @@ jobs:
           files: tools/install.sh
 
   publish:
-    name: ${{ matrix.os }} (${{ matrix.target }})
+    name: ${{ matrix.os }} [${{ matrix.target }}]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -95,8 +97,12 @@ jobs:
 
           - os: windows-2022
             target: x86_64-pc-windows-gnu
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
           - os: windows-2019
             target: x86_64-pc-windows-gnu
+          - os: windows-2019
+            target: x86_64-pc-windows-msvc
 
     steps:
       - name: Installing Rust toolchain
