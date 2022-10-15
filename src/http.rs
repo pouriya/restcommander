@@ -402,14 +402,32 @@ fn authentication_with_token_filter(
     tokens: Arc<RwLock<HashMap<String, u32>>>,
     cfg: Arc<RwLock<Cfg>>,
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
-    extract_token_filter().and_then(move |token: String| {
-        let tokens = tokens.clone();
-        let cfg = cfg.clone();
-        async move {
-            authentication_with_token(tokens, token, cfg)
-                .map_err(|error| warp::reject::custom(HTTPError::Authentication(error)))
-        }
-    })
+    let have_password = !cfg
+        .read()
+        .unwrap()
+        .config_value
+        .server
+        .password_sha512
+        .is_empty()
+        .clone();
+    warp::any()
+        .map(move || have_password)
+        .and_then(|have_password: bool| async move {
+            if have_password {
+                Err(warp::reject::reject())
+            } else {
+                Ok(())
+            }
+        })
+        .or(extract_token_filter().and_then(move |token: String| {
+            let tokens = tokens.clone();
+            let cfg = cfg.clone();
+            async move {
+                authentication_with_token(tokens, token, cfg)
+                    .map_err(|error| warp::reject::custom(HTTPError::Authentication(error)))
+            }
+        }))
+        .unify()
 }
 
 fn api_auth_token(
@@ -433,11 +451,7 @@ fn api_auth_token(
             if let Err(error) = result {
                 return make_api_response(Err(HTTPError::Authentication(error)));
             }
-            let token = {
-                let username = uuid::Uuid::new_v4().to_string();
-                let password = uuid::Uuid::new_v4().to_string();
-                base64::encode(format!("{}:{}", username, password))
-            };
+            let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
             let timestamp = chrono::Local::now().second() + 60;
             tokens
                 .clone()
@@ -976,11 +990,15 @@ fn authentication_with_token(
     token: String,
     cfg: Arc<RwLock<Cfg>>,
 ) -> Result<(), HTTPAuthenticationError> {
+    let cfg = cfg.clone().read().unwrap().config_value.clone();
+    if cfg.server.password_sha512.is_empty() {
+        return Ok(());
+    }
     if token.is_empty() {
         return Err(HTTPAuthenticationError::TokenNotFound);
     };
-    if let Some(api_token) = cfg.read().unwrap().config_value.server.api_token.clone() {
-        if token == api_token {
+    if let Some(ref api_token) = cfg.server.api_token {
+        if &token == api_token {
             return Ok(());
         }
     }
@@ -1259,15 +1277,15 @@ fn make_api_response_with_header_and_stats(
             })
             .unwrap(),
     );
-    if body
-        .as_object_mut()
-        .unwrap()
-        .get("result")
-        .unwrap()
-        .is_null()
-    {
-        body.as_object_mut().unwrap().remove("result");
-    }
+    // if body
+    //     .as_object_mut()
+    //     .unwrap()
+    //     .get("result")
+    //     .unwrap()
+    //     .is_null()
+    // {
+    //     body.as_object_mut().unwrap().remove("result");
+    // }
     if let Some(statistics) = maybe_statistics {
         body.as_object_mut().unwrap().insert(
             "statistics".to_string(),
