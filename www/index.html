@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en" class="h-100">
+    <head>
+        <meta charset="UTF-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1"/>
+        <link id="favicon" rel="shortcut icon" type="image/x-icon" href="favicon.ico"/>
+        <link rel="stylesheet" href="bootstrap.min.css" />
+        <title>RestCommander</title>
+        <style>
+            body {
+                background-color: #141248;
+                text-shadow: 0 .05rem .1rem rgba(0, 0, 0, .5);
+                box-shadow: 0 !important;
+                background-image: url('banner-background.jpg');
+                background-repeat: repeat;
+                background-size: cover;
+            }
+            .cover-container {
+                max-width: 42em;
+            }
+            .btn-secondary {
+                background-color: #384dc8;
+                border-color: #384dc8;
+            }
+        </style>
+    </head>
+    <body onload="main()" class="invisible d-flex h-100 text-center text-white">
+        <div class="cover-container d-flex w-100 h-100 p-3 mx-auto flex-column">
+            <header class="mb-auto">
+                <div>
+                    <h1 id="service-name" class="mb-3 mt-4"></h1>
+                </div>
+            </header>
+            <div class="px-3">
+                <h2 id="banner-title"></h2>
+                <p id="banner-text" class="lead"></p>
+                <p class="lead">
+                    <a href="login.html" class="btn btn-lg btn-secondary fw-bold">Login</a>
+                </p>
+            </div>
+            <footer class="mt-auto">
+                <div id="footer" class="mt-0 text-secondary"></div>
+            </footer>
+        </div>
+        <script src="bootstrap.bundle.min.js"></script>
+        <script src="index.js" type="module"></script>
+    </body>
+</html>
