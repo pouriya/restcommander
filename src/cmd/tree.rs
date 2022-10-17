@@ -5,6 +5,7 @@ use log::{debug, trace, warn};
 use serde_derive::{Deserialize, Serialize};
 use serde_yaml;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
 
@@ -46,6 +47,8 @@ pub struct CommandOptionInfo {
     pub value_type: CommandOptionInfoValueType,
     #[serde(default)]
     pub default_value: Option<CommandOptionValue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<CommandOptionInfoValueSize>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -53,9 +56,9 @@ pub struct CommandOptionInfo {
 pub enum CommandOptionInfoValueType {
     Any,
     Bool,
-    Integer(CommandOptionInfoValueTypeInteger),
-    Float(CommandOptionInfoValueTypeFloat),
-    String(CommandOptionInfoValueTypeString),
+    Integer,
+    Float,
+    String,
     AcceptedValueList(Vec<String>),
 }
 
@@ -70,21 +73,9 @@ pub enum CommandOptionValue {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CommandOptionInfoValueTypeString {
-    pub min_size: Option<u64>,
-    pub max_size: Option<u64>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CommandOptionInfoValueTypeInteger {
-    pub min_size: Option<i64>,
-    pub max_size: Option<i64>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CommandOptionInfoValueTypeFloat {
-    pub min_size: Option<f64>,
-    pub max_size: Option<f64>,
+pub struct CommandOptionInfoValueSize {
+    pub min: Option<u64>,
+    pub max: Option<u64>,
 }
 
 impl Command {
@@ -188,7 +179,12 @@ impl Command {
             });
         };
         let mut command = Self {
-            name: String::new(),
+            name: root_directory
+                .file_name()
+                .unwrap_or(OsStr::new(""))
+                .to_str()
+                .unwrap()
+                .to_string(),
             file_path: root_directory.clone(),
             info_file_path: Default::default(),
             http_path: http_base_path.clone(),
@@ -231,8 +227,10 @@ impl Command {
     }
 
     pub fn detect_command_info(command_filename: &PathBuf) -> Result<CommandInfo, CommandError> {
-        let mut info_filename = command_filename.clone();
-        info_filename.set_extension("yaml");
+        let mut info_filename = PathBuf::from(format!(
+            "{}.yaml",
+            command_filename.clone().to_str().unwrap()
+        ));
         if !info_filename.exists() {
             info_filename.set_extension("yml");
         };
@@ -297,9 +295,9 @@ impl Command {
                         CommandOptionInfoValueType::AcceptedValueList(_),
                         CommandOptionValue::String(_),
                     ) => (),
-                    (CommandOptionInfoValueType::String(_), CommandOptionValue::String(_)) => (),
-                    (CommandOptionInfoValueType::Integer(_), CommandOptionValue::Integer(_)) => (),
-                    (CommandOptionInfoValueType::Float(_), CommandOptionValue::Float(_)) => (),
+                    (CommandOptionInfoValueType::String, CommandOptionValue::String(_)) => (),
+                    (CommandOptionInfoValueType::Integer, CommandOptionValue::Integer(_)) => (),
+                    (CommandOptionInfoValueType::Float, CommandOptionValue::Float(_)) => (),
                     (CommandOptionInfoValueType::Bool, CommandOptionValue::Bool(_)) => (),
                     _ => {
                         check_options = Err(format!("for option '{}' the default value type should be the same as value type", option));

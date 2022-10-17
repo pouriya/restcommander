@@ -1,0 +1,8 @@
+description: |
+  RestCommander is nothing but a Rest API layer on top of your own scripts.  
+  It means that everything you see here or you get from RestCommander API is your own script's <a href="https://en.wikipedia.org/wiki/Standard_streams" target="_blank">stdout</a>! 
+  Here is the <i>Hello World!</i> example.
+  If you <b>RUN</b> this example, RestCommander runs the script and that scripts simply prints text <i>&quot;Hello World!&quot;</i>.
+  You can see script source code by running below command:
+  <pre>docker run --entrypoint=/bin/bat restcommander:tour scripts/tour/1.--hello-world</pre>
+  <small>after running this example, go to the next example from above menu.</small>

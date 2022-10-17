@@ -1,0 +1,32 @@
+ARG DOCKER_REGISTRY
+ARG DOCKER_ALPINE_VERSION=latest
+FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION} as builder
+# Downloads restcommander to /bin/restcommander:
+COPY tools/docker/downloader.sh .
+RUN chmod a+x downloader.sh && ./downloader.sh
+# Creates configuration at /restcommander:
+COPY tools/docker/configuration.sh .
+RUN chmod a+x configuration.sh && ./configuration.sh
+
+RUN mkdir -p /restcommander/scripts/tour
+COPY tools/tour/scripts/* /restcommander/scripts/tour/
+
+RUN apk --no-cache add curl tar
+RUN set -xe                                                                                                      \
+    && bat=bat-v0.22.1-x86_64-unknown-linux-musl                                                                 \
+    && curl -fsSLv --output ${bat}.tar.gz https://github.com/sharkdp/bat/releases/download/v0.22.1/${bat}.tar.gz \
+    && tar -xf ${bat}.tar.gz                                                                                     \
+    && chmod a+x ${bat}/bat                                                                                      \
+    && mv ${bat}/bat /bin/bat
+
+
+FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION}
+COPY --from=builder /restcommander /restcommander
+COPY --from=builder /bin/restcommander /bin/restcommander
+COPY --from=builder /bin/bat /bin/bat
+RUN apk --no-cache add python3
+WORKDIR /restcommander
+VOLUME ["/restcommander", "/restcommander/scripts", "/restcommander/www"]
+EXPOSE 1995
+ENTRYPOINT ["/bin/restcommander"]
+CMD ["config", "config.toml"]

@@ -27,11 +27,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push releases
         uses: docker/build-push-action@v3
         with:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:${{ github.ref_name }},${{ secrets.DOCKERHUB_USERNAME }}/restcommander:latest
+
+      - name: Build and push tour
+        uses: docker/build-push-action@v3
+        with:
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:tour
+          file: TourDockerfile
 
 
   publish-installer:
