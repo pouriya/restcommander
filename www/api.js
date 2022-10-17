@@ -124,6 +124,10 @@ class Api {
     async setPassword(password, filterFunction) {
         return this.fetch('setPassword', filterFunction, 'POST', {}, JSON.stringify({'password': password}))
     }
+
+    async state(http_path, filterFunction) {
+        return this.fetch(http_path, filterFunction, 'GET', {'X-RESTCOMMANDER-STATISTICS': "true"})
+    }
 }
 
 export {ApiOpts, Api}

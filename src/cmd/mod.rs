@@ -1,6 +1,6 @@
 use crate::cmd::errors::CommandError;
 pub use crate::cmd::runner::{CommandInput, CommandOutput, CommandStats};
-pub use crate::cmd::tree::{Command, CommandOptionInfo};
+pub use crate::cmd::tree::{Command, CommandInfoGetState, CommandOptionInfo};
 use crate::cmd::tree::{
     CommandOptionInfoValueSize, CommandOptionInfoValueType, CommandOptionValue,
 };
@@ -61,6 +61,36 @@ pub fn run_command(
         });
     };
     runner::run_command(&command.file_path, Vec::new(), Some(input), true, env_map)
+}
+
+pub fn get_state(
+    command: &Command,
+    env_map: HashMap<String, String>,
+) -> Result<CommandOutput, CommandError> {
+    if let Some(ref info) = command.info {
+        if info.support_state && info.state.is_some() {
+            let get_state = info.state.as_ref().unwrap();
+            match get_state {
+                CommandInfoGetState::Constant(value) => {
+                    let mut output = CommandOutput::new();
+                    output.stdout = value.clone();
+                    output.decoded_stdout = Ok(serde_json::Value::String(value.clone()));
+                    Ok(output)
+                }
+                CommandInfoGetState::Options(options) => {
+                    runner::run_command(&command.file_path, options.clone(), None, true, env_map)
+                }
+            }
+        } else {
+            Err(CommandError::NoCommandState {
+                filename: command.file_path.clone(),
+            })
+        }
+    } else {
+        Err(CommandError::NoCommandInfo {
+            filename: command.file_path.clone(),
+        })
+    }
 }
 
 pub fn check_input(command: &Command, input: &CommandInput) -> Result<CommandInput, String> {

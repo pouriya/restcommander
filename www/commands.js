@@ -342,15 +342,79 @@ async function drawCommand(commandName, command, element) {
         element.appendChild(commandDescriptionElement)
     }
 
+    if (command.info.support_state) {
+        var commandStateHeaderElement = document.createElement('h3')
+        setAttributes(
+            commandStateHeaderElement,
+            {
+                'id': 'command-state-header',
+                'class': 'h3 my-4 text-capitalize text-start'
+            }
+        )
+        commandStateHeaderElement.innerHTML = 'Current State'
+        element.appendChild(commandStateHeaderElement)
+        var commandStateDivElement = document.createElement('div')
+        setAttributes(
+            commandStateDivElement,
+            {'class': '', 'id': 'command-state'}
+        )
+        var waitingElement = document.createElement('p')
+        setAttributes(
+            waitingElement,
+            {'class': 'text-center', 'id': 'command-state-text'}
+        )
+        commandStateDivElement.appendChild(waitingElement)
+        element.appendChild(commandStateDivElement)
+        getAndDrawCommandState(command)
+    }
+
     var optionDefinitions = {};
     if ('options' in commandInfo) {
         optionDefinitions = commandInfo.options
     };
-    element.appendChild(await makeCommandOptionsInputs(optionDefinitions, command.http_path))
+    element.appendChild(await makeCommandOptionsInputs(optionDefinitions, command))
 
 }
 
-async function makeCommandOptionsInputs(options, httpPath) {
+async function getAndDrawCommandState(command) {
+    await beforeGetCommandState(command)
+    const runResult = await new Api(ApiOpts).state(command.http_path.replace('run', 'state'))
+    afterGetCommandState(command, runResult)
+    if (runResult.status === 401) {
+        changeLogoutToLogin()
+    }
+}
+
+async function beforeGetCommandState(command) {
+    var waitingElement = document.createElement('p')
+    setAttributes(
+        waitingElement,
+        {'class': 'text-center', 'id': 'command-state-text'}
+    )
+    waitingElement.innerHTML = 'Waiting for state...'.italics()
+    document.getElementById('command-state-text').replaceWith(waitingElement)
+}
+
+async function afterGetCommandState(command, runResult) {
+    var result = runResult.result
+    const resultText = prettifyResponse(result, 0)
+    var resultTextElement = document.createElement('p')
+    setAttributes(
+        resultTextElement,
+        {
+            'class': 'p-1 text-start text-break',
+            'id': 'command-state-text'
+        }
+    )
+    if (runResult.status === 200) {
+        resultTextElement.innerHTML = resultText
+    } else {
+        resultTextElement.innerHTML = 'Error: ' + resultText
+    }
+    document.getElementById('command-state-text').replaceWith(resultTextElement)
+}
+
+async function makeCommandOptionsInputs(options, command) {
     var commandOptionsElement = document.createElement('div')
     setAttributes(
         commandOptionsElement,
@@ -360,7 +424,7 @@ async function makeCommandOptionsInputs(options, httpPath) {
     setAttributes(
         commandOptionFormElement,
         {
-            'action': httpPath,
+            'action': command.http_path,
             'method': 'POST',
             'name': 'options-form',
             'id': 'options-form'
@@ -444,11 +508,15 @@ async function makeCommandOptionsInputs(options, httpPath) {
                 requestOptions[pair[0]] = value;
             };
             updateResultBeforeRequest()
-            const runResult = await new Api(ApiOpts).run(httpPath, requestOptions)
+            const runResult = await new Api(ApiOpts).run(command.http_path, requestOptions)
+            if (runResult.status !== 0 && command.info.support_state) {
+                getAndDrawCommandState(command)
+            }
             updateResultAfterRequest(runResult)
             if (runResult.status === 401) {
                 changeLogoutToLogin()
             }
+            document.location = '#command-result'
         }
     );
     commandOptionsElement.appendChild(commandOptionFormElement);
