@@ -1,6 +1,6 @@
 [package]
 name = "restcommander"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "HTTP REST API layer on top of scripts with a simple web dashboard"
 authors = ["pouriya.jahanbakhsh@gmail.com"]
