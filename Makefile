@@ -27,6 +27,7 @@ docker:
 
 dev: download-bootstrap
 	cargo build --target ${TARGET}
+	@ cp ./target/${TARGET}/debug/restcommander restcommander-${VERSION}-${TARGET}-dev${RELEASE_FILENAME_POSTFIX}
 
 setup-dev: dev ${DEV_DIR} ${DEV_CFG}
 
@@ -36,16 +37,10 @@ start-dev: setup-dev
 download-bootstrap: www/bootstrap.bundle.min.js www/bootstrap.min.css
 
 www/bootstrap.bundle.min.js:
-	curl --silent --output bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
-	# Remove sourceMappingURL which is the last line in file:
-	cat bootstrap.bundle.min.js | tail -r | tail -n +2 | tail -r > www/bootstrap.bundle.min.js
-	rm -rf bootstrap.bundle.min.js
+	curl --silent --output www/bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
 
 www/bootstrap.min.css:
-	curl --silent --output bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
-	# Remove sourceMappingURL which is the last line in file:
-	cat bootstrap.min.css | tail -r | tail -n +2 | tail -r > www/bootstrap.min.css
-	rm -rf bootstrap.min.css
+	curl --silent --output www/bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
 
 ${DEV_DIR}:
 	mkdir -p ${DEV_DIR}
@@ -80,8 +75,8 @@ dist-clean: clean
 	rm -rf www/bootstrap.*.js www/bootstrap.*.css
 
 update-self-signed-certificate:
-	openssl genrsa 2048 > src/samples/key.pem
-	echo '\n\n\n\n\n\n\n\n\n\n\n\n\n\n' | openssl req -new -x509 -nodes -days 3650 -key src/samples/key.pem -out src/samples/cert.pem
+	openssl genrsa 2048 > samples/self-signed-key.pem
+	echo '\n\n\n\n\n\n\n\n\n\n\n\n\n\n' | openssl req -new -x509 -nodes -days 3650 -key samples/self-signed-key.pem -out samples/self-signed-cert.pem
 
 lint:
 	cargo fmt --verbose --check
