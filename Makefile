@@ -5,6 +5,9 @@ DEV_CFG=${DEV_DIR}config.toml
 BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
 VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}')
 RELEASE_FILENAME_POSTFIX=
+DOCKER_REGISTRY=
+DOCKER_ALPINE_VERSION=latest
+DOCKER_IMAGE_VERSION=latest
 
 
 all: release deb
@@ -26,6 +29,9 @@ tag: release
 deb: release
 	cargo deb --target ${TARGET}
 	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
+
+docker:
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} .
 
 dev: download-bootstrap
 	cargo build --target ${TARGET}
@@ -87,4 +93,4 @@ archive:
 	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} --exclude='.git' -zcvf restcommander-${VERSION}-src.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}-src.tar.gz .
 	ls -sh *.tar.gz
 
-.PHONY: all release tag deb dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
+.PHONY: all release tag deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint archive clean-dev
