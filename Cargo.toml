@@ -59,7 +59,7 @@ section = "utility"
 priority = "optional"
 assets = [
     ["target/release/restcommander", "usr/local/bin/", "755"],
-    ["src/samples/restcommander.toml", "etc/restcommander/config.toml.default", "644"],
+    ["samples/config.toml", "etc/restcommander/config.toml.default", "644"],
 ]
 systemd-units = { enable = true }
 maintainer-scripts = "pkg/debian/"
