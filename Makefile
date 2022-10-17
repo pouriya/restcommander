@@ -24,8 +24,8 @@ deb:
 	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
 docker:
-	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} -t restcommander:latest .
-	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:tour -f TourDockerfile .
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --build-arg RESTCOMMANDER_VERSION=${VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} -t restcommander:latest .
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --build-arg RESTCOMMANDER_VERSION=${VERSION} --force-rm -t restcommander:tour -f TourDockerfile .
 
 dev: download-bootstrap
 	rm -rf restcommander-*-dev* || true
