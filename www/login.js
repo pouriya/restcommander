@@ -124,11 +124,11 @@ async function loginSubmitEventListener(event) {
 async function main() {
     const configuration = await new Api(ApiOpts).configuration(true)
     if (configuration !== false) {
-        if ('serviceName' in configuration) {
-            document.getElementById('login-title').innerHTML = 'Login to ' + configuration.serviceName
-            document.title = configuration.serviceName
+        if ('service_name' in configuration) {
+            document.getElementById('login-title').innerHTML = 'Login to ' + configuration.service_name
+            document.title = configuration.service_name
         } else {
-            console.log('Could not found `serviceName` in server configuration')
+            console.log('Could not found `service_name` in server configuration')
         }
     }
     document.body.className = 'visible'

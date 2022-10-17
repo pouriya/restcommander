@@ -4,26 +4,26 @@ import {maybeRemoveElement, setAttributes} from './utils.js'
 async function main() {
     const configuration = await new Api(ApiOpts).configuration(true)
     if (configuration !== false) {
-        if ('serviceName' in configuration) {
-            document.getElementById('service-name').innerHTML = configuration.serviceName
-            document.title = configuration.serviceName
+        if ('service_name' in configuration) {
+            document.getElementById('service-name').innerHTML = configuration.service_name
+            document.title = configuration.service_name
         } else {
-            console.log('Could not found `serviceName` in server configuration')
+            console.log('Could not found `service_name` in server configuration')
         }
-        if ('bannerTitle' in configuration) {
-            document.getElementById('banner-title').innerHTML = configuration.bannerTitle
+        if ('banner_title' in configuration) {
+            document.getElementById('banner-title').innerHTML = configuration.banner_title
         } else {
-            console.log('Could not found `bannerTitle` in server configuration')
+            console.log('Could not found `banner_title` in server configuration')
         }
-        if ('bannerText' in configuration) {
-            document.getElementById('banner-text').innerHTML = configuration.bannerText
+        if ('banner_text' in configuration) {
+            document.getElementById('banner-text').innerHTML = configuration.banner_text
         } else {
-            console.log('Could not found `bannerText` in server configuration')
+            console.log('Could not found `banner_text` in server configuration')
         }
-        if ('bannerFooter' in configuration) {
-            document.getElementById('footer').innerHTML = configuration.bannerFooter
+        if ('footer' in configuration) {
+            document.getElementById('footer').innerHTML = configuration.footer
         } else {
-            console.log('Could not found `bannerFooter` in server configuration')
+            console.log('Could not found `footer` in server configuration')
         }
     }
     const testAuth = await new Api(ApiOpts).testAuth(true)
