@@ -1,5 +1,5 @@
 # RestCommander
-Place your own scripts behind a REST-API server and run them from a simple web dashboard.  
+HTTP REST-API layer on top of scripts with a simple web dashboard.  
 
 ## Tour
 RestCommander has a tiny docker image to show you how it works:
