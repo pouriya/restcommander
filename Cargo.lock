@@ -1236,7 +1236,7 @@ dependencies = [
 
 [[package]]
 name = "restcommander"
-version = "22.9.24"
+version = "22.10.3"
 dependencies = [
  "anyhow",
  "base64",
