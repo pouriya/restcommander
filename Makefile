@@ -11,14 +11,13 @@ DOCKER_IMAGE_VERSION=${VERSION}
 
 
 all: release
-	@ ls -sh *.deb
 	@ ls -sh restcommander-*
 
 release: download-bootstrap
 	cargo build --release --target ${TARGET}
 	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
 
-deb: release
+deb:
 	cargo deb --target ${TARGET}
 	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
@@ -35,7 +34,6 @@ start-dev: setup-dev
 	cd ${DEV_DIR} && ../${DEV_CMD} config config.toml
 
 download-bootstrap: www/bootstrap.bundle.min.js www/bootstrap.min.css
-	@ ls -sh www/bootstrap.*
 
 www/bootstrap.bundle.min.js:
 	curl --silent --output bootstrap.bundle.min.js https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/js/bootstrap.bundle.min.js
