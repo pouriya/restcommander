@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fs;
 use std::io::ErrorKind;
 use std::net::Ipv4Addr;
@@ -7,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use base64;
+use chrono::Timelike;
 
 use log::{
     debug, error, info, log_enabled, trace,
@@ -73,6 +75,12 @@ pub enum HTTPAuthenticationError {
     InvalidCaptcha,
     #[error("invalid CAPTCHA form")]
     InvalidCaptchaForm,
+    #[error("Could not found HTTP Cookie header")]
+    CookieNotFound,
+    #[error("HTTP Cookie is expired")]
+    CookieExpired,
+    #[error("HTTP Cookie is invalid")]
+    InvalidCookie,
 }
 
 #[derive(Error, Debug)]
@@ -136,6 +144,9 @@ impl HTTPAuthenticationError {
             Self::InvalidUsernameOrPassword => 2007,
             Self::InvalidCaptcha => 2008,
             Self::InvalidCaptchaForm => 2009,
+            Self::CookieNotFound => 2010,
+            Self::CookieExpired => 2011,
+            Self::InvalidCookie => 2012,
         }
     }
 
@@ -149,6 +160,9 @@ impl HTTPAuthenticationError {
             Self::InvalidUsernameOrPassword => StatusCode::UNAUTHORIZED,
             Self::InvalidCaptcha => StatusCode::UNAUTHORIZED,
             Self::InvalidCaptchaForm => StatusCode::BAD_REQUEST,
+            Self::CookieNotFound => StatusCode::UNAUTHORIZED,
+            Self::CookieExpired => StatusCode::UNAUTHORIZED,
+            Self::InvalidCookie => StatusCode::UNAUTHORIZED,
         }
     }
 }
@@ -223,21 +237,31 @@ pub async fn setup(
     } else {
         None
     };
-    let api_filter = warp::path("api")
-        .and(authentication_filter(cfg.clone(), maybe_captcha.clone()))
-        .untuple_one()
-        .and(
-            api_run_filter
-                .or(api_reload_filter)
-                .or(api_get_commands_filter(commands.clone()))
-                .or(api_set_password_filter(cfg.clone()))
-                .or(api_test_auth()),
-        );
+    let tokens = Arc::new(RwLock::new(HashMap::new()));
+    let api_filter = warp::path("api").and(
+        warp::path("auth")
+            .and(
+                authentication_filter(cfg.clone(), tokens.clone(), maybe_captcha.clone(), true)
+                    .untuple_one()
+                    .and(api_auth_filter(tokens.clone())),
+            )
+            .or(
+                authentication_filter(cfg.clone(), tokens.clone(), maybe_captcha.clone(), false)
+                    .untuple_one()
+                    .and(
+                        api_run_filter
+                            .or(api_reload_filter)
+                            .or(api_get_commands_filter(commands.clone()))
+                            .or(api_set_password_filter(cfg.clone()))
+                            .or(api_test_auth()),
+                    ),
+            ),
+    );
     let static_filter = warp::path("static").and(
         static_index_html_filter(cfg.clone())
             .or(static_external_filter(cfg.clone()).or(static_internal_filter(cfg.clone()))),
     );
-    let dynamic_captcha = warp::path("dynamic").and(captcha(maybe_captcha.clone()));
+    let dynamic_captcha = warp::path("dynamic").and(captcha_filter(maybe_captcha.clone()));
 
     let routes = api_filter
         .or(static_filter)
@@ -309,20 +333,40 @@ pub async fn maybe_handle_message(channel_receiver: &mut Receiver<()>) -> Result
 
 fn authentication_filter(
     cfg: Arc<RwLock<Cfg>>,
+    tokens: Arc<RwLock<HashMap<String, u32>>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
+    allow_basic_auth: bool,
 ) -> impl Filter<Extract = ((),), Error = Rejection> + Clone {
     warp::header::<String>(warp::http::header::AUTHORIZATION.as_str())
+        .or(warp::any().map(|| String::new()))
+        .unify()
         .and(
-            warp::body::form::<HashMap<String, String>>()
-                .or(warp::any().map(|| HashMap::new()))
+            warp::post().or(warp::any()).unify().and(
+                warp::body::form::<HashMap<String, String>>()
+                    .or(warp::any().map(|| HashMap::new()))
+                    .unify(),
+            ),
+        )
+        .and(
+            warp::cookie::cookie("token")
+                .or(warp::any().map(|| "".to_string()))
                 .unify(),
         )
         .and_then(
-            move |authorization_value: String, form: HashMap<String, String>| {
+            move |authorization_value: String, form: HashMap<String, String>, cookie: String| {
                 let cfg = cfg.clone();
+                let tokens = tokens.clone();
                 let maybe_captcha = maybe_captcha.clone();
                 async move {
-                    match try_authenticate(cfg, maybe_captcha, authorization_value, form) {
+                    match try_authenticate(
+                        cfg,
+                        tokens,
+                        maybe_captcha,
+                        authorization_value,
+                        form,
+                        cookie,
+                        allow_basic_auth,
+                    ) {
                         Err(reason) => Err(warp::reject::custom(HTTPError::Authentication(reason))),
                         Ok(_) => Ok(()),
                     }
@@ -433,6 +477,41 @@ fn api_test_auth() -> impl Filter<Extract = (Response<String>,), Error = Rejecti
         .then(|| async move { make_api_response_ok() })
 }
 
+fn api_auth_filter(
+    tokens: Arc<RwLock<HashMap<String, u32>>>,
+) -> impl Filter<Extract = (Response<String>,), Error = Infallible> + Clone {
+    warp::any().then(move || {
+        let token = {
+            let username = uuid::Uuid::new_v4().to_string();
+            let password = uuid::Uuid::new_v4().to_string();
+            base64::encode(format!("{}:{}", username, password))
+        };
+        let timestamp = chrono::Local::now().second() + 1000;
+        tokens
+            .clone()
+            .write()
+            .unwrap()
+            .insert(token.clone(), timestamp);
+        async move {
+            make_api_response_with_headers(
+                serde_json::json!({ "token": token }),
+                StatusCode::OK,
+                Some({
+                    let mut headers = warp::http::HeaderMap::new();
+                    headers.insert(
+                        warp::http::header::SET_COOKIE,
+                        format!("token={}; Path=/; HttpOnly; Max-Age=1000", token)
+                            .parse()
+                            .unwrap(),
+                    );
+                    headers
+                }),
+                None,
+            )
+        }
+    })
+}
+
 fn static_index_html_filter(
     cfg: Arc<RwLock<Cfg>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
@@ -525,7 +604,7 @@ fn static_internal_filter(
         })
 }
 
-fn captcha(
+fn captcha_filter(
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
 ) -> impl Filter<Extract = (Response<Vec<u8>>,), Error = Rejection> + Clone {
     warp::get().and(warp::path("captcha")).and_then(move || {
@@ -551,16 +630,33 @@ fn captcha(
 
 fn try_authenticate(
     cfg: Arc<RwLock<Cfg>>,
+    tokens: Arc<RwLock<HashMap<String, u32>>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
     authorization_value: String,
     form: HashMap<String, String>,
+    cookie: String,
+    allow_basic_auth: bool,
 ) -> Result<(), HTTPAuthenticationError> {
+    debug!("allow_basic_auth={}", allow_basic_auth);
     let server_cfg = cfg.read().unwrap().config_value.server.clone();
     if server_cfg.password_sha512.is_empty() && server_cfg.username.is_empty() {
         return Ok(());
     };
     if server_cfg.password_sha512.is_empty() || server_cfg.username.is_empty() {
         return Err(HTTPAuthenticationError::UsernameOrPasswordIsNotSet);
+    };
+    if !allow_basic_auth {
+        if cookie.is_empty() {
+            return Err(HTTPAuthenticationError::CookieNotFound);
+        };
+        return if let Some(expire_time) = tokens.clone().read().unwrap().get(cookie.as_str()) {
+            if expire_time > &chrono::Local::now().second() {
+                return Ok(());
+            };
+            Err(HTTPAuthenticationError::CookieExpired)
+        } else {
+            Err(HTTPAuthenticationError::InvalidCookie)
+        };
     };
     match authorization_value
         .as_str()
@@ -959,7 +1055,7 @@ async fn handle_rejection(rejection: Rejection) -> Result<Response<String>, Reje
         )
     } else if let Some(HTTPError::Captcha(captcha_error)) = rejection.find::<HTTPError>() {
         Response::builder()
-            .status(StatusCode::BAD_REQUEST)
+            .status(StatusCode::NOT_ACCEPTABLE)
             .body(captcha_error.to_string())
             .unwrap()
     } else {
