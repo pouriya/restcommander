@@ -20,31 +20,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:latest
-
       - name: Build Docker image
         uses: docker/build-push-action@v3
         with:
           push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Extract metadata (tags, labels) for Docker tour
-        id: tour_meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:tour
 
       - name: Build Docker tour image
         uses: docker/build-push-action@v3
         with:
           push: false
-          tags: ${{ steps.tour_meta.outputs.tags }}
-          labels: ${{ steps.tour_meta.outputs.labels }}
           file: TourDockerfile
 
   build:
