@@ -1,6 +1,14 @@
 name: Check
 
-on: [push, pull_request]
+on:
+  push:
+    tags-ignore:
+      - "*"
+    paths-ignore:
+      - "**.md"
+    branches-ignore:
+      - "documentation"
+  pull_request:
 
 jobs:
   docker:
