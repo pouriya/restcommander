@@ -36,11 +36,12 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: true
+          # My GitHub and Docker username are the same:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:${{ github.ref_name }}
             ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:latest
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ secrets.DOCKERHUB_USERNAME }}/restcommander:${{ github.ref_name }}
+            ghcr.io/${{ secrets.DOCKERHUB_USERNAME }}/restcommander:latest
 
       - name: Build and push tour
         uses: docker/build-push-action@v3
