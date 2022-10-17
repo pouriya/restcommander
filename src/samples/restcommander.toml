@@ -27,14 +27,21 @@ tls_key_file = "key.pem"
 ## If you specify `captcha_file`, CAPTCHA is required to get new bearer token.
 ## You can disable CAPTCHA by commenting this field.
 captcha_file = "captcha.txt"
+captcha_case_sensitive = false
 ## What IP addresses can access the dashboard and REST API? Also wildcard characters `?` and `*` are supported.
 ## Default value: []
 ## Example: ["127.0.0.1", "192.168.*"]
 ip_whitelist = []
+## You can use this API token for your application so you do not need pass CAPTCHA to get a new token.
+## Also you can use this token inside your scripts to call RestCommander API recursively!
+# api_token = "eb17ac80724e24be474c11af4657e923ce8e3fe40be2f06aeb89d47254c69c94fd472a424b6dea3dc74ed7fc962589d732545f01a5f293daa739a6f634ead336"
 
 [commands]
 ## Root directory to load command files and directories and their information files.
 root_directory = "scripts"
+## Your scripts will receive `commands.configuration` key/values directly from env or stdin
+[commands.configuration]
+## foo = 1234
 
 
 [www]
@@ -57,4 +64,4 @@ enabled = true
 service_name = "RestCommander"
 banner_title = "Simple, Flexible and Reliable"
 banner_text = "RestCommander helps you run your own scripts simply from its web dashboard or REST API"
-footer = "Hosted on <a href=\"https://github.com/pouriya/RestCommander\" target=\"_blank\">GitHub</a>"
+footer = "Hosted on <a href=\"https://github.com/pouriya/RestCommander\" target=\"_blank\"><b>GitHub</b></a>"

@@ -19,6 +19,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use ttyaskpass::AskPass;
 
+use crate::cmd::runner::CommandOptionsValue;
 use thiserror::Error;
 
 use crate::samples;
@@ -77,9 +78,13 @@ pub struct CMDOptRun {
     pub tls_key_file: Option<PathBuf>,
     #[structopt(long, parse(from_os_str), env = "RESTCOMMANDER_CAPTCHA_FILE")]
     pub captcha_file: Option<PathBuf>,
+    #[structopt(long, env = "RESTCOMMANDER_CAPTCHA_CASE_SENSITIVE")]
+    pub captcha_case_sensitive: bool,
+    #[structopt(long, env = "RESTCOMMANDER_API_TOKEN")]
+    pub api_token: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Cfg {
     pub config_value: CfgValue,
     pub filename: Option<PathBuf>,
@@ -108,7 +113,7 @@ trait CheckValue {
     fn check_value(&mut self) -> Result<(), Self::Error>;
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CfgValue {
     #[serde(default)]
     pub server: CfgServer,
@@ -194,8 +199,12 @@ pub struct CfgServer {
     #[serde(default = "CfgServerDefault::tls_key_file")]
     pub tls_key_file: Option<PathBuf>,
     pub captcha_file: Option<PathBuf>,
+    #[serde(default = "CfgServerDefault::captcha_case_sensitive")]
+    pub captcha_case_sensitive: bool,
     #[serde(default = "CfgServerDefault::ip_whitelist")]
     pub ip_whitelist: Vec<String>,
+    #[serde(default = "CfgServerDefault::api_token")]
+    pub api_token: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -349,8 +358,14 @@ impl CfgServerDefault {
     fn captcha_file() -> Option<PathBuf> {
         None
     }
+    fn captcha_case_sensitive() -> bool {
+        false
+    }
     fn ip_whitelist() -> Vec<String> {
         Vec::new()
+    }
+    fn api_token() -> Option<String> {
+        None
     }
 }
 
@@ -366,15 +381,19 @@ impl Default for CfgServer {
             tls_cert_file: CfgServerDefault::tls_cert_file(),
             tls_key_file: CfgServerDefault::tls_key_file(),
             captcha_file: CfgServerDefault::captcha_file(),
+            captcha_case_sensitive: CfgServerDefault::captcha_case_sensitive(),
             ip_whitelist: CfgServerDefault::ip_whitelist(),
+            api_token: CfgServerDefault::api_token(),
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CfgCommands {
     #[serde(default = "CfgCommandsDefault::root_directory")]
     pub root_directory: PathBuf,
+    #[serde(default = "CfgCommandsDefault::configuration")]
+    pub configuration: CommandOptionsValue,
 }
 
 struct CfgCommandsDefault {}
@@ -392,12 +411,16 @@ impl CfgCommandsDefault {
                 .into_boxed_str(),
         )
     }
+    fn configuration() -> CommandOptionsValue {
+        HashMap::default()
+    }
 }
 
 impl Default for CfgCommands {
     fn default() -> Self {
         Self {
             root_directory: CfgCommandsDefault::root_directory(),
+            configuration: CfgCommandsDefault::configuration(),
         }
     }
 }
@@ -599,10 +622,13 @@ impl TryFrom<CMDOptRun> for Cfg {
                     tls_cert_file: command_line_options.tls_cert_file,
                     tls_key_file: command_line_options.tls_key_file,
                     captcha_file: command_line_options.captcha_file,
+                    captcha_case_sensitive: command_line_options.captcha_case_sensitive,
                     ip_whitelist: Vec::new(),
+                    api_token: command_line_options.api_token,
                 },
                 commands: CfgCommands {
                     root_directory: command_line_options.root_directory,
+                    configuration: CfgCommandsDefault::configuration(),
                 },
                 logging: CfgLogging {
                     level_name: command_line_options.log_level,

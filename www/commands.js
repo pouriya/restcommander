@@ -418,7 +418,7 @@ async function makeCommandOptionsInputs(options, command) {
     var commandOptionsElement = document.createElement('div')
     setAttributes(
         commandOptionsElement,
-         {'id': 'command-options'}
+         {'id': 'command-options', 'class': 'pt-3'}
     )
     var commandOptionFormElement = document.createElement('form')
     setAttributes(
@@ -509,7 +509,7 @@ async function makeCommandOptionsInputs(options, command) {
             };
             updateResultBeforeRequest()
             const runResult = await new Api(ApiOpts).run(command.http_path, requestOptions)
-            if (runResult.status !== 0 && command.info.support_state) {
+            if (runResult.status !== 401 && runResult.status !== 0 && command.info.support_state) {
                 getAndDrawCommandState(command)
             }
             updateResultAfterRequest(runResult)
@@ -684,15 +684,31 @@ async function makeInputString(optionName, definition) {
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
     var textArea = document.createElement('textarea');
+    textArea.setAttribute('rows', 1);
+    textArea.addEventListener(
+        'keyup',
+         function(event) {
+            this.style.overflow = 'hidden';
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+            var colCount = 42
+            const lines = textArea.value.split(/\r\n|\r|\n/)
+            for (var offset = 0; offset < lines.length; offset++) {
+                const length = lines[offset].length
+                if (length > colCount) {
+                    if (length > 120) {
+                        colCount = 120
+                    } else {
+                        colCount = length
+                    }
+                }
+            }
+            colCount = colCount - (colCount * 0.2)
+            textArea.setAttribute('cols', colCount)
+         },
+         false
+    )
     textArea.setAttribute('name', optionName);
-    var rowCount = 1;
-    var columnCount = 40;
-//    if (max_size != null && max_size > 100) {
-//        rowCount = 10;
-//        columnCount = 60;
-//    };
-    textArea.setAttribute('rows', rowCount);
-    textArea.setAttribute('cols', columnCount);
     if (defaultValue != null) {
         textArea.innerHTML = defaultValue;
     };
