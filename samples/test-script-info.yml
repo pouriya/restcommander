@@ -1,6 +1,6 @@
 description: Test HTTP response status code and response body
 options:
-  ExitCode:
+  exit_code:
     description: |
       process exit-code.
       Process exit-code to HTTP status-code mapping:
@@ -21,7 +21,7 @@ options:
       max: 20
       min: 0
 
-  Output:
+  output:
     description: JSON encoded value.
     default_value: "\"Example JSON string\""
     value_type: string

@@ -465,17 +465,23 @@ async function makeCommandOptionsInputs(options, command) {
             commandOptionFormElement.appendChild(typeElementList[i]);
         };
     };
+    var submitDivElement = document.createElement('div')
+    setAttributes(
+        submitDivElement,
+        {'class': 'my-3 justify-content-center'}
+    )
     var submitElement = document.createElement('button')
     setAttributes(
         submitElement,
         {
-            'class': 'btn btn-sm btn-primary btn-block mb-4 justify-content-center px-3',
             'type': 'submit',
-            'id': 'run-button'
+            'id': 'run-button',
+            'class': 'btn btn-sm btn-primary btn-block px-3'
         }
     )
     submitElement.innerHTML = 'RUN'
-    commandOptionFormElement.appendChild(submitElement);
+    submitDivElement.appendChild(submitElement)
+    commandOptionFormElement.appendChild(submitDivElement);
     commandOptionFormElement.addEventListener(
         'submit',
         async function(event) {
@@ -872,14 +878,24 @@ function prettifyResponse(x, indent) {
         case 'object':
             if (Array.isArray(x)) {
                 for (var i = 0; i < x.length; i++) {
-                    result = result + prettifyResponse(x[i], indent + 1) + '\r\n';
+                    result += prettifyResponse(x[i], indent + 1) + '\r\n';
                 };
             } else if (x === null) {
-                result = 'Null';
+                result = 'None';
             } else {
                 for (var key in x) {
                     const value = x[key];
-                    result = result + key + ': ' + prettifyResponse(value, indent + 1) + '\r\n';
+                    result += key + ':';
+                    switch (typeof value) {
+                        case 'object':
+                            if (Array.isArray(value) || value !== null) {
+                                result += '\r\n'
+                            };
+                            break;
+                        default:
+                            break;
+                    }
+                    result += prettifyResponse(value, indent + 1) + '\r\n';
                 };
             };
             break;
@@ -887,12 +903,15 @@ function prettifyResponse(x, indent) {
             if (x) {
                 result = 'True';
             } else {
-                result = 'False'
+                result = 'False';
             };
             break;
         default:
-            result = result + x;
+            result += x;
     };
+    if (indent > 0 && !result.startsWith('    ')) {
+        result = '    '.repeat(indent) + result;
+    }
     return result;
 }
 
