@@ -194,6 +194,8 @@ pub struct CfgServer {
     #[serde(default = "CfgServerDefault::tls_key_file")]
     pub tls_key_file: Option<PathBuf>,
     pub captcha_file: Option<PathBuf>,
+    #[serde(default = "CfgServerDefault::ip_whitelist")]
+    pub ip_whitelist: Vec<String>,
 }
 
 #[derive(Debug, Error)]
@@ -344,6 +346,9 @@ impl CfgServerDefault {
     fn captcha_file() -> Option<PathBuf> {
         None
     }
+    fn ip_whitelist() -> Vec<String> {
+        Vec::new()
+    }
 }
 
 impl Default for CfgServer {
@@ -358,6 +363,7 @@ impl Default for CfgServer {
             tls_cert_file: CfgServerDefault::tls_cert_file(),
             tls_key_file: CfgServerDefault::tls_key_file(),
             captcha_file: CfgServerDefault::captcha_file(),
+            ip_whitelist: CfgServerDefault::ip_whitelist(),
         }
     }
 }
@@ -584,6 +590,7 @@ impl TryFrom<CMDOptRun> for Cfg {
                     tls_cert_file: command_line_options.tls_cert_file,
                     tls_key_file: command_line_options.tls_key_file,
                     captcha_file: command_line_options.captcha_file,
+                    ip_whitelist: Vec::new(),
                 },
                 commands: CfgCommands {
                     root_directory: command_line_options.root_directory,
