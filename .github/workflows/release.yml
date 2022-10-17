@@ -1,0 +1,56 @@
+# This is a basic workflow to help you get started with Actions
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+  # Run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  pre-release:
+    name: Build release
+    runs-on: "ubuntu-latest"
+
+    steps:
+
+    - uses: actions/checkout@v3
+
+#     - run: sudo apt-get update
+#     - run: sudo apt-get install -y dpkg dpkg-dev liblzma-dev
+
+    - name: Install cargo deb
+      run: cargo install cargo-deb
+
+    - name: Build release
+      run: make
+
+    - name: Rename release file
+      run: cp restcommander restcommander-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu
+
+    - name: List of files
+      run: ls -lash
+
+    - name: Make GitHub release for latest
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        prerelease: true
+        title: "Latest Build"
+        files: |
+          restcommander-*
+          *.deb
+
+    - name: Make GitHub release for tag name
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "${{  github.ref_name }}"
+        prerelease: true
+        title: "${{  github.ref_name }}"
+        files: |
+          restcommander-*
+          *.deb
