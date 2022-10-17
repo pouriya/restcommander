@@ -7,11 +7,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Instant;
 use std::{process, process::Stdio};
-use structopt::clap::crate_name;
 
 use super::errors::CommandError;
 pub use crate::cmd::tree::CommandOptionValue;
-use crate::settings::CfgValue;
 
 pub type CommandOptionsValue = HashMap<String, CommandOptionValue>;
 
@@ -51,10 +49,6 @@ pub struct CommandStatsSize {
 pub struct CommandInput {
     #[serde(default)]
     pub options: CommandOptionsValue,
-    #[serde(skip_deserializing)]
-    pub configuration: Option<CfgValue>,
-    #[serde(skip_deserializing)]
-    pub configuration_filename: PathBuf,
     #[serde(default)]
     pub statistics: bool,
 }
@@ -63,8 +57,6 @@ impl Default for CommandInput {
     fn default() -> Self {
         Self {
             options: Default::default(),
-            configuration: None,
-            configuration_filename: Default::default(),
             statistics: false,
         }
     }
@@ -90,16 +82,18 @@ pub fn run_command(
     option_list: Vec<String>,
     input: Option<&CommandInput>,
     capture_stderr: bool,
-    mut env_map: HashMap<String, String>,
+    env_map: HashMap<String, String>,
 ) -> Result<CommandOutput, CommandError> {
     let mut input_string = None;
     if input.is_some() {
-        input_string = Some(serde_json::to_string(&input.unwrap()).map_err(|reason| {
-            CommandError::EncodeInputToJSON {
-                message: reason,
-                command_input: input.unwrap().clone(),
-            }
-        })?);
+        input_string = Some(
+            serde_json::to_string(&input.unwrap().options).map_err(|reason| {
+                CommandError::EncodeInputToJSON {
+                    message: reason,
+                    command_input: input.unwrap().clone(),
+                }
+            })?,
+        );
         debug!(
             "attempt to run command {:?} with options {:?} and input {:?}",
             command,
@@ -114,23 +108,6 @@ pub fn run_command(
     }
     let start = Instant::now();
     let start_process = Instant::now();
-    let make_key =
-        |x: String| (crate_name!().to_uppercase() + "_OPTION_") + x.to_uppercase().as_str();
-    if input.is_some() {
-        for (k, v) in input.unwrap().options.clone() {
-            match v {
-                CommandOptionValue::String(value) => env_map.insert(make_key(k), value),
-                CommandOptionValue::Bool(flag) => {
-                    env_map.insert(make_key(k), if flag { "1" } else { "0" }.to_string())
-                }
-                CommandOptionValue::Integer(value) => {
-                    env_map.insert(make_key(k), value.to_string())
-                }
-                CommandOptionValue::Float(value) => env_map.insert(make_key(k), value.to_string()),
-                _ => None,
-            };
-        }
-    };
     let mut child = process::Command::new(command.clone())
         .args(option_list.clone())
         .stdin(Stdio::piped())

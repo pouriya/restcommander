@@ -34,7 +34,7 @@ class Api {
         if (body !== '') {
            requestOptions.body = body
         }
-        var result = {ok: false, result: 'No request is made', code: 0, status: 0}
+        var result = {ok: false, result: 'No request is made', code: 0, status: 0, message: undefined}
         await fetch(url, requestOptions)
            .catch(
                async function (error) {
@@ -48,6 +48,7 @@ class Api {
                    }
                    const apiResult = await response.json()
                    result.status = response.status
+                   result.message = response.statusText
                    result.ok = apiResult.ok
                    result.result = 'Done.'
                    if (result.ok === false) {

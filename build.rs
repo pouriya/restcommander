@@ -133,7 +133,7 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
             );
             println!("cargo:warning={:?} -> {:?}", from, to);
             fs::copy(from, to.clone()).unwrap();
-            if extension == OsStr::new("html") && !has_bootstrap_js || !has_bootstrap_css {
+            if extension == OsStr::new("html") && (!has_bootstrap_js || !has_bootstrap_css) {
                 let mut data = fs::read_to_string(to.clone()).unwrap();
                 let bootstrap_version =
                     fs::read_to_string(PathBuf::from("www").join(BOOTSTRAP_VERSION_FILENAME))

@@ -22,6 +22,7 @@ log4rs = { version = "1.0", default-features = false, features = ["console_appen
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = { version = "1.0" }
+serde_urlencoded = "0.7"
 serde_yaml = "0.8"
 # HTTP:
 warp = { version = "0.3", features = ["tls"] }
