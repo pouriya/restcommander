@@ -131,7 +131,7 @@ impl Command {
             directory
                 .read_dir()
                 .map_err(|reason| CommandError::ReadDirectory {
-                    source: reason,
+                    message: reason,
                     directory: directory.clone(),
                 })?;
         let mut commands = HashMap::new();
@@ -139,7 +139,7 @@ impl Command {
             let entry = entry
                 .map_err(|reason| CommandError::ReadDirectoryEntry {
                     directory: directory.clone(),
-                    source: reason,
+                    message: reason,
                 })?
                 .path();
             if entry.is_file() {
@@ -268,7 +268,7 @@ impl Command {
         let info_file_content = fs::read_to_string(info_filename.clone()).map_err(|reason| {
             CommandError::ReadCommandInfoFile {
                 filename: command_filename.clone(),
-                source: reason,
+                message: reason,
             }
         })?;
         if info_file_content.trim().is_empty() {
@@ -341,7 +341,7 @@ impl Command {
         };
         check_options.map_err(|reason| CommandError::InvalidCommandInfo {
             command: command_filename.clone(),
-            reason: reason,
+            message: reason,
         })
     }
 

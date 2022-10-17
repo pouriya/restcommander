@@ -10,8 +10,10 @@ use std::{process, process::Stdio};
 use structopt::clap::crate_name;
 
 use super::errors::CommandError;
-use crate::cmd::tree::CommandOptionValue;
+pub use crate::cmd::tree::CommandOptionValue;
 use crate::settings::CfgValue;
+
+pub type CommandOptionsValue = HashMap<String, CommandOptionValue>;
 
 #[derive(Clone, Debug)]
 pub struct CommandOutput {
@@ -48,13 +50,24 @@ pub struct CommandStatsSize {
 #[serde(deny_unknown_fields)]
 pub struct CommandInput {
     #[serde(default)]
-    pub options: HashMap<String, CommandOptionValue>,
+    pub options: CommandOptionsValue,
     #[serde(skip_deserializing)]
     pub configuration: Option<CfgValue>,
     #[serde(skip_deserializing)]
     pub configuration_filename: PathBuf,
     #[serde(default)]
     pub statistics: bool,
+}
+
+impl Default for CommandInput {
+    fn default() -> Self {
+        Self {
+            options: Default::default(),
+            configuration: None,
+            configuration_filename: Default::default(),
+            statistics: false,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -83,7 +96,7 @@ pub fn run_command(
     if input.is_some() {
         input_string = Some(serde_json::to_string(&input.unwrap()).map_err(|reason| {
             CommandError::EncodeInputToJSON {
-                source: reason,
+                message: reason,
                 command_input: input.unwrap().clone(),
             }
         })?);
@@ -126,7 +139,7 @@ pub fn run_command(
         .envs(env_map)
         .spawn()
         .map_err(|reason| CommandError::CreateCommandProcess {
-            source: reason,
+            message: reason,
             command: command.clone(),
         })?;
     let process_duration = start_process.elapsed().as_micros();
@@ -138,7 +151,7 @@ pub fn run_command(
         child_stdin
             .write_all(input_string.clone().unwrap().as_bytes())
             .map_err(|reason| CommandError::WriteToCommandStdin {
-                source: reason,
+                message: reason,
                 data: input_string.clone().unwrap().clone(),
                 command: command.clone(),
             })?;
@@ -150,7 +163,7 @@ pub fn run_command(
     let wait_for_child = child
         .wait()
         .map_err(|reason| CommandError::WaitForCommandProcess {
-            source: reason,
+            message: reason,
             command: command.clone(),
         })?;
     let command_duration = start.elapsed().as_micros();
@@ -163,7 +176,7 @@ pub fn run_command(
         .unwrap()
         .read_to_string(&mut child_stdout)
         .map_err(|reason| CommandError::ReadCommandStdout {
-            source: reason,
+            message: reason,
             command: command.clone(),
         })?;
     let stdout_size = child_stdout.len();
@@ -176,7 +189,7 @@ pub fn run_command(
         .unwrap()
         .read_to_string(&mut child_stderr)
         .map_err(|reason| CommandError::ReadCommandStderr {
-            source: reason,
+            message: reason,
             command: command.clone(),
         })?;
     let stderr_size = child_stderr.len();

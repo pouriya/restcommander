@@ -6,37 +6,49 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CommandError {
-    #[error("could not read directory {directory:?}")]
+    #[error("could not read directory {directory:?}: {message:?}")]
     ReadDirectory {
         directory: PathBuf,
-        source: io::Error,
+        message: io::Error,
     },
-    #[error("could not read directory entry inside {directory:?}")]
+    #[error("could not read directory entry inside {directory:?}: {message:?}")]
     ReadDirectoryEntry {
         directory: PathBuf,
-        source: io::Error,
+        message: io::Error,
     },
     #[error("{filename:?} is not a regular file")]
     IsNotARegularFile { filename: PathBuf },
-    #[error("could not encode command input {command_input:?} to JSON")]
+    #[error("could not encode command input {command_input:?} to JSON: {message:?}")]
     EncodeInputToJSON {
         command_input: CommandInput,
-        source: serde_json::Error,
+        message: serde_json::Error,
     },
-    #[error("could not create new process for command {command:?}")]
-    CreateCommandProcess { command: PathBuf, source: io::Error },
-    #[error("could write {data:?} to command {command:?} stdin")]
+    #[error("could not create new process for command {command:?}: {message:?}")]
+    CreateCommandProcess {
+        command: PathBuf,
+        message: io::Error,
+    },
+    #[error("could write {data:?} to command {command:?} stdin: {message:?}")]
     WriteToCommandStdin {
         data: String,
         command: PathBuf,
-        source: io::Error,
+        message: io::Error,
     },
-    #[error("could not wait for command {command:?} process")]
-    WaitForCommandProcess { command: PathBuf, source: io::Error },
-    #[error("could not read command {command:?} stdout")]
-    ReadCommandStdout { command: PathBuf, source: io::Error },
-    #[error("could not read command {command:?} stderr")]
-    ReadCommandStderr { command: PathBuf, source: io::Error },
+    #[error("could not wait for command {command:?} process: {message:?}")]
+    WaitForCommandProcess {
+        command: PathBuf,
+        message: io::Error,
+    },
+    #[error("could not read command {command:?} stdout: {message:?}")]
+    ReadCommandStdout {
+        command: PathBuf,
+        message: io::Error,
+    },
+    #[error("could not read command {command:?} stderr: {message:?}")]
+    ReadCommandStderr {
+        command: PathBuf,
+        message: io::Error,
+    },
     // #[error("command {command:?} with options {options:?} and stdout {stdout:?} and stderr {stderr:?} exited with exit-code {exit_code:?}")]
     // Crash {
     //     command: PathBuf,
@@ -59,13 +71,13 @@ pub enum CommandError {
         filename: PathBuf,
         message: serde_yaml::Error,
     },
-    #[error("command information for command {command:?} is invalid: {reason:?}")]
-    InvalidCommandInfo { command: PathBuf, reason: String },
+    #[error("command information for command {command:?} is invalid: {message:?}")]
+    InvalidCommandInfo { command: PathBuf, message: String },
     #[error("Command info file {filename:?} is not a regular file")]
     CommandInfoFileNotIsNotFile { filename: PathBuf },
-    #[error("Could not read command info file {filename:?}")]
+    #[error("Could not read command info file {filename:?}: {message:?}")]
     ReadCommandInfoFile {
         filename: PathBuf,
-        source: io::Error,
+        message: io::Error,
     },
 }
