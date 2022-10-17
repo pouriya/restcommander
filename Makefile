@@ -14,10 +14,12 @@ all: release
 	@ ls -sh restcommander-*
 
 release: download-bootstrap
+	rm -rf restcommander-* || true
 	cargo build --release --target ${TARGET}
 	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
 
 deb:
+	rm -rf restcommander-*.deb || true
 	cargo deb --target ${TARGET}
 	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
@@ -26,6 +28,7 @@ docker:
 	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --force-rm -t restcommander:tour -f TourDockerfile .
 
 dev: download-bootstrap
+	rm -rf restcommander-*-dev* || true
 	cargo build --target ${TARGET}
 	@ cp ./target/${TARGET}/debug/restcommander restcommander-${VERSION}-${TARGET}-dev${RELEASE_FILENAME_POSTFIX}
 
