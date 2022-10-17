@@ -42,12 +42,18 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:latest
             ghcr.io/${{ secrets.DOCKERHUB_USERNAME }}/restcommander:${{ github.ref_name }}
             ghcr.io/${{ secrets.DOCKERHUB_USERNAME }}/restcommander:latest
+          build-args:
+            - "RESTCOMMANDER_VERSION=${{ github.ref_name }}"
 
       - name: Build and push tour
         uses: docker/build-push-action@v3
         with:
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:tour
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/restcommander:tour
+            ghcr.io/${{ secrets.DOCKERHUB_USERNAME }}/restcommander:tour
+          build-args:
+            - "RESTCOMMANDER_VERSION=${{ github.ref_name }}"
           file: TourDockerfile
 
 

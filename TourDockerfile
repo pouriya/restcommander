@@ -21,6 +21,14 @@ RUN set -xe                                                                     
 
 
 FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION}
+ARG RESTCOMMANDER_VERSION=0.0.0
+LABEL "org.opencontainers.image.authors"="pouriya.jahanbakhsh@gmail.com"
+LABEL "org.opencontainers.image.title"="restcommander"
+LABEL "org.opencontainers.image.description"="HTTP REST API layer on top of scripts with a simple web dashboard"
+LABEL "org.opencontainers.image.url"="https://github.com/pouriya/restcommander"
+LABEL "org.opencontainers.image.source"="https://github.com/pouriya/restcommander"
+LABEL "org.opencontainers.image.version"="${RESTCOMMANDER_VERSION}"
+LABEL "org.opencontainers.image.licenses"="BSD-3-Clause"
 COPY --from=builder /restcommander /restcommander
 COPY --from=builder /bin/restcommander /bin/restcommander
 COPY --from=builder /bin/bat /bin/bat
