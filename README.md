@@ -58,7 +58,7 @@ docker pull ghcr.io/pouriya/restcommander
 
 
 # Configuration
-For simplicity, All configuration options have a default value, and you do not need to configure everything.  
+For simplicity, Every configuration option has a default value. So you do not need to configure everything.  
 RestCommander can be configured from commandline options via `playground` subcommand:  
 ```shell
 $ restcommander playground -h
@@ -130,6 +130,6 @@ $ restcommander config cfg.toml
 See the [TOML configuration sample](https://github.com/pouriya/restcommander/blob/master/samples/config.toml) for more info.  
 
 # Documentation
-[**REST API**](https://github.com/pouriya/restcommander/blob/master/REST_API.md).  
-[**Backend Contributing**](https://github.com/pouriya/restcommander/blob/master/CONTRIBUTING.md).  
-[**FrontEnd Contributing**](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md).  
+[REST API](https://github.com/pouriya/restcommander/blob/master/REST_API.md)  
+[Backend Contributing](https://github.com/pouriya/restcommander/blob/master/CONTRIBUTING.md)  
+[FrontEnd Contributing](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)  
