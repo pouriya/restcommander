@@ -15,7 +15,7 @@ thiserror = "1.*"
 anyhow = "1.*"
 # Configuration:
 config = { version="0.12", default-features = false, features=["toml"] }
-structopt = { version = "0.3", default-features = false }
+structopt = { version = "0.3", default-features = false, features = ["color", "suggestions"]}
 # Logging:
 log = "0.4"
 log4rs = { version = "1.0", default-features = false, features = ["console_appender"] }
