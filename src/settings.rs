@@ -359,6 +359,7 @@ pub struct CfgServer {
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
+    /// You can use `sha512` subcommand to generate sha512 of your passwords.
     #[serde(default = "defaults::server::password_file")]
     #[structopt(
         name = "server-password-file",
@@ -371,10 +372,12 @@ pub struct CfgServer {
     /// sha512 of you user password.
     ///
     /// If server `password_file` is configured, this is discarded.
-    /// Note that by configuring this, You can not change the password via REST API.
+    /// Note that by configuring this, You can not change the password via REST API or in
+    /// web dashboard.
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
+    /// You can use `sha512` subcommand to generate sha512 of your passwords.
     #[serde(default = "defaults::server::password_sha512")]
     #[structopt(
         name = "server-password-sha512",

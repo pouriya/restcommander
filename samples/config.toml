@@ -18,18 +18,22 @@ port = 1995
 ## username will be `admin`.
 username = "admin"
 ## A file containing sha512 of your user password.
-## By configuring this you are able to change the password in runtime via REST API.
+## By configuring this you are able to change the password in runtime via REST API or in
+## web dashboard.
 ## Make sure that RestCommander process has appropriate permissions to write to the file.
 ## Empty value means this option should be discarded and if one of server `password_file`
 ## and `password_sha512` is not configured, You can call every REST API endpoint without
 ## authentication.
+## You can use `sha512` subcommand to generate sha512 of your passwords.
 password_file = "password-file.sha512"
 ## sha512 of you user password.
+
 ## If server `password_file` is configured, this is discarded.
 ## Note that by configuring this, You can not change the password via REST API.
 ## Empty value means this option should be discarded and if one of server `password_file`
 ## and `password_sha512` is not configured, You can call every REST API endpoint without
 ## authentication.
+## You can use `sha512` subcommand to generate sha512 of your passwords.
 # password_sha512 = "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd472634dfac71cd34ebc35d16ab7fb8a90c81f975113d6c7538dc69dd8de9077ec" # sha512 of word `admin`
 
 ## HTTP server TLS certificate file.
