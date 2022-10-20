@@ -194,6 +194,7 @@ pub enum CMDOpt {
     Playground(CfgValue),
     Sample(CMDSample),
     Sha512(CMDSha512),
+    Base64(CMDBase64),
 }
 
 #[derive(Debug, Clone, StructOpt)]
@@ -800,6 +801,13 @@ pub struct CMDSha512 {
     input: Option<String>,
 }
 
+#[derive(Debug, Clone, StructOpt)]
+#[structopt(about = "Prints base64-encoded of input")]
+pub struct CMDBase64 {
+    #[structopt(about = "input to be encoded. If empty, It prompts to ask input.")]
+    input: Option<String>,
+}
+
 impl Cfg {
     pub fn try_reload(&mut self) -> Result<(), CfgError> {
         let config_value = match self.filename.clone() {
@@ -843,7 +851,8 @@ impl TryFrom<CfgValue> for Cfg {
 
 pub fn try_setup() -> Result<Cfg, Option<String>> {
     match CMDOpt::from_args() {
-        CMDOpt::Sha512(CMDSha512 { input: maybe_input }) => {
+        CMDOpt::Sha512(CMDSha512 { input: maybe_input })
+        | CMDOpt::Base64(CMDBase64 { input: maybe_input }) => {
             let input = if let Some(input) = maybe_input {
                 input
             } else {
@@ -860,7 +869,11 @@ pub fn try_setup() -> Result<Cfg, Option<String>> {
             if input.is_empty() {
                 return Err(Some("input is empty!".to_string()));
             };
-            println!("{}", utils::to_sha512(input));
+            if let CMDOpt::Sha512(_) = CMDOpt::from_args() {
+                println!("{}", utils::to_sha512(input));
+            } else {
+                println!("{}", base64::encode(input));
+            }
             Err(None)
         }
         CMDOpt::Sample(sample_name) => {
