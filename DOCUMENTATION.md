@@ -1,5 +1,5 @@
 # RestCommander
-RestCommander is a simple REST-API layer on top of one or more scripts. From the request URL it detects which script it should run. It captures HTTP query-string parameters, headers, and body and after deserializing, merging, and validating inputs (options), passes them to the script. The script can read these options from [stdin](https://en.wikipedia.org/wiki/Standard_streams#Standard_input_(stdin)) or [environment variables](https://en.wikipedia.org/wiki/Environment_variable) to do different things. The script [stdout](https://en.wikipedia.org/wiki/Standard_streams#Standard_input_(stdin)) (whatever the script prints) is captured by RestCommander and that's the REST-API response body! Also, different script [exit-codes](https://en.wikipedia.org/wiki/Exit_status) causes different HTTP response status code.  
+RestCommander is a simple REST-API layer on top of one or more scripts. From the request URL it detects which script it should run. It captures HTTP query-string parameters, headers, and body and after deserializing, merging, and validating inputs (options), passes them to the script. The script can read these options from [stdin](https://en.wikipedia.org/wiki/Standard_streams#Standard_input_(stdin)) or [environment variables](https://en.wikipedia.org/wiki/Environment_variable) to do different things. The script [stdout](https://en.wikipedia.org/wiki/Standard_streams#Standard_input_(stdin)) (whatever the script prints) is captured by RestCommander and that's the REST-API response body! Also, different script [exit-codes](https://en.wikipedia.org/wiki/Exit_status) cause different HTTP response status-codes.  
 Additionally, RestCommander captures script's [stderr](https://en.wikipedia.org/wiki/Standard_streams#Standard_error_(stderr)) for logging and some other operational things.  
 A script can be stateless or stateful and for stateful scripts RestCommander can capture current script state.  
 
@@ -48,6 +48,7 @@ _Above ASCII diagram is generated via [asciiflow](https://asciiflow.com)_
 * [**Docker**](#docker)
     * [**DockerHub**](#dockerhub)
     * [**GitHub Container Registry**](#github-container-registry)
+* [**Quick Start**](#quickstart)
 * [**Configuration**](#configuration)
 * [**Script Information format**](#script-information-format)
     * [**Examples**](#examples)
@@ -85,7 +86,7 @@ _Above ASCII diagram is generated via [asciiflow](https://asciiflow.com)_
 ## Installation
 Run the following in your terminal to download the latest version:  
 ```shell
-curl --proto '=https' --tlsv1.2 -sSfL https://github.com/pouriya/restcommander/releases/download/latest/install.sh | sh
+curl -sSfL https://github.com/pouriya/restcommander/releases/download/latest/install.sh | sh
 ```
 or download latest version:
 * GNU/Linux:
@@ -116,6 +117,95 @@ docker pull pouriya/restcommander
 ```shell
 docker pull ghcr.io/pouriya/restcommander
 ```
+
+
+# Quick Start
+Download RestCommander latest version from [installation](#installation) section.  
+Open a new terminal.
+Rename downloaded file (which contains version and OS info in its name) to `restcommander`:
+```shell
+mv restcommander-* restcommander
+```
+Create a new directory for your scripts:
+```shell
+mkdir scripts
+```
+Make a new script inside your script directory:
+```shell
+touch scripts/hello-world
+echo '#! /usr/bin/env sh'  > scripts/hello-world
+echo 'echo Hello World!'  >> scripts/hello-world
+```
+Make sure that the script is executable (for unix-like environments):  
+```shell
+chmod a+x scripts/hello-world
+```
+Test the script (It should print out `Hello World!`):
+```shell
+./scripts/hello-world
+```
+Run RestCommander on top of that directory:
+```shell
+./restcommander --www-enabled=true --commands-root-directory scripts
+```
+The output should be something like:
+```text
+2022/11/01 09:54:06.423939 WARN   restcommander::cmd::tree       No .yaml or .yml info file found for "scripts/hello-world.yml"
+2022/11/01 09:54:06.424146 INFO   restcommander::http            Started server on http://127.0.0.1:1995/
+```
+Now open another terminal and run:  
+```text
+curl -X POST -d="" http://127.0.0.1:1995/api/run/hello-world
+```
+The output should be:
+```json
+{"ok":true,"result":"Hello World!"}
+```
+And in RestCommander's terminal you see more logs:
+```text
+2022/11/01 09:58:08.993397 INFO   restcommander::cmd::runner     command "scripts/hello-world" exited with 0 exit-code
+2022/11/01 09:58:08.993435 INFO   restcommander::http            127.0.0.1:41710 | "/api/run/hello-world" -> 200 (0.001284s)
+```
+Now in second terminal make a YAML info file for your script:  
+```text
+touch scripts/hello-world.yaml
+echo "description: A hello world example" >> scripts/hello-world.yaml 
+```
+Reload scripts via:  
+```shell
+curl http://127.0.0.1:1995/api/reload/commands
+```
+```json
+{"ok":true,"result":null}
+```
+Now Open [http://127.0.0.1:1995/static/commands.html](http://127.0.0.1:1995/static/commands.html) inside your browser. You should see:  
+<div style="text-align:center"><img alt="restcommander-quick-start-screenshot-1.png" src="https://github.com/pouriya/restcommander/releases/download/media/restcommander-quick-start-screenshot-1.png" /></div>
+
+Click on `Hello World`:  
+<div style="text-align:center"><img alt="restcommander-quick-start-screenshot-2.png" src="https://github.com/pouriya/restcommander/releases/download/media/restcommander-quick-start-screenshot-2.png" /></div>
+ 
+Run the command:  
+<div style="text-align:center"><img alt="restcommander-quick-start-screenshot-3.png" src="https://github.com/pouriya/restcommander/releases/download/media/restcommander-quick-start-screenshot-3.png" /></div>
+
+Change script file contents:
+```shell
+echo '#! /usr/bin/env sh'                     > scripts/hello-world
+echo 'echo INFO this is a log message >&2'   >> scripts/hello-world
+echo 'echo "{\"foo\": {\"bar\": \"baz\"}}"'  >> scripts/hello-world
+```
+Now run the script again:  
+```shell
+curl -X POST -d='' http://127.0.0.1:1995/api/run/hello-world
+```
+```json
+{"ok":true,"result":{"foo":{"bar":"baz"}}}
+```
+Additionally, you should see a log line like this:  
+```text
+2022/11/01 10:31:27.356416 INFO   restcommander::cmd::runner     "scripts/hello-world" -> this is a log message
+```
+Inside web dashboard run the script again:
+<div style="text-align:center"><img alt="restcommander-quick-start-screenshot-4.png" src="https://github.com/pouriya/restcommander/releases/download/media/restcommander-quick-start-screenshot-4.png" /></div>
 
 
 # Configuration
@@ -184,8 +274,11 @@ Use `--help` instead of `-h` to get more detailed help message for each option.
 `playground` subcommand is **not** recommended for long-time running because you can't reload the configuration without restarting the entire service.  
 You can get a complete TOML configuration settings with `restcommander sample config` command and use it as a configuration file:  
 ```shell
+# Get new configuration sample:
 $ restcommander sample config > cfg.toml
-$ vim cfg.toml # Edit configuration (if needed)
+# Edit configuration (if needed):
+$ vim cfg.toml
+# Start RestCommander from configuration file:
 $ restcommander config cfg.toml
 ```
 See the [TOML configuration sample](https://github.com/pouriya/restcommander/blob/master/samples/config.toml) for more info.
@@ -510,4 +603,4 @@ Other HTTP status-codes depend on command's exit-code which is the same as [/api
 
 # Contributing
 [Backend Contributing](https://github.com/pouriya/restcommander/blob/master/CONTRIBUTING.md)  
-[FrontEnd Contributing](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)
+[FrontEnd Contributing](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)  
