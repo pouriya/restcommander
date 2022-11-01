@@ -603,4 +603,4 @@ Other HTTP status-codes depend on command's exit-code which is the same as [/api
 
 # Contributing
 [Backend Contributing](https://github.com/pouriya/restcommander/blob/master/CONTRIBUTING.md)  
-[FrontEnd Contributing](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)  
+[Frontend Contributing](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)  

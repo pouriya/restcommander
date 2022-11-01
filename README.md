@@ -13,7 +13,7 @@ HTTP REST-API layer on top of scripts with a simple web dashboard.
 * Dynamic configuration reload. So you can change anything (even port number) without restart.  
 * Single executable for macOS, Windows, and GNU/Linux.  
 
-For more information see [**Quick Start**](https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md#quickstart) [**Documentation**](https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md).  
+For more information see [**Quick Start**](https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md#quickstart) or [**Documentation**](https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md).  
 
 ## Installation
 Run the following in your terminal to download the latest version:
@@ -47,4 +47,4 @@ docker pull ghcr.io/pouriya/restcommander
 
 ## Contributing
 [Backend Contributing](https://github.com/pouriya/restcommander/blob/master/CONTRIBUTING.md)  
-[FrontEnd Contributing](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)  
+[Frontend Contributing](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)  
