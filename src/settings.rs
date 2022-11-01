@@ -237,6 +237,7 @@ trait CheckValue {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, StructOpt)]
+#[structopt(about = "Runs a server from command-line configuration values.")]
 pub struct CfgValue {
     #[serde(default)]
     #[structopt(flatten)]

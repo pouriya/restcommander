@@ -49,11 +49,9 @@ ${DEV_DIR}:
 	mkdir -p ${DEV_DIR}
 	mkdir -p ${DEV_DIR}www
 	mkdir -p ${DEV_DIR}scripts
-	mkdir -p ${DEV_DIR}scripts/tour
-	${DEV_CMD} sample test-script > ${DEV_DIR}/scripts/test && chmod a+x ${DEV_DIR}scripts/test
-	${DEV_CMD} sample test-script-info > ${DEV_DIR}scripts/test.yml
+	${DEV_CMD} sample script > ${DEV_DIR}/scripts/test && chmod a+x ${DEV_DIR}scripts/test
+	${DEV_CMD} sample script-info > ${DEV_DIR}scripts/test.yml
 	cp www/* ${DEV_DIR}www/ && rm -rf ${DEV_DIR}www/bootstrap-version.txt ${DEV_DIR}www/README.md
-	cp tools/tour/scripts/* ${DEV_DIR}scripts/tour/
 
 ${DEV_CFG}:
 	${DEV_CMD} sample config > ${DEV_CFG}

@@ -110,7 +110,7 @@ pub fn check_input(command: &Command, input: &CommandInput) -> Result<CommandInp
         } else {
             if definition.default_value.is_none() {
                 match definition.value_type {
-                    CommandOptionInfoValueType::Bool => CommandOptionValue::Bool(false),
+                    CommandOptionInfoValueType::Boolean => CommandOptionValue::Bool(false),
                     CommandOptionInfoValueType::Any => CommandOptionValue::None,
                     _ => {
                         // So it is required
@@ -144,7 +144,7 @@ fn check_definition(
     }
     match (definition, input) {
         (CommandOptionInfoValueType::Any, value) => Ok(value.clone()),
-        (CommandOptionInfoValueType::Bool, CommandOptionValue::Bool(flag)) => {
+        (CommandOptionInfoValueType::Boolean, CommandOptionValue::Bool(flag)) => {
             Ok(CommandOptionValue::Bool(flag.clone()))
         }
         (CommandOptionInfoValueType::String, CommandOptionValue::String(value)) => {
@@ -156,7 +156,7 @@ fn check_definition(
         (CommandOptionInfoValueType::Float, CommandOptionValue::Float(value)) => {
             Ok(CommandOptionValue::Float(value.clone()))
         }
-        (CommandOptionInfoValueType::AcceptedValueList(accepted_value_list), value) => {
+        (CommandOptionInfoValueType::Enum(accepted_value_list), value) => {
             match value {
                 CommandOptionValue::String(string_value) => {
                     if accepted_value_list.contains(string_value) {
@@ -187,7 +187,7 @@ fn check_definition(
         // Type Errors:
         (x, y) => {
             let x_type = match x {
-                CommandOptionInfoValueType::Bool => "Boolean",
+                CommandOptionInfoValueType::Boolean => "Boolean",
                 CommandOptionInfoValueType::String => "String",
                 CommandOptionInfoValueType::Integer => "Integer",
                 CommandOptionInfoValueType::Float => "Float",

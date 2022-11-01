@@ -1,30 +1,41 @@
-description: Test HTTP response status code and response body
+description: Sample script that accepts some input options
+version: 1.2.3
+# RestCommander will run `/path/to/script get-state` to get its current state.
+# For more info see https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md#script-information-format
+state:
+  options:
+    - "get-state"
 options:
-  exit_code:
-    description: |
-      process exit-code.
-      Process exit-code to HTTP status-code mapping:
-      0     -> 200 (OK)
-      1     -> 500 (INTERNAL_SERVER_ERROR)
-      2     -> 400 (BAD_REQUEST)
-      3     -> 403 (FORBIDDEN)
-      4     -> 404 (NOT_FOUND)
-      5     -> 503 (SERVICE_UNAVAILABLE)
-      6     -> 406 (NOT_ACCEPTABLE)
-      7     -> 501 (NOT_IMPLEMENTED)
-      8     -> 409 (CONFLICT)
-      9     -> 408 (REQUEST_TIMEOUT)
-      OTHER -> 500 (INTERNAL_SERVER_ERROR)
-    default_value: 0
+  foo:
+    description: The description of option <i>foo</i>
     value_type: integer
     size:
       max: 20
-      min: 0
+      min: -20
+    # So defining this option is optional:
+    default_value: 0
 
-  output:
-    description: JSON encoded value.
-    default_value: "\"Example JSON string\""
+  bar:
+    description: |
+      The description for this option
+      is multiline.
+    value_type:
+      enum:
+        - x
+        - y
+        - z
+    default_value: y
+
+  baz:
+    description: This description contains a <a href="https://github.com/pouriya/restcommander" target="_blank">link</a> to restcommander repository.
     value_type: string
     size:
       min: 0
-      max: 10240
+      max: 1024
+    # No `default_value` is set so we have to specify that this option IS required
+    required: true
+
+  qux:
+    description: This option type is boolean
+    value_type: boolean
+    default_value: false
