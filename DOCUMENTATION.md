@@ -79,7 +79,7 @@ _Above ASCII diagram is generated via [asciiflow](https://asciiflow.com)_
     * Static and dynamic authentication tokens.  
 * Web dashboard:  
     * Configurable Title, banner text, and footer.  
-    * Extensible: You can serve your own front-end codes or replace RestCommander files.  
+    * Extensible: You can serve your own frontend codes or replace RestCommander files.  
 * Dynamic configuration reload. So you can change anything (even port number) without restarting service.  
 * Single executable for macOS, Windows, and GNU/Linux.
 
@@ -107,7 +107,7 @@ or download latest version:
 * The main directory inside container is `/restcommander`.  
 * The configuration file address is `/restcommander/config.toml`.
 * You should copy your scripts inside `/restcommander/scripts`.  
-* If you want to customize front-end code, You should copy your web assets to `/restcommander/www`.  
+* If you want to customize frontend code, You should copy your web assets to `/restcommander/www`.  
 
 #### DockerHub
 ```shell
@@ -115,7 +115,7 @@ docker pull pouriya/restcommander
 ```
 #### GitHub Container Registry
 ```shell
-docker pull ghcr.io/pouriya/restcommander
+docker pull ghcr.io/pouriya/restcommander && docker tag ghcr.io/pouriya/restcommander pouriya/restcommander 
 ```
 
 
