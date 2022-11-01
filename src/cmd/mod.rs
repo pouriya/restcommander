@@ -156,34 +156,32 @@ fn check_definition(
         (CommandOptionInfoValueType::Float, CommandOptionValue::Float(value)) => {
             Ok(CommandOptionValue::Float(value.clone()))
         }
-        (CommandOptionInfoValueType::Enum(accepted_value_list), value) => {
-            match value {
-                CommandOptionValue::String(string_value) => {
-                    if accepted_value_list.contains(string_value) {
-                        Ok(value.clone())
-                    } else {
-                        Err(format!(
-                            "accepted values for option '{}' are {}",
-                            option,
-                            accepted_value_list
-                                .iter()
-                                .map(|x| { format!("'{}'", x) })
-                                .collect::<Vec<String>>()
-                                .join(", ")
-                        ))
-                    }
+        (CommandOptionInfoValueType::Enum(accepted_value_list), value) => match value {
+            CommandOptionValue::String(string_value) => {
+                if accepted_value_list.contains(string_value) {
+                    Ok(value.clone())
+                } else {
+                    Err(format!(
+                        "accepted values for option '{}' are {}",
+                        option,
+                        accepted_value_list
+                            .iter()
+                            .map(|x| { format!("'{}'", x) })
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    ))
                 }
-                _ => Err(format!(
-                    "option '{}' should be 'String' and one of {}",
-                    option,
-                    accepted_value_list
-                        .iter()
-                        .map(|x| { format!("'{}'", x) })
-                        .collect::<Vec<String>>()
-                        .join(", ")
-                )),
             }
-        }
+            _ => Err(format!(
+                "option '{}' should be 'String' and one of {}",
+                option,
+                accepted_value_list
+                    .iter()
+                    .map(|x| { format!("'{}'", x) })
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            )),
+        },
         // Type Errors:
         (x, y) => {
             let x_type = match x {

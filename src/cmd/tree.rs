@@ -305,10 +305,7 @@ impl Command {
             if let Some(ref default_value) = definition.default_value {
                 match (definition.value_type.clone(), default_value) {
                     (CommandOptionInfoValueType::Any, _) => (),
-                    (
-                        CommandOptionInfoValueType::Enum(_),
-                        CommandOptionValue::String(_),
-                    ) => (),
+                    (CommandOptionInfoValueType::Enum(_), CommandOptionValue::String(_)) => (),
                     (CommandOptionInfoValueType::String, CommandOptionValue::String(_)) => (),
                     (CommandOptionInfoValueType::Integer, CommandOptionValue::Integer(_)) => (),
                     (CommandOptionInfoValueType::Float, CommandOptionValue::Float(_)) => (),
