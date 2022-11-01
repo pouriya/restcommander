@@ -1,8 +1,8 @@
 ARG DOCKER_REGISTRY
 ARG DOCKER_ALPINE_VERSION=latest
-ARG DOWNLOAD_URL=https://github.com/pouriya/RestCommander/releases/download/latest/restcommander-latest-x86_64-unknown-linux-musl-ubuntu-22.04
 FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION} as builder
 # Downloads restcommander to /bin/restcommander:
+ARG DOWNLOAD_URL=https://github.com/pouriya/RestCommander/releases/download/latest/restcommander-latest-x86_64-unknown-linux-musl-ubuntu-22.04
 RUN echo "Running RestCommander downloader script"             \
     && export DEBUG=1                                          \
     && set -xe                                                 \
