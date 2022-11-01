@@ -1,7 +1,0 @@
-version: 0.0.1
-description: | 
-  RestCommander recursively searchs for executable files inside your configured <i>commands root directory</i>. 
-  And for example when it finds an executable file <i>foo</i>, It also searches for <i>foo.yml</i> to load <i>foo</i>'s information. 
-  A <i>.yml</i> tells RestCommander:
-  <ul><li>Script description.</li><li>Script version.</li><li>Script parameter information.</li></ul>
-  All fields are optional and if no <i>.yml</i> is given for a script, RestCommander just shows you below <b>RUN</b> button!

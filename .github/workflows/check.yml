@@ -25,12 +25,6 @@ jobs:
         with:
           push: false
 
-      - name: Build Docker tour image
-        uses: docker/build-push-action@v3
-        with:
-          push: false
-          file: TourDockerfile
-
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}

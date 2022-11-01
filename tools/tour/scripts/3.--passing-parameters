@@ -1,8 +1,0 @@
-#!/usr/bin/env python3
-
-from os import environ
-
-my_parameter = environ.get('my_parameter')
-# Reverse the value:
-my_parameter = my_parameter[::-1]
-print(my_parameter)

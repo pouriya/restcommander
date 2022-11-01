@@ -1,9 +1,0 @@
-#!/usr/bin/env sh
-
-echo "key_1  ->   '${key_1}'"
-echo "key_2  ->   '${key_2}'"
-echo "key_3  ->   '${key_3}'"
-echo "key_4  ->   '${key_4}'"
-echo "key_5  ->   '${key_5}'"
-echo "key_6  ->   '${key_6}'"
-echo "Now go to next example from above menu."
