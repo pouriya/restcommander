@@ -154,7 +154,7 @@ The output should be something like:
 2022/11/01 09:54:06.424146 INFO   restcommander::http            Started server on http://127.0.0.1:1995/
 ```
 Now open another terminal and run:  
-```text
+```shell
 curl -X POST -d="" http://127.0.0.1:1995/api/run/hello-world
 ```
 The output should be:
@@ -167,7 +167,7 @@ And in RestCommander's terminal you see more logs:
 2022/11/01 09:58:08.993435 INFO   restcommander::http            127.0.0.1:41710 | "/api/run/hello-world" -> 200 (0.001284s)
 ```
 Now in second terminal make a YAML info file for your script:  
-```text
+```shell
 touch scripts/hello-world.yaml
 echo "description: A hello world example" >> scripts/hello-world.yaml 
 ```
