@@ -48,7 +48,7 @@ _Above ASCII diagram is generated via [asciiflow](https://asciiflow.com)_
 * [**Docker**](#docker)
     * [**DockerHub**](#dockerhub)
     * [**GitHub Container Registry**](#github-container-registry)
-* [**Quick Start**](#quickstart)
+* [**Quick Start**](#quick-start)
 * [**Configuration**](#configuration)
 * [**Script Information format**](#script-information-format)
     * [**Examples**](#examples)
