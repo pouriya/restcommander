@@ -53,7 +53,7 @@ fn check_md5(
 }
 
 fn maybe_build_src_www() {
-    let excluded_file_list = [BOOTSTRAP_VERSION_FILENAME, "README.md"]
+    let excluded_file_list = [BOOTSTRAP_VERSION_FILENAME, "README.md", "CONTRIBUTING.md"]
         .map(|x| PathBuf::from(x))
         .to_vec();
     if !check_md5(
