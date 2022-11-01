@@ -1,0 +1,41 @@
+description: Sample script that accepts some input options
+version: 1.2.3
+# RestCommander will run `/path/to/script get-state` to get its current state.
+# For more info see https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md#script-information-format
+state:
+  options:
+    - "get-state"
+options:
+  foo:
+    description: The description of option <i>foo</i>
+    value_type: integer
+    size:
+      max: 20
+      min: -20
+    # So defining this option is optional:
+    default_value: 0
+
+  bar:
+    description: |
+      The description for this option
+      is multiline.
+    value_type:
+      enum:
+        - x
+        - y
+        - z
+    default_value: y
+
+  baz:
+    description: This description contains a <a href="https://github.com/pouriya/restcommander" target="_blank">link</a> to restcommander repository.
+    value_type: string
+    size:
+      min: 0
+      max: 1024
+    # No `default_value` is set so we have to specify that this option IS required
+    required: true
+
+  qux:
+    description: This option type is boolean
+    value_type: boolean
+    default_value: false

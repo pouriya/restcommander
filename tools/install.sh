@@ -28,8 +28,14 @@ case "$_ostype" in
     ;;
 esac
 
+echo "Detected that RestCommander ($_ostype) would work on your system"
 _binary=restcommander-$_ostype
-curl -LSsf --output $_binary https://github.com/pouriya/RestCommander/releases/download/$_version/restcommander-$_version-x86_64-$_ostype
+_download_url=https://github.com/pouriya/RestCommander/releases/download/$_version/restcommander-$_version-x86_64-$_ostype
+echo "Attempt to download RestCommander from $_download_url"
+curl -LSsf --output $_binary $_download_url
 chmod a+x $_binary || true
 _version="$(./$_binary --version)"
-echo $_version is downloaded to $_binary
+echo "$_version is downloaded to $_binary"
+echo "For simplicity you can rename it to restcommander by running:"
+echo "    mv $_binary restcommander"
+echo "Installed successfully"

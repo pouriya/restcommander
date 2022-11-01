@@ -57,11 +57,11 @@ pub struct CommandOptionInfo {
 #[serde(rename_all = "snake_case")]
 pub enum CommandOptionInfoValueType {
     Any,
-    Bool,
+    Boolean,
     Integer,
     Float,
     String,
-    AcceptedValueList(Vec<String>),
+    Enum(Vec<String>),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -305,14 +305,11 @@ impl Command {
             if let Some(ref default_value) = definition.default_value {
                 match (definition.value_type.clone(), default_value) {
                     (CommandOptionInfoValueType::Any, _) => (),
-                    (
-                        CommandOptionInfoValueType::AcceptedValueList(_),
-                        CommandOptionValue::String(_),
-                    ) => (),
+                    (CommandOptionInfoValueType::Enum(_), CommandOptionValue::String(_)) => (),
                     (CommandOptionInfoValueType::String, CommandOptionValue::String(_)) => (),
                     (CommandOptionInfoValueType::Integer, CommandOptionValue::Integer(_)) => (),
                     (CommandOptionInfoValueType::Float, CommandOptionValue::Float(_)) => (),
-                    (CommandOptionInfoValueType::Bool, CommandOptionValue::Bool(_)) => (),
+                    (CommandOptionInfoValueType::Boolean, CommandOptionValue::Bool(_)) => (),
                     _ => {
                         check_options = Err(format!("for option '{}' the default value type should be the same as value type", option));
                         break;
@@ -320,7 +317,7 @@ impl Command {
                 }
             };
             match definition.value_type {
-                CommandOptionInfoValueType::AcceptedValueList(ref list) => {
+                CommandOptionInfoValueType::Enum(ref list) => {
                     if list.is_empty() {
                         check_options = Err(format!(
                             "value of option '{}' is an accepted_value_list which is empty",

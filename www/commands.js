@@ -438,8 +438,8 @@ async function makeCommandOptionsInputs(options, command) {
         };
         var typeElementList = [];
         switch (typeName) {
-            case 'accepted_value_list':
-                typeElementList = await makeInputAcceptedValueList(optionName, definition);
+            case 'enum':
+                typeElementList = await makeInputEnum(optionName, definition);
                 break;
             case 'string':
                 typeElementList = await makeInputString(optionName, definition);
@@ -450,8 +450,8 @@ async function makeCommandOptionsInputs(options, command) {
             case 'float':
                 typeElementList = await makeInputFloat(optionName, definition);
                 break;
-            case 'bool':
-                typeElementList = await makeInputBool(optionName, definition);
+            case 'boolean':
+                typeElementList = await makeInputBoolean(optionName, definition);
                 break;
             case 'any':
                 typeElementList = await makeInputString(optionName, definition);
@@ -503,7 +503,7 @@ async function makeCommandOptionsInputs(options, command) {
                         break;
                     case 'float':
                         value = parseFloat(value);
-                    case 'bool':
+                    case 'boolean':
                         value = JSON.parse(value);
                     default:
                         break;
@@ -613,7 +613,7 @@ function updateResultAfterRequest(runResult) {
     }
 }
 
-async function makeInputAcceptedValueList(optionName, definition) {
+async function makeInputEnum(optionName, definition) {
     var required = definition.required;
     var defaultValue = null;
     if ('default_value' in definition) {
@@ -627,21 +627,21 @@ async function makeInputAcceptedValueList(optionName, definition) {
             'class': 'mb-4'
         }
     )
-    var valueList = definition.value_type.accepted_value_list;
+    var valueList = definition.value_type.enum;
     for (var i = 0; i < valueList.length; i++) {
         var value = valueList[i];
-        var acceptedValue = document.createElement('option');
-        acceptedValue.setAttribute('value', value);
+        var enumValue = document.createElement('option');
+        enumValue.setAttribute('value', value);
         if (value == defaultValue) {
-            acceptedValue.setAttribute('selected', 'selected');
+            enumValue.setAttribute('selected', 'selected');
         };
-        acceptedValue.innerHTML = value;
-        selectElement.appendChild(acceptedValue);
+        enumValue.innerHTML = value;
+        selectElement.appendChild(enumValue);
     };
     if (defaultValue == null && required) {
-        var acceptedValue = document.createElement('option');
+        var enumValue = document.createElement('option');
         setAttributes(
-            acceptedValue,
+            enumValue,
             {
                 'value': 'none',
                 'selected': 'selected',
@@ -649,8 +649,8 @@ async function makeInputAcceptedValueList(optionName, definition) {
                 'hidden': 'hidden'
             }
         )
-        acceptedValue.innerHTML = 'Select an Option';
-        selectElement.appendChild(acceptedValue);
+        enumValue.innerHTML = 'Select an Option';
+        selectElement.appendChild(enumValue);
     }
 
     var header = makeOptionHeader(optionName)
@@ -806,10 +806,10 @@ async function makeInputFloat(optionName, definition) {
     return [header, description, textArea];
 }
 
-async function makeInputBool(optionName, definition) {
-    var boolElement = document.createElement('div');
+async function makeInputBoolean(optionName, definition) {
+    var booleanElement = document.createElement('div');
     setAttributes(
-        boolElement,
+        booleanElement,
         {}
     );
     var required = definition.required;
@@ -838,11 +838,11 @@ async function makeInputBool(optionName, definition) {
     )
     spanDiv.appendChild(textArea)
     spanDiv.appendChild(flagText)
-    boolElement.appendChild(header);
-    boolElement.appendChild(description);
-    boolElement.appendChild(spanDiv)
+    booleanElement.appendChild(header);
+    booleanElement.appendChild(description);
+    booleanElement.appendChild(spanDiv)
 
-    return [boolElement];
+    return [booleanElement];
 }
 
 function makeOptionDescription(text) {

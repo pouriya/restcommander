@@ -49,7 +49,6 @@ class Api {
                    result.status = response.status
                    result.message = response.statusText
                    result.ok = apiResult.ok
-                   result.result = 'Done.'
                    if (result.ok === false) {
                         result.result = 'A service error occurred.\nPlease contact service administrator for more information.'
                    }
@@ -58,6 +57,9 @@ class Api {
                    }
                    if (apiResult.hasOwnProperty('code')) {
                        result.code = apiResult.code
+                   }
+                   if (result.result === null) {
+                       result.result = 'Done.'
                    }
                }
            )

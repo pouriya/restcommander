@@ -1,44 +1,70 @@
 [logging]
-## Possible values: off, error, warning, info, debug, trace
-## Default value: info
+## Logging level name.
+## Possible values: off | error | warning | info | debug | trace
 level_name = "info"
 
 [server]
+## HTTP server listen address.
 ## Default value: "127.0.0.1"
 host = "127.0.0.1"
+## HTTP server listen port number.
 ## Default value: 1995
 port = 1995
 
-## If `username` and `password_file` and `password_sha512` are set to empty strings or they are commented,
-## no authentication is required.
-## If you specify both `password_sha512` and `password_file`, The `password_sha512` field will be ignored.
-## If you specify `password_sha512`, You can not use /api/setPassword endpoint to change the password.
+## HTTP server basic authentication username.
+## You can use this `username` and configured password to get a new bearer token.
+## If the value is empty and no password is configured, then no authentication
+## is needed for anything. If the value is empty and password is configured, the
+## username will be `admin`.
 username = "admin"
-## If you want to be able to use /api/setPassword endpoint, Make sure that the RestCommander program has enough permissions
-## to write to your specified `password_file`.
+## A file containing sha512 of your user password.
+## By configuring this you are able to change the password in runtime via REST API or in
+## web dashboard.
+## Make sure that RestCommander process has appropriate permissions to write to the file.
+## Empty value means this option should be discarded and if one of server `password_file`
+## and `password_sha512` is not configured, You can call every REST API endpoint without
+## authentication.
+## You can use `sha512` subcommand to generate sha512 of your passwords.
 password_file = "password-file.sha512"
-# password_sha512 = "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd472634dfac71cd34ebc35d16ab7fb8a90c81f975113d6c7538dc69dd8de9077ec" # sha512 of word "admin"
+## sha512 of you user password.
 
-## If you specify `tls_cert_file` and `tls_key_file` fields, RestCommander tries to serve everything over HTTPS.
-## You can get a test cert file via `restcommander sample self-signed-cert` command.
+## If server `password_file` is configured, this is discarded.
+## Note that by configuring this, You can not change the password via REST API.
+## Empty value means this option should be discarded and if one of server `password_file`
+## and `password_sha512` is not configured, You can call every REST API endpoint without
+## authentication.
+## You can use `sha512` subcommand to generate sha512 of your passwords.
+# password_sha512 = "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd472634dfac71cd34ebc35d16ab7fb8a90c81f975113d6c7538dc69dd8de9077ec" # sha512 of word `admin`
+
+## HTTP server TLS certificate file.
+## If you configure this along with server `tls_key_file` option, RestCommander
+## serves everything over HTTPS.
+## You can get a test certificate via `sample self-signed-cert` subcommand.
 tls_cert_file = "cert.pem"
-## You can get a test key file via `restcommander sample self-signed-key` command.
+## HTTP server TLS private-key file.
+## If you configure this along with server `tls_cert_file` option, RestCommander
+## serves everything over HTTPS.
+## You can get a test private-key via `sample self-signed-key` subcommand.
 tls_key_file = "key.pem"
-## If you specify `captcha_file`, CAPTCHA is required to get new bearer token.
-## You can disable CAPTCHA by commenting this field.
+## A file for saving captcha id/values.
+## Empty value means that no CAPTCHA is required to get a new REST-API bearer token.
 captcha_file = "captcha.txt"
+## Make CAPTCHA case-sensitive
 captcha_case_sensitive = false
-## What IP addresses can access the dashboard and REST API? Also wildcard characters `?` and `*` are supported.
-## Default value: []
-## Example: ["127.0.0.1", "192.168.*"]
+## List of IP addresses that can interact with REST-API. Wildcard characters like *
+## are allowed.
+## No value means everyone can interact with REST-API.
+## RestCommander currently does not support HTTP IP headers, So this IP address
+## is the connected client IP address and not the IP address that upstream webserver
+## forwards in the request header.
 ip_whitelist = []
-## You can use this API token for your application so you do not need pass CAPTCHA to get a new token.
-## Also you can use this token inside your scripts to call RestCommander API recursively!
-# api_token = "eb17ac80724e24be474c11af4657e923ce8e3fe40be2f06aeb89d47254c69c94fd472a424b6dea3dc74ed7fc962589d732545f01a5f293daa739a6f634ead336"
-## Timeout for generated bearer tokens from /api/auth/token endpoint (including web dashboard tokens)
-## The value is in seconds
-## Default value: 604800 (1 week)
-# token_timeout = 604800
+## hardcoded HTTP bearer token that does not expire.
+## You can use this value in your application(s) then you do not have to pass
+## CAPTCHA each time the previous token has expired to get a new one.
+api_token = ""
+## Timeout for dynamically generated HTTP bearer tokens in seconds.
+## The default value is 1 week.
+token_timeout = 604800
 
 [commands]
 ## Root directory to load command files and directories and their information files.
@@ -49,15 +75,11 @@ root_directory = "scripts"
 
 
 [www]
-## If `static_directory` is set, You can override RestCommander files:
-##  index.html, index.js
-##  login.html, login.js
-##  commands.html, commands.js
-##  restcommander-background-image.jpg
-##  favicon.ico
-##  bootstrap.bundle.min.js, bootstrap.min.css
-##  api.js, utils.js
-## And serve your own files.
+## A directory to serve your own web files under `/static/*` HTTP path.
+## Also you can override RestCommander virtual files inside this folder.
+## RestCommander virtual files are: index.html, index.js, login.html,
+## login.js, commands.html, commands.js, restcommander-background-image.jpg,
+## favicon.ico, bootstrap.bundle.min.js, bootstrap.min.css, api.js, utils.js.
 static_directory = "www"
 ## By default the web dashboard is enabled. You can disable it and just use the REST API.
 enabled = true

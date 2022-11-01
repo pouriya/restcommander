@@ -1,0 +1,37 @@
+#! /usr/bin/env sh
+
+case $1 in
+    "get-state" )
+      echo "This could be new state"
+      # For test purposes:
+      sleep 2 || true
+      exit 0
+      ;;
+esac
+
+
+# Make some logs in different logging levels:
+echo "TRACE value of environment variable foo is "   ${foo} >&2
+echo "DEBUG value of environment variable bar is "   ${bar} >&2
+echo "INFO value of environment variable baz is "    ${baz} >&2
+echo "WARNING value of environment variable qux is " ${qux} >&2
+
+# Make a JSON output:
+echo "{\"foo\": \"${foo}\", \"bar\": \"${bar}\", \"baz\": \"${baz}\", \"qux\": \"${qux}\"}"
+# For test purposes:
+sleep 2 || true
+
+# Use different process exit-code number to get different HTTP status-code from REST-API:
+# Process exit-code to HTTP status-code mapping:
+# 0     -> 200 (OK)
+# 1     -> 500 (INTERNAL_SERVER_ERROR)
+# 2     -> 400 (BAD_REQUEST)
+# 3     -> 403 (FORBIDDEN)
+# 4     -> 404 (NOT_FOUND)
+# 5     -> 503 (SERVICE_UNAVAILABLE)
+# 6     -> 406 (NOT_ACCEPTABLE)
+# 7     -> 501 (NOT_IMPLEMENTED)
+# 8     -> 409 (CONFLICT)
+# 9     -> 408 (REQUEST_TIMEOUT)
+# OTHER -> 500 (INTERNAL_SERVER_ERROR)
+exit 0
