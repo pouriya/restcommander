@@ -35,4 +35,4 @@ tmp
     ├── restcommander-background-image.jpg
     └── utils.js
 ```
-The server will start in debug mode on `https://127.0.0.1`. For more info see other `Makefile` targets.  
+The server will start in debug mode on `https://127.0.0.1:1995/`. For more info see other `Makefile` targets.  

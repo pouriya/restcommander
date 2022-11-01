@@ -42,7 +42,7 @@ docker pull pouriya/restcommander
 ```
 #### GitHub Container Registry
 ```shell
-docker pull ghcr.io/pouriya/restcommander
+docker pull ghcr.io/pouriya/restcommander && docker tag ghcr.io/pouriya/restcommander pouriya/restcommander 
 ```
 
 ## Contributing

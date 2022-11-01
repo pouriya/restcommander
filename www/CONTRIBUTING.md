@@ -34,7 +34,7 @@ docker run pouriya/restcommander sample script > restcommander-scripts/test
 docker run pouriya/restcommander sample script-info > restcommander-scripts/test.yml
 chmod a+x restcommander-scripts/test
 ```
-Now start a docker container and make a new volume to set its `www` directory to your newly created directory:  
+Now start a docker container and make a new volumes to set its `www` and `scripts` directories to your newly created directories:  
 ```shell
 docker run --init -it -p 1995:1995 -v /absolute/path/to/your/restcommander-front-codes/:/restcommander/www/ -v /absolute/path/to/your/restcommander-scripts/:/restcommander/scripts/ pouriya/restcommander
 ```
