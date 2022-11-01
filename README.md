@@ -1,13 +1,5 @@
 # RestCommander
-HTTP REST-API layer on top of scripts with a simple web dashboard.  
-
-## Tour
-RestCommander has a tiny docker image to show you how it works:
-```shell
-docker run -p1995:1995 ghcr.io/pouriya/restcommander:tour
-```
-After running above, Open [https://127.0.0.1:1995](https://127.0.0.1:1995) in your browser.  
-Note that default username and password is `admin`.
+HTTP REST-API layer on top of scripts with a simple web dashboard.
 
 ## Features
 * REST-API:  
@@ -17,9 +9,10 @@ Note that default username and password is `admin`.
     * Static and dynamic authentication tokens.
 * Web dashboard:  
     * Configurable Title, banner text, and footer.  
-    * Extensible: You can serve your own front-code directory or replace RestCommander files.  
+    * Extensible: You can serve your own front-end codes or replace RestCommander files.  
 * Dynamic configuration reload. So you can change anything (even port number) without restart.  
 * Single executable for macOS, Windows, and GNU/Linux.  
+
 For more information see the [Documentation](https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md).  
 
 ## Installation
