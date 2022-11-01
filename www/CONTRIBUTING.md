@@ -27,9 +27,16 @@ Copy front-end codes from cloned RestCommander repository to your newly created 
 cp restcommander/www/* restcommander-front-codes/ 
 rm -f restcommander-front-codes/*md restcommander-front-codes/bootstrap-version.txt
 ```
+Make a new folder and a test script:
+```shell
+mkdir restcommander-scripts
+docker run pouriya/restcommander sample script > restcommander-scripts/test
+docker run pouriya/restcommander sample script-info > restcommander-scripts/test.yml
+chmod a+x restcommander-scripts/test
+```
 Now start a docker container and make a new volume to set its `www` directory to your newly created directory:  
 ```shell
-docker run -it -p1995:1995 -v /absolute/path/to/your/restcommander-front-codes/:/restcommander/www/ pouriya/restcommander
+docker run --init -it -p 1995:1995 -v /absolute/path/to/your/restcommander-front-codes/:/restcommander/www/ -v /absolute/path/to/your/restcommander-scripts/:/restcommander/scripts/ pouriya/restcommander
 ```
 Now open [https://127.0.0.1:1995](https://127.0.0.1:1995) in your web browser, and you should see RestCommander web dashboard.  
 After above steps, You are free to update any file inside your `restcommander-front-codes` directory and inside browser if you reload the pages, You will see your changes.  
@@ -37,10 +44,9 @@ If you were ready to make a PR, copy front-end codes back to your cloned RestCom
 ```shell
 cp restcommander-front-codes/* restcommander/www/ 
 ```
-Then go inside repository and make new branch with a name related to your work (for example `enhance-login-page-css`):  
+Then go inside repository and make a new branch related to your work (for example `enhance-login-page-css`):  
 ```shell
 cd restcommander
 git checkout -b enhance-login-page-css
 ```
-Finally, commit and push and make a PR from GitHub dashboard.
-
+Now you are ready to commit, push and make a PR.  
