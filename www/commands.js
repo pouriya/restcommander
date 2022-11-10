@@ -300,6 +300,246 @@ function appendSettings(element, count) {
     setPasswordLiElement.appendChild(setPasswordAElement)
     ulElement.appendChild(setPasswordLiElement)
 
+    var reportLiElement = document.createElement('li')
+    var reportAElement = document.createElement('a')
+    setAttributes(
+        reportAElement,
+        {
+            'class': 'dropdown-item text-capitalize',
+            'href': "#"
+        }
+    )
+    reportAElement.innerHTML = 'Reports'
+    reportAElement.onclick = async function() {
+        var commandElement = document.getElementById('command')
+        commandElement.innerHTML = ''
+        document.getElementById('command-result').innerHTML = ''
+
+        var headerElement = document.createElement('h')
+        setAttributes(
+            headerElement,
+            {'class': 'h3 my-4'}
+        )
+        headerElement.innerHTML = 'Reports'
+        commandElement.appendChild(headerElement)
+
+        var textElement = document.createElement('p')
+        setAttributes(
+            textElement,
+            {'class': 'my-3 text-start text-break'}
+        )
+        textElement.innerHTML = 'Filter service reports.'
+        commandElement.appendChild(textElement)
+
+        var formElement = document.createElement('form')
+        setAttributes(
+            formElement,
+            {'class': 'text-start'}
+        )
+
+        var afterTimeDivElement = document.createElement('div')
+        setAttributes(
+            afterTimeDivElement,
+            {'class': 'form-group'}
+        )
+        var afterTimeLabelElement = document.createElement('label')
+        setAttributes(
+            afterTimeLabelElement,
+            {
+                'for': 'after-time',
+                'class': 'mt-3'
+            }
+        )
+        afterTimeLabelElement.innerHTML = 'Show reports after this time (e.g. 2022-12-22 14:59:07)'
+        var afterTimeInputElement = document.createElement('input')
+        setAttributes(
+            afterTimeInputElement,
+            {
+                'class': 'form-control',
+                'type': 'text',
+                'id': 'after-time',
+                'name': 'after_time',
+                'placeholder': 'YYYY-MM-DD HH:MM:SS',
+            }
+        )
+        afterTimeDivElement.appendChild(afterTimeLabelElement)
+        afterTimeDivElement.appendChild(afterTimeInputElement)
+        formElement.appendChild(afterTimeDivElement)
+
+        var beforeTimeDivElement = document.createElement('div')
+        setAttributes(
+            beforeTimeDivElement,
+            {'class': 'form-group'}
+        )
+        var beforeTimeLabelElement = document.createElement('label')
+        setAttributes(
+            beforeTimeLabelElement,
+            {
+                'for': 'before-time',
+                'class': 'mt-3'
+            }
+        )
+        beforeTimeLabelElement.innerHTML = 'Show reports before this time (e.g. 2022-12-22 14:59:07)'
+        var beforeTimeInputElement = document.createElement('input')
+        setAttributes(
+            beforeTimeInputElement,
+            {
+                'class': 'form-control',
+                'type': 'text',
+                'id': 'before-time',
+                'name': 'before_time',
+                'placeholder': 'YYYY-MM-DD HH:MM:SS',
+            }
+        )
+        beforeTimeDivElement.appendChild(beforeTimeLabelElement)
+        beforeTimeDivElement.appendChild(beforeTimeInputElement)
+        formElement.appendChild(beforeTimeDivElement)
+
+        var fromDivElement = document.createElement('div')
+        setAttributes(
+            fromDivElement,
+            {'class': 'form-group'}
+        )
+        var fromLabelElement = document.createElement('label')
+        setAttributes(
+            fromLabelElement,
+            {
+                'for': 'from-time',
+                'class': 'mt-3'
+            }
+        )
+        fromLabelElement.innerHTML = 'Show reports from this IP:PORT address. * is allowed to wildcard check. (e.g. 192.168.*)'
+        var fromInputElement = document.createElement('input')
+        setAttributes(
+            fromInputElement,
+            {
+                'class': 'form-control',
+                'type': 'text',
+                'id': 'from',
+                'name': 'from',
+                'placeholder': '127.0.0.1:*',
+            }
+        )
+        fromDivElement.appendChild(fromLabelElement)
+        fromDivElement.appendChild(fromInputElement)
+        formElement.appendChild(fromDivElement)
+
+        var limitDivElement = document.createElement('div')
+        setAttributes(
+            limitDivElement,
+            {'class': 'form-group'}
+        )
+        var limitLabelElement = document.createElement('label')
+        setAttributes(
+            limitLabelElement,
+            {
+                'for': 'limit',
+                'class': 'mt-3'
+            }
+        )
+        limitLabelElement.innerHTML = 'Maximum number of report to fetch.'
+        var limitInputElement = document.createElement('input')
+        setAttributes(
+            limitInputElement,
+            {
+                'class': 'form-control',
+                'type': 'number',
+                'id': 'limit',
+                'name': 'limit',
+                'placeholder': '20',
+                'value': 20,
+                'min': 1,
+            }
+        )
+        limitDivElement.appendChild(limitLabelElement)
+        limitDivElement.appendChild(limitInputElement)
+        formElement.appendChild(limitDivElement)
+
+        var contextDivElement = document.createElement('div')
+        setAttributes(
+            contextDivElement,
+            {'class': 'form-group'}
+        )
+        var contextLabelElement = document.createElement('label')
+        setAttributes(
+            contextLabelElement,
+            {
+                'for': 'context',
+                'class': 'mt-3 text-break'
+            }
+        )
+        contextLabelElement.innerHTML = 'Context of report. Is it for running an operation or fetching state.'
+        var contextSelectElement = document.createElement('select')
+        setAttributes(
+            contextSelectElement,
+            {
+                'class': 'form-control',
+                'name': 'context',
+            }
+        )
+        var contextOptionEverythingElement = document.createElement('option')
+        setAttributes(
+            contextOptionEverythingElement,
+            {
+                'value': '',
+                'selected': 'selected',
+            }
+        )
+        contextOptionEverythingElement.innerHTML = 'Everything'
+        contextSelectElement.appendChild(contextOptionEverythingElement)
+        var contextOptionOperationElement = document.createElement('option')
+        setAttributes(
+            contextOptionOperationElement,
+            {'value': 'run'}
+        )
+        contextOptionOperationElement.innerHTML = 'Run'
+        contextSelectElement.appendChild(contextOptionOperationElement)
+        var contextOptionFetchStateElement = document.createElement('option')
+        setAttributes(
+            contextOptionFetchStateElement,
+            {'value': 'state'}
+        )
+        contextOptionFetchStateElement.innerHTML = 'State'
+        contextSelectElement.appendChild(contextOptionFetchStateElement)
+        contextDivElement.appendChild(contextLabelElement)
+        contextDivElement.appendChild(contextSelectElement)
+
+        formElement.appendChild(contextDivElement)
+
+        var formButtonElement = document.createElement('button')
+        setAttributes(
+            formButtonElement,
+            {
+                'class': 'btn btn-sm btn-primary btn-block mt-3 justify-content-center fw-bold',
+                'type': 'submit'
+            }
+        )
+        formButtonElement.innerHTML = 'Search'
+        formElement.appendChild(formButtonElement)
+        commandElement.appendChild(formElement)
+        async function submitHandler(event) {
+            event.preventDefault()
+            var inputs = new FormData(event.target);
+            const before_time = inputs.get('before_time')
+            const after_time = inputs.get('after_time')
+            const context = inputs.get('context')
+            const from = inputs.get('from')
+            var limit = inputs.get('limit')
+            if (limit !== null) {
+                limit = parseInt(limit)
+            }
+            updateResultBeforeRequest()
+            const reportsResult = await new Api(ApiOpts).report(before_time, after_time, context, from, limit)
+            updateResultAfterRequest(reportsResult)
+            if (reportsResult.status === 401) {
+                changeLogoutToLogin()
+            }
+        }
+        formElement.addEventListener('submit', submitHandler)
+    }
+    reportLiElement.appendChild(reportAElement)
+    ulElement.appendChild(reportLiElement)
+
     element.appendChild(ulElement)
 }
 
@@ -690,30 +930,7 @@ async function makeInputString(optionName, definition) {
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
     var textArea = document.createElement('textarea');
-    textArea.setAttribute('rows', 1);
-    textArea.addEventListener(
-        'keyup',
-         function(event) {
-            this.style.overflow = 'hidden';
-            this.style.height = 'auto';
-            this.style.height = this.scrollHeight + 'px';
-            var colCount = 42
-            const lines = textArea.value.split(/\r\n|\r|\n/)
-            for (var offset = 0; offset < lines.length; offset++) {
-                const length = lines[offset].length
-                if (length > colCount) {
-                    if (length > 120) {
-                        colCount = 120
-                    } else {
-                        colCount = length
-                    }
-                }
-            }
-            colCount = colCount - (colCount * 0.2)
-            textArea.setAttribute('cols', colCount)
-         },
-         false
-    )
+    textArea.setAttribute('rows', '5')
     textArea.setAttribute('name', optionName);
     if (defaultValue != null) {
         textArea.innerHTML = defaultValue;
@@ -821,9 +1038,15 @@ async function makeInputBoolean(optionName, definition) {
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
     var textArea = document.createElement('input');
-    textArea.setAttribute('name', optionName);
-    textArea.setAttribute('type', 'checkbox');
-    textArea.setAttribute('value', 'true');
+    setAttributes(
+        textArea,
+        {
+            'name': optionName,
+            'type': 'checkbox',
+            'value': 'true',
+            'style': 'width:auto;'
+        }
+    )
     if (defaultValue != null) {
         textArea.checked = defaultValue;
     };
@@ -865,8 +1088,12 @@ function makeOptionHeader(name) {
     return header
 }
 
-
 function prettifyResponse(x, indent) {
+    var result = doPrettifyResponse(x, indent)
+    return result.trim()
+}
+
+function doPrettifyResponse(x, indent) {
     var result = '';
     switch (typeof x) {
         case 'string':
@@ -877,25 +1104,24 @@ function prettifyResponse(x, indent) {
             break;
         case 'object':
             if (Array.isArray(x)) {
-                for (var i = 0; i < x.length; i++) {
-                    result += prettifyResponse(x[i], indent + 1) + '\r\n';
-                };
+                if (x.length === 0) {
+                    result += '[]';
+                } else {
+                    result += '\r\n'
+                    var listIndent = indent
+                    if (listIndent !== 0) {
+                        listIndent += 1
+                    }
+                    for (var i = 0; i < x.length; i++) {
+                        result += doPrettifyResponse(x[i], listIndent);
+                    };
+                }
             } else if (x === null) {
                 result = 'None';
             } else {
                 for (var key in x) {
                     const value = x[key];
-                    result += key + ':';
-                    switch (typeof value) {
-                        case 'object':
-                            if (Array.isArray(value) || value !== null) {
-                                result += '\r\n'
-                            };
-                            break;
-                        default:
-                            break;
-                    }
-                    result += prettifyResponse(value, indent + 1) + '\r\n';
+                    result += key + ':' + doPrettifyResponse(value, indent + 1);
                 };
             };
             break;
@@ -909,9 +1135,10 @@ function prettifyResponse(x, indent) {
         default:
             result += x;
     };
-    if (indent > 0 && !result.startsWith('    ')) {
+    if (indent > 0) {
         result = '    '.repeat(indent) + result;
     }
+    result += '\r\n'
     return result;
 }
 

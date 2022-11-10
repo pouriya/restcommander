@@ -1,13 +1,13 @@
 use super::errors::CommandError;
 use crate::cmd::MAX_COMMAND_DIRECTORY_DEPTH;
 use crate::http::API_RUN_BASE_PATH;
-use log::{debug, trace, warn};
 use serde_derive::{Deserialize, Serialize};
 use serde_yaml;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
+use tracing::{debug, trace, warn};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Command {
@@ -115,10 +115,9 @@ impl Command {
     ) -> Result<HashMap<String, Command>, CommandError> {
         if recursion_count == 0 {
             warn!(
-                "maximum depth of command directories is {}. skipped directory {:?} with depth {}",
-                MAX_COMMAND_DIRECTORY_DEPTH,
-                &directory,
-                MAX_COMMAND_DIRECTORY_DEPTH + 1
+                directory = ?directory,
+                hint = format!("Maximum supported depth for sub-directories is {}", MAX_COMMAND_DIRECTORY_DEPTH).as_str(),
+                "Skipped sub-directories.",
             );
             return Ok(HashMap::new());
         };
@@ -144,14 +143,20 @@ impl Command {
                             continue;
                         };
                     };
-                    warn!("{:?} is not executable and discarded", entry);
+                    warn!(filename = ?entry, "It is not executable and will be discarded.");
                     continue;
                 };
                 let (command_name, command) =
                     Self::from_filename(root_directory, &entry, &http_base_path.clone())?;
                 debug!(
-                    "created command {} from command filename {:?}: {:#?}",
-                    command_name, &entry, command
+                    command = command_name.as_str(),
+                    filename = ?entry,
+                    "Detected new command.",
+                );
+                trace!(
+                    command = command_name.as_str(),
+                    filename = ?entry,
+                    info = ?command,
                 );
                 commands.insert(command_name, command);
             };
@@ -244,7 +249,7 @@ impl Command {
             info_filename.set_extension("yml");
         };
         if !info_filename.exists() {
-            warn!("No .yaml or .yml info file found for {:?}", info_filename);
+            warn!(command_filename = ?command_filename, "No .yaml or .yml information file found");
             return Ok(CommandInfo {
                 description: command_filename
                     .file_name()
@@ -336,7 +341,8 @@ impl Command {
             }
         }
         if let Ok(ref command_info) = check_options {
-            trace!("{:?} -> {:#?}", command_filename.clone(), command_info);
+            debug!(command_filename = ?command_filename, info_filename = ?info_filename, "Detected command information.");
+            trace!(command_filename = ?command_filename, info_filename = ?info_filename, info = ?command_info);
         };
         check_options.map_err(|reason| CommandError::InvalidCommandInfo {
             command: command_filename.clone(),

@@ -10,7 +10,7 @@ use std::string::FromUtf8Error;
 use structopt::clap::{crate_authors, crate_description, crate_name, crate_version};
 use structopt::StructOpt;
 
-use log::{info, log_enabled, trace, warn, Level, LevelFilter};
+use tracing::{info, trace, warn};
 
 use config::{Config, ConfigError, Environment, File};
 
@@ -22,6 +22,7 @@ use ttyaskpass::AskPass;
 
 use crate::cmd::runner::CommandOptionsValue;
 use thiserror::Error;
+use tracing_subscriber::filter::LevelFilter;
 
 use crate::utils;
 
@@ -33,6 +34,8 @@ const DEFAULT_SERVER_PASSWORD_SHA512: &str = "";
 const DEFAULT_SERVER_PASSWORD_FILE: &str = "";
 const DEFAULT_SERVER_TOKEN_TIMEOUT: usize = 604800; // 1 week in seconds
 const DEFAULT_LOGGING_LEVEL_NAME: &str = "info";
+const DEFAULT_LOGGING_OUTPUT: &str = "stderr";
+const DEFAULT_LOGGING_REPORT: &str = "stdout";
 const DEFAULT_WWW_STATIC_DIRECTORY: &str = "";
 
 pub mod defaults {
@@ -98,8 +101,8 @@ pub mod defaults {
             None
         }
 
-        pub fn captcha_file() -> Option<PathBuf> {
-            None
+        pub fn captcha() -> bool {
+            true
         }
 
         pub fn captcha_case_sensitive() -> bool {
@@ -177,6 +180,22 @@ pub mod defaults {
         pub fn level_name() -> CfgLoggingLevelName {
             CfgLoggingLevelName::from_str(level_name_str()).unwrap()
         }
+
+        pub fn output_str() -> &'static str {
+            DEFAULT_LOGGING_OUTPUT
+        }
+
+        pub fn output() -> PathBuf {
+            PathBuf::from(output_str())
+        }
+
+        pub fn report_str() -> &'static str {
+            DEFAULT_LOGGING_REPORT
+        }
+
+        pub fn report() -> PathBuf {
+            PathBuf::from(report_str())
+        }
     }
 }
 
@@ -211,6 +230,24 @@ pub struct CMDOptCfg {
 pub struct Cfg {
     pub config_value: CfgValue,
     pub filename: Option<PathBuf>,
+}
+
+impl Cfg {
+    pub fn trace_log(&self) {
+        let source = if let Some(ref filename) = self.filename {
+            filename.clone()
+        } else {
+            PathBuf::from("<COMMANDLINE>")
+        };
+        trace!(
+            source = ?source,
+            server = ?self.config_value.server,
+            commands = ?self.config_value.commands,
+            logging = ?self.config_value.logging,
+            www = ?self.config_value.www,
+        );
+        info!(source = ?source, "Loaded configuration.");
+    }
 }
 
 #[derive(Debug, Error)]
@@ -273,11 +310,6 @@ impl TryFrom<PathBuf> for CfgValue {
         config_value
             .check_value()
             .map_err(|reason| CfgError::Check(reason.to_string()))?;
-        if log_enabled!(Level::Trace) {
-            trace!("{:?} -> {:?}", path.clone(), config_value.clone())
-        } else {
-            info!("loaded configuration from {:?}", path.clone())
-        };
         Ok(config_value)
     }
 }
@@ -417,16 +449,14 @@ pub struct CfgServer {
     )]
     pub tls_key_file: Option<PathBuf>,
 
-    /// A file for saving captcha id/values.
-    ///
-    /// Empty value means that no CAPTCHA is required to get a new REST-API bearer token.
+    /// Enable/Disable CAPTCHA.
+    #[serde(default = "defaults::server::captcha")]
     #[structopt(
         name = "server-captcha-file",
         long,
-        parse(from_os_str),
-        env = "RESTCOMMANDER_SERVER_CAPTCHA_FILE"
+        env = "RESTCOMMANDER_SERVER_CAPTCHA"
     )]
-    pub captcha_file: Option<PathBuf>,
+    pub captcha: bool,
 
     /// Make CAPTCHA case-sensitive
     #[serde(default = "defaults::server::captcha_case_sensitive")]
@@ -549,11 +579,11 @@ impl CheckValue for CfgServer {
                 return Err(CfgServerCheckError::PasswordOrPasswordFileIsNotSet)
             }
             (false, true, _) => {
-                warn!("configuration contains `password` but `username` field is not set. Using `admin` as default username.");
+                warn!("Configuration contains `password` but `username` field is not set. Using `admin` as default username.");
                 self.username = "admin".to_string();
             }
             (false, _, true) => {
-                warn!("configuration contains `password_file` but `username` field is not set. Using `admin` as default username.");
+                warn!("Configuration contains `password_file` but `username` field is not set. Using `admin` as default username.");
                 self.username = "admin".to_string();
             }
             _ => (),
@@ -582,7 +612,7 @@ impl CheckValue for CfgServer {
             };
             if !self.password_sha512.is_empty() {
                 warn!(
-                    "both `password` and `password_file` fields are set. Ignoring `password` field"
+                    "Both `password` and `password_file` fields are set. Ignoring `password` field"
                 );
             };
             self.password_sha512 = password;
@@ -618,7 +648,7 @@ impl Default for CfgServer {
             password_sha512: defaults::server::password_sha512(),
             tls_cert_file: defaults::server::tls_cert_file(),
             tls_key_file: defaults::server::tls_key_file(),
-            captcha_file: defaults::server::captcha_file(),
+            captcha: defaults::server::captcha(),
             captcha_case_sensitive: defaults::server::captcha_case_sensitive(),
             ip_whitelist: defaults::server::ip_whitelist(),
             api_token: defaults::server::api_token(),
@@ -670,12 +700,37 @@ pub struct CfgLogging {
         env = "RESTCOMMANDER_LOGGING_LEVEL_NAME",
     )]
     pub level_name: CfgLoggingLevelName,
+    /// Logging output.
+    ///
+    /// Possible values: stdout | stderr | A directory name to save all log to files for each day.
+    #[structopt(
+    name = "logging-output",
+    long,
+    default_value = defaults::logging::output_str(),
+    env = "RESTCOMMANDER_LOGGING_OUTPUT",
+    )]
+    #[serde(default = "defaults::logging::output")]
+    pub output: PathBuf,
+    /// Separate logging for reports of scripts.
+    ///
+    /// Possible values: stdout | stderr | off | A file name.
+    /// Each line is a JSON in form of {"ip": ..., "port": ..., "time": ..., "report": ...}
+    #[structopt(
+    name = "logging-report",
+    long,
+    default_value = defaults::logging::report_str(),
+    env = "RESTCOMMANDER_LOGGING_REPORT",
+    )]
+    #[serde(default = "defaults::logging::report")]
+    pub report: PathBuf,
 }
 
 impl Default for CfgLogging {
     fn default() -> Self {
         Self {
             level_name: Default::default(),
+            output: defaults::logging::output(),
+            report: defaults::logging::report(),
         }
     }
 }
@@ -783,14 +838,14 @@ impl std::str::FromStr for CfgLoggingLevelName {
 }
 
 impl CfgLoggingLevelName {
-    pub fn to_log_level(&self) -> log::LevelFilter {
+    pub fn to_level_filter(&self) -> LevelFilter {
         match self {
-            Self::Trace => LevelFilter::Trace,
-            Self::Debug => LevelFilter::Debug,
-            Self::Info => LevelFilter::Info,
-            Self::Error => LevelFilter::Error,
-            Self::Warning => LevelFilter::Warn,
-            Self::Off => LevelFilter::Off,
+            Self::Trace => LevelFilter::TRACE,
+            Self::Debug => LevelFilter::DEBUG,
+            Self::Info => LevelFilter::INFO,
+            Self::Error => LevelFilter::ERROR,
+            Self::Warning => LevelFilter::WARN,
+            Self::Off => LevelFilter::OFF,
         }
     }
 }
@@ -816,6 +871,7 @@ impl Cfg {
             None => Err(CfgError::NoConfigFileGiven),
         }?;
         self.config_value = config_value;
+        self.trace_log();
         Ok(())
     }
 }

@@ -4,14 +4,12 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use std::time;
+use tokio::sync::RwLock as AsyncRwLock;
 
 use base64;
-use chrono::Timelike;
 
-use log::{
-    debug, error, info, log_enabled, trace,
-    Level::{Debug, Trace},
-};
+use tracing::{debug, error, info, trace};
 
 use serde_derive::Deserialize;
 use serde_json;
@@ -37,7 +35,8 @@ use crate::captcha;
 use crate::cmd;
 use crate::cmd::runner::CommandOptionValue;
 use crate::cmd::runner::CommandOptionsValue;
-use crate::cmd::{Command, CommandInput, CommandStats};
+use crate::cmd::{Command, CommandInput, CommandInstruction, CommandStats};
+use crate::report::{ReportContext, ReportError, State as ReportState};
 use crate::settings::Cfg;
 use crate::utils;
 use crate::www;
@@ -130,6 +129,12 @@ pub enum HTTPAPIError {
     NoPasswordFile,
     #[error("Could not save new password to configured password file ({message:?})")]
     SaveNewPassword { message: String },
+    #[error("{message}")]
+    ReportNotAvailable { message: String },
+    #[error("{message}")]
+    Report { message: String },
+    #[error("No report found")]
+    ReportNotFound,
 }
 
 impl HTTPAPIError {
@@ -144,6 +149,9 @@ impl HTTPAPIError {
             Self::EmptyPassword => 1007,
             Self::NoPasswordFile => 1008,
             Self::SaveNewPassword { .. } => 1010,
+            Self::ReportNotAvailable { .. } => 1011,
+            Self::Report { .. } => 1012,
+            Self::ReportNotFound => 1013,
         }
     }
 
@@ -157,6 +165,9 @@ impl HTTPAPIError {
             Self::EmptyPassword => StatusCode::BAD_REQUEST,
             Self::NoPasswordFile => StatusCode::SERVICE_UNAVAILABLE,
             Self::SaveNewPassword { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ReportNotAvailable { .. } => StatusCode::NOT_ACCEPTABLE,
+            Self::Report { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ReportNotFound => StatusCode::NOT_FOUND,
         }
     }
 }
@@ -206,6 +217,15 @@ struct SetPassword {
     password: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct Report {
+    before_time: Option<String>,
+    after_time: Option<String>,
+    context: Option<ReportContext>,
+    from: Option<String>,
+    limit: Option<usize>,
+}
+
 #[inline]
 fn exit_code_to_status_code(exit_code: i32) -> StatusCode {
     match exit_code {
@@ -226,6 +246,7 @@ fn exit_code_to_status_code(exit_code: i32) -> StatusCode {
 pub async fn setup(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
+    report_state: Arc<AsyncRwLock<ReportState>>,
 ) -> Result<
     (
         tokio::sync::oneshot::Sender<()>,
@@ -241,10 +262,16 @@ pub async fn setup(
     let host = server_options.host.clone();
     let port = server_options.port.clone();
 
-    let api_run_filter =
-        warp::path("run").and(api_run_command_filter(cfg.clone(), commands.clone()));
-    let api_state_filter =
-        warp::path("state").and(api_get_command_state_filter(cfg.clone(), commands.clone()));
+    let api_run_filter = warp::path("run").and(api_run_command_filter(
+        cfg.clone(),
+        commands.clone(),
+        report_state.clone(),
+    ));
+    let api_state_filter = warp::path("state").and(api_get_command_state_filter(
+        cfg.clone(),
+        commands.clone(),
+        report_state.clone(),
+    ));
     let api_reload_filter = warp::path("reload").and(
         api_reload_commands_filter(commands.clone())
             .or(api_reload_config_filter(
@@ -258,22 +285,9 @@ pub async fn setup(
         .unwrap()
         .config_value
         .server
-        .captcha_file
-        .is_some()
+        .captcha
     {
-        Some(Arc::new(RwLock::new(
-            captcha::Captcha::try_from(
-                cfg.read()
-                    .unwrap()
-                    .config_value
-                    .server
-                    .captcha_file
-                    .as_ref()
-                    .unwrap()
-                    .clone(),
-            )
-            .map_err(|error| error.to_string())?,
-        )))
+        Some(Arc::new(RwLock::new(captcha::Captcha::new())))
     } else {
         None
     };
@@ -308,6 +322,8 @@ pub async fn setup(
                             .or(api_get_commands_filter(commands.clone()))
                             .unify()
                             .or(api_set_password_filter(cfg.clone()))
+                            .unify()
+                            .or(api_report_filter(cfg.clone(), report_state.clone()))
                             .unify(),
                     ),
             )),
@@ -372,11 +388,17 @@ pub async fn setup(
         Err(reason) => Err(reason),
     }?;
     info!(
-        "Started server on {}{}:{}{}",
-        if has_tls { "https://" } else { "http://" },
-        server_options.host,
-        server_options.port,
-        server_options.http_base_path
+        server_options.host = server_options.host.as_str(),
+        server_options.port = server_options.port,
+        server_options.tls = has_tls,
+        "{}",
+        format!(
+            "Started server on {}{}:{}{}",
+            if has_tls { "https://" } else { "http://" },
+            server_options.host,
+            server_options.port,
+            server_options.http_base_path
+        )
     );
     Ok((http_stop_sender, http_start_receiver))
 }
@@ -461,7 +483,11 @@ fn api_auth_token(
                 return make_api_response(Err(HTTPError::Authentication(error)));
             }
             let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
-            let timestamp = chrono::Local::now().second() as usize + token_timeout;
+            let timestamp = time::SystemTime::now()
+                .duration_since(time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as usize
+                + token_timeout;
             tokens
                 .clone()
                 .write()
@@ -473,11 +499,10 @@ fn api_auth_token(
                     let mut headers = warp::http::HeaderMap::new();
                     headers.insert(
                         warp::http::header::SET_COOKIE,
-                        format!(
+                        warp::http::header::HeaderValue::try_from(format!(
                             "token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
                             token, token_timeout,
-                        )
-                        .parse()
+                        ))
                         .unwrap(),
                     );
                     headers
@@ -539,9 +564,10 @@ fn api_get_commands_filter(
 fn api_run_command_filter(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
+    report_state: Arc<AsyncRwLock<ReportState>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
     warp::post()
-        .map(move || (cfg.clone(), commands.clone()))
+        .map(move || (cfg.clone(), commands.clone(), report_state.clone()))
         .and(warp::path::tail())
         .and(
             // We want to try to decode Body if its length > 0
@@ -643,12 +669,19 @@ fn api_run_command_filter(
                     (options, statistics)
                 }),
         )
+        .and(warp::addr::remote())
         .and_then(
-            move |state: (Arc<RwLock<Cfg>>, Arc<RwLock<Command>>),
-                  tail: Tail,
-                  command_options_from_body: CommandOptionsValue,
-                  command_options_from_uri: CommandOptionsValue,
-                  (command_input_from_headers, statistics)| {
+            |state: (
+                Arc<RwLock<Cfg>>,
+                Arc<RwLock<Command>>,
+                Arc<AsyncRwLock<ReportState>>,
+            ),
+             tail: Tail,
+             command_options_from_body: CommandOptionsValue,
+             command_options_from_uri: CommandOptionsValue,
+             (command_input_from_headers, statistics),
+             addr: Option<SocketAddr>| {
+                let addr = addr.unwrap();
                 let mut input = CommandInput::default();
                 input.statistics = statistics;
                 input.options = unify_options(
@@ -661,7 +694,15 @@ fn api_run_command_filter(
                     .to_vec(),
                 );
                 async move {
-                    match maybe_run_command(state.1, tail.as_str().to_string(), input) {
+                    match maybe_run_command(
+                        state.1,
+                        tail.as_str().to_string(),
+                        input,
+                        state.2,
+                        addr.to_string(),
+                    )
+                    .await
+                    {
                         Err(reason) => Err(warp::reject::custom(HTTPError::API(reason))),
                         Ok(response) => Ok(response),
                     }
@@ -673,13 +714,30 @@ fn api_run_command_filter(
 fn api_get_command_state_filter(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
+    report_state: Arc<AsyncRwLock<ReportState>>,
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
     warp::get()
-        .map(move || (cfg.clone(), commands.clone()))
+        .map(move || (cfg.clone(), commands.clone(), report_state.clone()))
         .and(warp::path::tail())
+        .and(warp::addr::remote())
         .and_then(
-            |state: (Arc<RwLock<Cfg>>, Arc<RwLock<Command>>), tail: Tail| async move {
-                match maybe_get_command_state(state.0, state.1, tail.as_str().to_string()) {
+            |state: (
+                Arc<RwLock<Cfg>>,
+                Arc<RwLock<Command>>,
+                Arc<AsyncRwLock<ReportState>>,
+            ),
+             tail: Tail,
+             addr: Option<SocketAddr>| async move {
+                let addr = addr.unwrap();
+                match maybe_get_command_state(
+                    state.0,
+                    state.1,
+                    tail.as_str().to_string(),
+                    state.2,
+                    addr.to_string(),
+                )
+                .await
+                {
                     Err(reason) => Err(warp::reject::custom(HTTPError::API(reason))),
                     Ok(response) => Ok(response),
                 }
@@ -724,6 +782,53 @@ fn api_reload_config_filter(
             make_api_response_ok()
         }
     })
+}
+
+fn api_report_filter(
+    _cfg: Arc<RwLock<Cfg>>,
+    report_state: Arc<AsyncRwLock<ReportState>>,
+) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
+    warp::post()
+        .and(warp::path("report"))
+        .map(move || report_state.clone())
+        .and(warp::body::json::<Report>())
+        .then(
+            |report_state: Arc<AsyncRwLock<ReportState>>, report: Report| async move {
+                let report_state_locked = report_state.read().await;
+                let search_result = match crate::report::search(
+                    report.from,
+                    report.before_time,
+                    report.after_time,
+                    report.context,
+                    report.limit,
+                    report_state_locked.clone(),
+                )
+                .await
+                {
+                    Ok(report_list) => {
+                        if report_list.is_empty() {
+                            make_api_response(Err(HTTPError::API(HTTPAPIError::ReportNotFound)))
+                        } else {
+                            let report_list = report_list
+                                .into_iter()
+                                .map(|report| serde_json::to_value(&report).unwrap())
+                                .collect();
+                            make_api_response_ok_with_result(report_list)
+                        }
+                    }
+                    Err(error) => make_api_response(Err(HTTPError::API(match error {
+                        ReportError::NotAvailable => HTTPAPIError::ReportNotAvailable {
+                            message: error.to_string(),
+                        },
+                        _ => HTTPAPIError::Report {
+                            message: error.to_string(),
+                        },
+                    }))),
+                };
+                drop(report_state_locked);
+                search_result
+            },
+        )
 }
 
 fn api_set_password_filter(
@@ -835,14 +940,10 @@ fn api_captcha_filter(
 ) -> impl Filter<Extract = (Response<String>,), Error = Rejection> + Clone {
     warp::get().and(warp::path("captcha")).map(move || {
         if let Some(captcha) = maybe_captcha.clone() {
-            match captcha.write().unwrap().generate(true) {
-                Ok((id, _, png_image)) => make_api_response_ok_with_result(
-                    serde_json::json!({"id": id, "image": png_image}),
-                ),
-                Err(error) => make_api_response(Err(HTTPError::Authentication(
-                    HTTPAuthenticationError::Captcha(error.to_string()),
-                ))),
-            }
+            let (id, _, png_image) = captcha.write().unwrap().generate(true);
+            make_api_response_ok_with_result(
+                serde_json::json!({"id": id, "image": png_image}),
+            )
         } else {
             make_api_response(Err(HTTPError::Authentication(
                 HTTPAuthenticationError::Captcha(
@@ -938,9 +1039,10 @@ fn authentication_with_basic(
                 [username, password] => {
                     if username == server_cfg.username {
                         let password_sha512 = utils::to_sha512(password);
-                        debug!(
-                            "client password encoded in sha512 for username {:?}: {}",
-                            username, password_sha512
+                        trace!(
+                            username = username,
+                            password_sha512 = password_sha512.as_str(),
+                            "New client provided credentials.",
                         );
                         if server_cfg.password_sha512 == password_sha512 {
                             if maybe_captcha.is_none() {
@@ -952,7 +1054,6 @@ fn authentication_with_basic(
                                     .fold(None, |_, key_value| Some(key_value.clone()))
                                     .unwrap()
                                     .clone();
-                                debug!("{}={}", key, value);
                                 if maybe_captcha
                                     .unwrap()
                                     .write()
@@ -962,7 +1063,6 @@ fn authentication_with_basic(
                                         value,
                                         server_cfg.captcha_case_sensitive,
                                     )
-                                    .map_err(|_error| HTTPAuthenticationError::InvalidCaptcha {})?
                                 {
                                     Ok(())
                                 } else {
@@ -973,7 +1073,10 @@ fn authentication_with_basic(
                             };
                         };
                     } else {
-                        debug!("client authenticates with unknown username {}", username);
+                        debug!(
+                            username = username,
+                            "Client authenticated with unknown username."
+                        );
                     };
                     return Err(HTTPAuthenticationError::InvalidUsernameOrPassword);
                 }
@@ -1012,7 +1115,12 @@ fn authentication_with_token(
         }
     }
     return if let Some(expire_time) = tokens.clone().read().unwrap().get(token.as_str()) {
-        if expire_time > &(chrono::Local::now().second() as usize) {
+        if expire_time
+            > &(time::SystemTime::now()
+                .duration_since(time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as usize)
+        {
             return Ok(());
         };
         Err(HTTPAuthenticationError::TokenExpired)
@@ -1021,10 +1129,12 @@ fn authentication_with_token(
     };
 }
 
-fn maybe_run_command(
+async fn maybe_run_command(
     commands: Arc<RwLock<Command>>,
     command_path: String,
     command_input: CommandInput,
+    report_state: Arc<AsyncRwLock<ReportState>>,
+    address: String,
 ) -> Result<Response<String>, HTTPAPIError> {
     let root_command = commands.read().unwrap().clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
@@ -1047,6 +1157,23 @@ fn maybe_run_command(
             message: reason.to_string(),
         }
     })?;
+    for instruction in command_output.instruction_list.clone() {
+        let report_state_locked = report_state.read().await;
+        match instruction {
+            CommandInstruction::Report(report_data) => {
+                crate::report::report(
+                    address.clone(),
+                    ReportContext::Run,
+                    report_data.clone(),
+                    report_state_locked.clone(),
+                    None,
+                )
+                .await;
+            }
+            _ => {}
+        };
+        drop(report_state_locked)
+    }
     let http_status_code = exit_code_to_status_code(command_output.exit_code);
     let http_response_body = if command_output.stdout.is_empty() {
         serde_json::Value::Null
@@ -1067,10 +1194,12 @@ fn maybe_run_command(
     ))
 }
 
-fn maybe_get_command_state(
+async fn maybe_get_command_state(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
     command_path: String,
+    report_state: Arc<AsyncRwLock<ReportState>>,
+    address: String,
 ) -> Result<Response<String>, HTTPAPIError> {
     let root_command = commands.read().unwrap().clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
@@ -1090,6 +1219,23 @@ fn maybe_get_command_state(
     .map_err(|reason| HTTPAPIError::InitializeCommand {
         message: reason.to_string(),
     })?;
+    for instruction in command_output.instruction_list.clone() {
+        let report_state_locked = report_state.read().await;
+        match instruction {
+            CommandInstruction::Report(report_data) => {
+                crate::report::report(
+                    address.clone(),
+                    ReportContext::State,
+                    report_data.clone(),
+                    report_state_locked.clone(),
+                    None,
+                )
+                .await;
+            }
+            _ => {}
+        };
+        drop(report_state_locked)
+    }
     let http_status_code = exit_code_to_status_code(command_output.exit_code);
     let http_response_body = if command_output.stdout.is_empty() {
         serde_json::Value::Null
@@ -1176,7 +1322,13 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
         ),
         (
             "RESTCOMMANDER_CONFIG_LOGGING_LEVEL_NAME".to_string(),
-            CommandOptionValue::String(cfg_instance.logging.level_name.to_log_level().to_string()),
+            CommandOptionValue::String(
+                cfg_instance
+                    .logging
+                    .level_name
+                    .to_level_filter()
+                    .to_string(),
+            ),
         ),
         (
             "RESTCOMMANDER_CONFIGURATION_FILENAME".to_string(),
@@ -1231,7 +1383,7 @@ fn unify_options(options_list: Vec<CommandOptionsValue>) -> CommandOptionsValue 
     for options_list_item in options_list {
         for (option, mut value) in options_list_item {
             if options.contains_key(option.as_str()) {
-                trace!("Replacing option {:?} with {:?}", option, value)
+                trace!(option = option.as_str(), old = ?options.get(option.as_str()).unwrap(), new = ?value, "Replacing value for option.")
             };
             if let CommandOptionValue::String(ref value_string) = value {
                 value = serde_json::from_str::<CommandOptionValue>(value_string)
@@ -1323,7 +1475,7 @@ fn make_api_response_with_header_and_stats(
     };
     headers_mut.insert(
         warp::http::header::CONTENT_TYPE,
-        "application/json; charset=utf-8".parse().unwrap(),
+        warp::http::header::HeaderValue::try_from("application/json; charset=utf-8").unwrap(),
     );
     response
         .body(serde_json::to_string(&body).unwrap())
@@ -1359,46 +1511,57 @@ async fn handle_rejection(rejection: Rejection) -> Result<Response<String>, Reje
         )))
     } else {
         if !rejection.is_not_found() {
-            error!("unhandled rejection {:?}", rejection);
+            error!(rejection = ?rejection, "Unhandled HTTP rejection.");
         };
         return Err(rejection);
     };
-    if log_enabled!(Trace) {
-        trace!("Made {:?}", response);
-    } else if log_enabled!(Debug) {
-        debug!(
-            "Made response with status code {:?} and body {:?}",
-            response.status(),
-            response.body()
+    trace!(
+        response.status = response.status().as_u16(),
+        response.body = response.body().as_str(),
+        response.headers = format!(
+            "{:?}",
+            response
+                .headers()
+                .iter()
+                .fold(Vec::new(), |mut acc, (header_name, header_value)| {
+                    acc.push((
+                        header_name.to_string(),
+                        header_value.to_str().unwrap_or_default().to_string(),
+                    ));
+                    acc
+                })
         )
-    };
+        .as_str(),
+        "Made response",
+    );
     Ok(response)
 }
 
 fn http_logging(info: warp::log::Info) {
     let elapsed = info.elapsed().as_micros() as f64 / 1000000.0;
-    if log_enabled!(Trace) {
-        trace!(
-            "New request from {:?} for {:?} with headers {:?} handled in {}s",
-            info.remote_addr().unwrap(),
-            info.path(),
-            info.request_headers(),
-            elapsed
+    trace!(
+        remote_address = info.remote_addr().unwrap().to_string().as_str(),
+        path = info.path(),
+        headers = format!(
+            "{:?}",
+            info.request_headers().iter().fold(
+                Vec::new(),
+                |mut acc, (header_name, header_value)| {
+                    acc.push((
+                        header_name.to_string(),
+                        header_value.to_str().unwrap_or_default().to_string(),
+                    ));
+                    acc
+                }
+            )
         )
-    } else if log_enabled!(Debug) {
-        debug!(
-            "New request from {:?} for {:?} handled in {}s",
-            info.remote_addr().unwrap(),
-            info.path(),
-            elapsed
-        )
-    } else {
-        info!(
-            "{:?} | {:?} -> {:?} ({}s)",
-            info.remote_addr().unwrap(),
-            info.path(),
-            info.status(),
-            elapsed
-        )
-    }
+        .as_str(),
+    );
+    info!(
+        remote_address = info.remote_addr().unwrap().to_string().as_str(),
+        path = info.path(),
+        status = info.status().as_u16(),
+        time = elapsed,
+        "Handled HTTP request."
+    );
 }

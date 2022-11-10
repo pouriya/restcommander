@@ -2,6 +2,14 @@
 ## Logging level name.
 ## Possible values: off | error | warning | info | debug | trace
 level_name = "info"
+## Logging output.
+## Possible values: stdout | stderr | off | DIRECTORY_PATH
+## If set to `DIRECTORY_PATH`, it creates daily rotated files inside `DIRECTORY_PATH` in
+## form of restcommander.log.YEAR-MONTH-DAY
+output = "stderr"
+## Scripts report output.
+## Possible values: stdout | stderr | off | FILENAME
+report = "stdout"
 
 [server]
 ## HTTP server listen address.
@@ -46,9 +54,8 @@ tls_cert_file = "cert.pem"
 ## serves everything over HTTPS.
 ## You can get a test private-key via `sample self-signed-key` subcommand.
 tls_key_file = "key.pem"
-## A file for saving captcha id/values.
-## Empty value means that no CAPTCHA is required to get a new REST-API bearer token.
-captcha_file = "captcha.txt"
+## Enable/Disable CAPTCHA.
+captcha = true
 ## Make CAPTCHA case-sensitive
 captcha_case_sensitive = false
 ## List of IP addresses that can interact with REST-API. Wildcard characters like *

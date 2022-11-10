@@ -17,8 +17,9 @@ anyhow = "1.*"
 config = { version="0.12", default-features = false, features=["toml"] }
 structopt = { version = "0.3", default-features = false, features = ["color", "suggestions"]}
 # Logging:
-log = "0.4"
-log4rs = { version = "1.0", default-features = false, features = ["console_appender"] }
+tracing = "0.1"
+tracing-subscriber = {version = "0.3", default-features = false, features = ["ansi", "json", "registry"]}
+tracing-appender = "0.2"
 # (S|Des)erialization:
 serde = "1.0"
 serde_derive = "1.0"
@@ -41,7 +42,7 @@ captcha = "0.0.9"
 rand = "0.8"
 uuid = { version = "1.1", features = ["v4", "fast-rng"] }
 # Time:
-chrono = "0.4"
+humantime = "2.1"
 # IP checker:
 wildmatch = "2.1"
 
