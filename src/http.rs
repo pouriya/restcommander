@@ -544,51 +544,43 @@ fn api_run_command_filter(
         .map(move || (cfg.clone(), commands.clone()))
         .and(warp::path::tail())
         .and(
-            // We want to try to decode Body if its length > 0
+            // We want to try to decode Body if `Content-length` header exists and its value is > 0
             // If we do not do this, for empty bodies and `Content-type: application/json`, We need to post `{}` to make it work
-            warp::header::<usize>(warp::http::header::CONTENT_LENGTH.as_str())
-                .and_then(|length| async move {
-                    if length > 0 {
-                        Ok(())
-                    } else {
-                        Err(warp::reject::reject())
-                    }
-                })
-                .untuple_one()
+            warp::body::bytes()
                 .and(
-                    warp::header::exact(
-                        warp::http::header::CONTENT_TYPE.as_str(),
-                        "application/json",
-                    )
-                    .or(warp::header::exact(
-                        warp::http::header::CONTENT_TYPE.as_str(),
-                        "application/x-www-form-urlencoded",
-                    ))
-                    .unify()
-                    .and(
-                        warp::body::bytes()
-                            .and(warp::header::<String>(
-                                warp::http::header::CONTENT_TYPE.as_str(),
-                            ))
-                            .and_then(|bytes: Bytes, content_type: String| async move {
-                                if &content_type == "application/json" {
-                                    serde_json::from_slice::<CommandOptionsValue>(&bytes).map_err(
-                                        |error| {
-                                            warp::reject::custom(HTTPError::Deserialize(
-                                                error.to_string(),
-                                            ))
-                                        },
-                                    )
-                                } else {
-                                    serde_urlencoded::from_bytes::<CommandOptionsValue>(&bytes)
-                                        .map_err(|error| {
-                                            warp::reject::custom(HTTPError::Deserialize(
-                                                error.to_string(),
-                                            ))
-                                        })
-                                }
-                            }),
-                    ),
+                    warp::header::<String>(warp::http::header::CONTENT_TYPE.as_str())
+                        .or(warp::any().map(|| "application/json".to_string()))
+                        .unify(),
+                )
+                .and(
+                    warp::header::<usize>(warp::http::header::CONTENT_LENGTH.as_str())
+                        .or(warp::any().map(|| 0))
+                        .unify(),
+                )
+                .and_then(
+                    |bytes: Bytes, content_type: String, content_length: usize| async move {
+                        if &content_type != "application/json"
+                            && &content_type != "application/x-www-form-urlencoded"
+                        {
+                            return Err(warp::reject::custom(HTTPError::Deserialize(
+                                "Unsupported content-type".to_string(),
+                            )));
+                        }
+                        if content_length == 0 {
+                            return Ok(CommandOptionsValue::new());
+                        }
+                        if &content_type == "application/json" {
+                            serde_json::from_slice::<CommandOptionsValue>(&bytes).map_err(|error| {
+                                warp::reject::custom(HTTPError::Deserialize(error.to_string()))
+                            })
+                        } else {
+                            serde_urlencoded::from_bytes::<CommandOptionsValue>(&bytes).map_err(
+                                |error| {
+                                    warp::reject::custom(HTTPError::Deserialize(error.to_string()))
+                                },
+                            )
+                        }
+                    },
                 ),
         )
         .and(warp::query::query::<CommandOptionsValue>())
