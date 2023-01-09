@@ -7,6 +7,12 @@
 # LOG_LEVEL: "TRACE", "DEBUG", "WARNING", "INFO", or "ERROR"
 echo "INFO This is a log message." >&2
 
+# Report:
+# Reports are captured from `stderr` too and you can configure RestCommander to keep them in different file.
+# Each report line should be in form of:
+# REPORT<SPACE><LOG_TEXT>
+echo "REPORT This is a report message." >&2
+
 # With exit-code 0 it gives HTTP 200 status code with body {"ok":true, "result":"Hello World!"}
 echo "Hello World!"
 # If you change exit_code, it gives HTTP 4** ot 5** status code with body {"ok":false, "result":"Hello World!"}

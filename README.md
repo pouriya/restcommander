@@ -9,7 +9,8 @@ HTTP REST-API layer on top of scripts with a simple web dashboard.
     * Static and dynamic authentication tokens.
 * Web dashboard:  
     * Configurable Title, banner text, and footer.  
-    * Extensible: You can serve your own frontend codes or replace RestCommander files.  
+    * Extensible: You can serve your own frontend codes or replace RestCommander files.
+* Reports: A generic reporting system for your scripts. You can search in reports from REST-API or simply from web dashboard.  
 * Dynamic configuration reload. So you can change anything (even port number) without restart.  
 * Single executable for macOS, Windows, and GNU/Linux.  
 

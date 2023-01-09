@@ -1,4 +1,3 @@
-use log::{debug, error, info, log_enabled, trace, warn, Level};
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -7,6 +6,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Instant;
 use std::{process, process::Stdio};
+use tracing::{debug, error, info, trace, warn};
 
 use super::errors::CommandError;
 pub use crate::cmd::tree::CommandOptionValue;
@@ -108,11 +108,15 @@ impl Default for CommandInput {
 #[derive(Clone, Debug)]
 pub enum CommandInstruction {
     Reload,
+    Report(String),
 }
 
 impl FromStr for CommandInstruction {
     type Err = ErrorKind;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.starts_with("REPORT ") && s.len() > 7 {
+            return Ok(Self::Report(s[7..].to_string()));
+        }
         match s.to_lowercase().as_str() {
             "reload" => Ok(Self::Reload),
             _ => Err(Self::Err::Unsupported),
@@ -138,15 +142,14 @@ pub fn run_command(
             })?,
         );
         debug!(
-            "attempt to run command {:?} with options {:?} and input {:?}",
-            command,
-            option_list,
-            input_string.clone().unwrap()
+            command = ?command,
+            options = ?option_list,
+            "Attempt to run command",
         )
     } else {
         debug!(
-            "attempt to run command {:?} with options {:?} and without input",
-            command, option_list
+            command = ?command,
+            "Attempt to run command",
         )
     }
     let start = Instant::now();
@@ -170,14 +173,20 @@ pub fn run_command(
         let mut child_stdin = child.stdin.take().unwrap();
         child_stdin
             .write_all(input_string.clone().unwrap().as_bytes())
-            .map_err(|reason| CommandError::WriteToCommandStdin {
-                message: reason,
-                data: input_string.clone().unwrap().clone(),
-                command: command.clone(),
-            })?;
-        child_stdin.flush().unwrap();
+            .map(|result| {
+                trace!(command = ?command, options = ?input_string.clone().unwrap(), "Wrote options to process stdin");
+                result
+            })
+            .map_err(|error| {
+                warn!(
+                    command = ?command,
+                    error = error.to_string().as_str(),
+                    "Could not write options to process stdin"
+                );
+                error
+            }).unwrap_or_default();
+        child_stdin.flush().unwrap_or_default();
         write_to_stdin_duration = start_write_to_stdin.elapsed().as_micros();
-        debug!("wrote input to child's stdin");
     };
 
     let wait_for_child = child
@@ -220,35 +229,30 @@ pub fn run_command(
     for line in child_stderr.lines() {
         if line.starts_with("INFO") {
             info!(
-                "{:?} -> {}",
-                command,
-                line.replacen("INFO", "", 1).trim_start()
+                command = ?command,
+                message = line.replacen("INFO", "", 1).trim_start()
             )
         } else if line.starts_with("ERROR") {
             error!(
-                "{:?} -> {}",
-                command,
-                line.replacen("ERROR", "", 1).trim_start()
+                command = ?command,
+                message = line.replacen("ERROR", "", 1).trim_start()
             )
         } else if line.starts_with("DEBUG") {
             debug!(
-                "{:?} -> {}",
-                command,
-                line.replacen("DEBUG", "", 1).trim_start()
+                command = ?command,
+                message = line.replacen("DEBUG", "", 1).trim_start()
             )
         } else if line.starts_with("WARNING") || line.starts_with("WARN") {
             warn!(
-                "{:?} -> {}",
-                command,
-                line.replacen("WARNING", "", 1)
+                command = ?command,
+                message = line.replacen("WARNING", "", 1)
                     .replacen("WARN", "", 1)
                     .trim_start()
             )
         } else if line.starts_with("TRACE") {
             trace!(
-                "{:?} -> {}",
-                command,
-                line.replacen("TRACE", "", 1).trim_start()
+                command = ?command,
+                message = line.replacen("TRACE", "", 1).trim_start()
             )
         } else {
             match line.parse::<CommandInstruction>() {
@@ -258,31 +262,20 @@ pub fn run_command(
         };
     }
     if !child_log_buffer.is_empty() {
-        error!("{:?} stderr -> {}", command, child_log_buffer)
+        error!(
+            command = ?command,
+            stderr = ?child_log_buffer
+        );
     };
     let logging_duration = start_logging.elapsed().as_micros();
-
-    if log_enabled!(Level::Debug) || log_enabled!(Level::Trace) {
-        let mut log_text = format!("command {:?} statistics:", command);
-        if !option_list.is_empty() {
-            log_text += format!("\noptions: {:?}", option_list).as_str();
-        };
-        if input_string.clone().is_some() {
-            log_text += format!("\nstdin data: {}", input_string.clone().unwrap()).as_str()
-        };
-        if !child_stdout.is_empty() {
-            log_text += format!("\nstdout data: {}", child_stdout).as_str()
-        };
-        if !child_stderr.is_empty() {
-            log_text += format!("\nstderr data: {}", child_stderr).as_str()
-        };
-        debug!("{}", log_text);
-    } else {
-        info!(
-            "command {:?} exited with {} exit-code",
-            command, child_exit_code
-        );
-    }
+    trace!(
+        stdin = input_string.clone().unwrap_or_default().as_str(),
+        stdout = child_stdout.as_str(),
+        stderr = child_stderr.as_str(),
+        exit_status = child_exit_code,
+        command = ?command,
+    );
+    info!(command = ?command, exit_status = child_exit_code);
     let decoded_stdout: Result<serde_json::Value, String> =
         match serde_json::from_str(&child_stdout) {
             Ok(value) => Ok(value),
@@ -292,10 +285,11 @@ pub fn run_command(
         child_stderr = String::new()
     };
     Ok(CommandOutput {
+        instruction_list,
+        decoded_stdout,
         stdout: child_stdout,
         stderr: child_stderr,
         exit_code: child_exit_code,
-        decoded_stdout: decoded_stdout,
         stats: CommandStats {
             duration: CommandStatsDuration {
                 total: command_duration as u64,
@@ -309,6 +303,5 @@ pub fn run_command(
                 stderr: stderr_size,
             },
         },
-        instruction_list: instruction_list,
     })
 }

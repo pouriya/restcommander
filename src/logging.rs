@@ -1,30 +1,93 @@
-use log::{info, LevelFilter};
-use log4rs::append::console::ConsoleAppender;
-use log4rs::config::{Appender, Root};
-use log4rs::encode::pattern::PatternEncoder;
+use crate::settings::CfgLogging;
 
-const LOG_FORMAT: &str = "{d(%Y/%m/%d %H:%M:%S%.6f)} {l:<6} {M:<30.30} {m}{n}";
+use std::io::Write;
 
-pub fn setup(level_name: LevelFilter) -> log4rs::Handle {
-    log4rs::init_config(log_config(level_name)).unwrap()
+use structopt::clap::crate_name;
+use tracing::{debug, info};
+use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
+use tracing_subscriber::{
+    filter::Filtered, fmt::format::JsonFields, layer::SubscriberExt, reload::Handle,
+    util::SubscriberInitExt, Layer, Registry,
+};
+
+type JsonHandle = Handle<
+    Filtered<
+        tracing_subscriber::fmt::Layer<
+            Registry,
+            JsonFields,
+            tracing_subscriber::fmt::format::Format<tracing_subscriber::fmt::format::Json>,
+            NonBlocking,
+        >,
+        tracing_subscriber::filter::LevelFilter,
+        Registry,
+    >,
+    Registry,
+>;
+
+#[derive(Debug)]
+pub struct LoggingState {
+    worker_guard: WorkerGuard,
+    json_handle: JsonHandle,
 }
 
-pub fn update_log_level(level_name: LevelFilter, log_handle: &mut log4rs::Handle) {
-    match level_name {
-        LevelFilter::Trace => info!("Trace mode is on"),
-        LevelFilter::Debug => info!("Debug mode is on"),
-        _ => (),
-    };
-    log_handle.set_config(log_config(level_name));
+#[derive(Debug)]
+struct StdNull;
+impl Write for StdNull {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
-fn log_config(level_name: LevelFilter) -> log4rs::config::runtime::Config {
-    let stdout = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new(LOG_FORMAT)))
-        .build();
-    // Appender::builder().build("stdout", Box::new(ConsoleAppender::builder().build()));
-    log4rs::config::Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .build(Root::builder().appender("stdout").build(level_name))
-        .unwrap()
+pub fn setup(config: CfgLogging) -> LoggingState {
+    let (logging_writer, logging_writer_guard) = writer(&config);
+    let logging_json_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_level(true)
+        .with_file(false)
+        .with_line_number(false)
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_thread_names(false)
+        .with_writer(logging_writer)
+        .with_filter(tracing_subscriber::filter::LevelFilter::OFF);
+    let (logging_json_layer, logging_json_handle) =
+        tracing_subscriber::reload::Layer::new(logging_json_layer);
+
+    tracing_subscriber::registry()
+        .with(logging_json_layer)
+        .init();
+    LoggingState {
+        worker_guard: logging_writer_guard,
+        json_handle: logging_json_handle,
+    }
+}
+
+pub fn update(config: CfgLogging, state: &mut LoggingState) {
+    let (logging_writer, logging_writer_guard) = writer(&config);
+    debug!(level = ?config.level_name, output = ?config.output, "Updating logging options.");
+    state
+        .json_handle
+        .modify(|json_layer| {
+            *json_layer.filter_mut() = config.level_name.to_level_filter();
+            *json_layer.inner_mut().writer_mut() = logging_writer;
+        })
+        .unwrap();
+    state.worker_guard = logging_writer_guard;
+    info!(level = ?config.level_name, output = ?config.output, "Updated logging options.");
+}
+
+fn writer(config: &CfgLogging) -> (NonBlocking, WorkerGuard) {
+    match config.output.to_str() {
+        Some("stdout") => tracing_appender::non_blocking(std::io::stdout()),
+        Some("stderr") => tracing_appender::non_blocking(std::io::stderr()),
+        Some("off") => tracing_appender::non_blocking(StdNull),
+        _ => tracing_appender::non_blocking(tracing_appender::rolling::daily(
+            config.output.clone(),
+            crate_name!().to_owned() + ".log",
+        )),
+    }
 }

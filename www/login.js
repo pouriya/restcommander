@@ -125,10 +125,15 @@ async function main() {
     const configuration = await new Api(ApiOpts).configuration(true)
     if (configuration !== false) {
         if ('service_name' in configuration) {
-            document.getElementById('login-title').innerHTML = 'Login to ' + configuration.service_name
-            document.title = configuration.service_name
+            if (configuration.service_name !== '') {
+                document.getElementById('login-title').innerHTML = 'Login to ' + configuration.service_name
+                document.title = configuration.service_name
+            } else {
+                document.getElementById('login-title').innerHTML = 'Login'
+            }
         } else {
             console.log('Could not found `service_name` in server configuration')
+            document.getElementById('login-title').innerHTML = 'Login'
         }
     }
     document.body.className = 'visible'

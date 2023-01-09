@@ -4,11 +4,17 @@
 from sys import stderr
 
 # Logging:
-# Log messages are captured from stderr.
+# Log messages are captured from `stderr`.
 # Each Log message line should be in form of:
 # <LOG_LEVEL><SPACE><LOG_TEXT>
 # LOG_LEVEL: "TRACE", "DEBUG", "WARNING", "INFO", or "ERROR"
 print("INFO This is a log message.", file=stderr)
+
+# Report:
+# Reports are captured from `stderr` too and you can configure RestCommander to keep them in different file.
+# Each report line should be in form of:
+# REPORT<SPACE><LOG_TEXT>
+print("REPORT This is a report message.", file=stderr)
 
 # With exit-code 0 it gives HTTP 200 status code with body {"ok":true, "result":"Hello World!"}
 print("Hello World!")

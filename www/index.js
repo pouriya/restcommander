@@ -6,7 +6,9 @@ async function main() {
     if (configuration !== false) {
         if ('service_name' in configuration) {
             document.getElementById('service-name').innerHTML = configuration.service_name
-            document.title = configuration.service_name
+            if (configuration.service_name !== '') {
+                document.title = configuration.service_name
+            }
         } else {
             console.log('Could not found `service_name` in server configuration')
         }

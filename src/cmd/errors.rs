@@ -28,12 +28,12 @@ pub enum CommandError {
         command: PathBuf,
         message: io::Error,
     },
-    #[error("could write {data:?} to command {command:?} stdin: {message}")]
-    WriteToCommandStdin {
-        data: String,
-        command: PathBuf,
-        message: io::Error,
-    },
+    // #[error("could write {data:?} to command {command:?} stdin: {message}")]
+    // WriteToCommandStdin {
+    //     data: String,
+    //     command: PathBuf,
+    //     message: io::Error,
+    // },
     #[error("could not wait for command {command:?} process: {message}")]
     WaitForCommandProcess {
         command: PathBuf,

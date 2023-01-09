@@ -5,6 +5,7 @@ version: 1.2.3
 state:
   options:
     - "get-state"
+# Script accepted options:
 options:
   foo:
     description: The description of option <i>foo</i>

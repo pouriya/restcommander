@@ -1,4 +1,5 @@
 use crate::cmd::errors::CommandError;
+pub use crate::cmd::runner::CommandInstruction;
 pub use crate::cmd::runner::{CommandInput, CommandOutput, CommandStats};
 pub use crate::cmd::tree::{Command, CommandInfoGetState, CommandOptionInfo};
 use crate::cmd::tree::{

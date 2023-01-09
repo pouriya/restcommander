@@ -1,11 +1,17 @@
 #! /usr/bin/env perl
 
 # Logging:
-# Log messages are captured from stderr.
+# Log messages are captured from `stderr`.
 # Each Log message line should be in form of:
 # <LOG_LEVEL><SPACE><LOG_TEXT>
 # LOG_LEVEL: "TRACE", "DEBUG", "WARNING", "INFO", or "ERROR"
-print STDERR "INFO This is a log message.";
+print STDERR "INFO This is a log message.\n";
+
+# Report:
+# Reports are captured from `stderr` too and you can configure RestCommander to keep them in different file.
+# Each report line should be in form of:
+# REPORT<SPACE><LOG_TEXT>
+print STDERR "REPORT This is a report message.\n";
 
 # With exit-code 0 it gives HTTP 200 status code with body {"ok":true, "result":"Hello World!"}
 print "Hello World!";

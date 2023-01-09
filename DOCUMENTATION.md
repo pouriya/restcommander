@@ -69,6 +69,7 @@ _Above ASCII diagram is generated via [asciiflow](https://asciiflow.com)_
         * [**/api/reload/config**](#apireloadconfig)
     * [**/api/run/...**](#apirun)
     * [**/api/state/...**](#apistate)
+    * [**/api/report**](#apireport)
 * [**Contributing**](#contributing)
 
 ## Features
@@ -233,8 +234,8 @@ OPTIONS:
         --server-captcha-case-sensitive <server-captcha-case-sensitive>
             Make CAPTCHA case-sensitive [env: RESTCOMMANDER_CAPTCHA_CASE_SENSITIVE=]
 
-        --server-captcha-file <server-captcha-file>
-            A file for saving captcha id/values [env: RESTCOMMANDER_SERVER_CAPTCHA_FILE=]
+        --server-captcha <server-captcha-file>
+            Enable/Disable CAPTCHA [env: RESTCOMMANDER_SERVER_CAPTCHA=]
 
         --server-host <server-host>
             HTTP server listen address [env: RESTCOMMANDER_SERVER_HOST=]  [default: 127.0.0.1]
@@ -600,6 +601,43 @@ Failures:
 * **404**: Command is stateless and has no state.  
 
 Other HTTP status-codes depend on command's exit-code which is the same as [/api/run/...](#apirun).  
+
+
+## /api/report
+Method: **POST**  
+Request body:  
+```json
+{
+    "before_time": "<SEARCH_TIME>",
+    "after_time": "<SEARCH_TIME>",
+    "context": "<SEARCH_CONTEXT>",
+    "from": "<SEARCH_ADDRESS>",
+    "limit": <LIMIT>
+}
+```
+**SEARCH_TIME**: A timestamp in form of `YY-MM-DD HH:MM:SS` (e.g. 2022-12-22 14:59:07). (optional)  
+**SEARCH_CONTEXT**: Context of report. Was it for running an operation or fetching state? `run` or `state`. (optional)  
+**SEARCH_ADDRESS**: Show reports from this IP:PORT address. * is allowed to wildcard check. (e.g. 192.168.*). (optional)  
+**LIMIT**: Maximum number of reports to fetch. (optional)  
+
+Success: A JSON array with objects in form of:
+```json
+{
+  "context": "<SEARCH_CONTEXT>",
+  "from": "<SEARCH_ADDRESS>", 
+  "info": "<REPORT_LINE>", 
+  "path": "<COMMAND_HTTP_PATH>",
+  "timestamp": "<TIMESTAMP>"
+}
+```
+**COMMAND_HTTP_PATH**: What command the report belongs to.  
+**REPORT_LINE**: A string containing full report.  
+**TIMESTAMP**: Exact timestamp of command.  
+**SEARCH_ADDRESS**: What IP:PORT called this command.  
+
+Failures:
+* **401**: Authentication failure.  
+* **404**: Found no reports for given filter.  
 
 # Contributing
 [Backend Contributing](https://github.com/pouriya/restcommander/blob/master/CONTRIBUTING.md)  
