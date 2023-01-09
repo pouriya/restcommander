@@ -12,7 +12,6 @@ tree tmp
 ```
 ```text
 tmp
-├── captcha.txt
 ├── cert.pem
 ├── config.toml
 ├── key.pem
