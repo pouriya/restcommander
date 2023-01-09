@@ -81,6 +81,7 @@ _Above ASCII diagram is generated via [asciiflow](https://asciiflow.com)_
 * Web dashboard:  
     * Configurable Title, banner text, and footer.  
     * Extensible: You can serve your own frontend codes or replace RestCommander files.  
+* Reports: A generic reporting system for your scripts. You can search in reports from REST-API or simply from web dashboard.  
 * Dynamic configuration reload. So you can change anything (even port number) without restarting service.  
 * Single executable for macOS, Windows, and GNU/Linux.
 
