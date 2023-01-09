@@ -452,7 +452,7 @@ pub struct CfgServer {
     /// Enable/Disable CAPTCHA.
     #[serde(default = "defaults::server::captcha")]
     #[structopt(
-        name = "server-captcha-file",
+        name = "server-captcha",
         long,
         env = "RESTCOMMANDER_SERVER_CAPTCHA"
     )]

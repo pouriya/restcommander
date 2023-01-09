@@ -437,7 +437,7 @@ function appendSettings(element, count) {
                 'class': 'mt-3'
             }
         )
-        limitLabelElement.innerHTML = 'Maximum number of report to fetch.'
+        limitLabelElement.innerHTML = 'Maximum number of reports to fetch.'
         var limitInputElement = document.createElement('input')
         setAttributes(
             limitInputElement,
@@ -468,7 +468,7 @@ function appendSettings(element, count) {
                 'class': 'mt-3 text-break'
             }
         )
-        contextLabelElement.innerHTML = 'Context of report. Is it for running an operation or fetching state.'
+        contextLabelElement.innerHTML = 'Context of report. Was it for running an operation or fetching state?'
         var contextSelectElement = document.createElement('select')
         setAttributes(
             contextSelectElement,
