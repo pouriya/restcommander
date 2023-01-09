@@ -61,6 +61,8 @@ pub struct Report {
     timestamp: String,
     context: ReportContext,
     info: String,
+    #[serde(rename = "path")]
+    http_path: String,
 }
 
 impl Report {
@@ -140,6 +142,7 @@ pub async fn report(
     context: ReportContext,
     info: String,
     state: State,
+    http_path: String,
     maybe_timestamp: Option<SystemTime>,
 ) {
     let timestamp = if let Some(timestamp) = maybe_timestamp {
@@ -154,6 +157,7 @@ pub async fn report(
         context,
         info,
         timestamp_integer: 0,
+        http_path,
     })
     .unwrap()
         + "\n";

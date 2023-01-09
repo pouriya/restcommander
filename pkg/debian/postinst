@@ -25,7 +25,6 @@ case "$1" in
       sed -i "s|= \"password-file.sha512\"|= \"${RC_CFG_DIR}password-file.sha512\"|g" ${RC_CFG_FILE}
       sed -i "s|= \"cert.pem\"|= \"${RC_CERT_FILE}\"|g" ${RC_CFG_FILE}
       sed -i "s|= \"key.pem\"|= \"${RC_KEY_FILE}\"|g" ${RC_CFG_FILE}
-      sed -i "s|= \"captcha.txt\"|= \"${RC_CAPTCHA_FILE}\"|g" ${RC_CFG_FILE}
       sed -i "s|= \"scripts\"|= \"${RC_SCRIPTS_DIR}\"|g" ${RC_CFG_FILE}
       sed -i "s|= \"www\"|= \"${RC_WWW_DIR}\"|g" ${RC_CFG_FILE}
       echo "Created new configuration file at " ${RC_CFG_FILE}
@@ -36,9 +35,9 @@ case "$1" in
     fi
     mkdir -p ${RC_SCRIPTS_DIR}
     if [ ! "$(ls -A ${RC_SCRIPTS_DIR})" ]; then
-      restcommander sample test-script > ${RC_TEST_SCRIPT}
+      restcommander sample script > ${RC_TEST_SCRIPT}
       chmod a+x ${RC_TEST_SCRIPT}
-      restcommander sample test-script-info > ${RC_TEST_SCRIPT_INFO}
+      restcommander sample script-info > ${RC_TEST_SCRIPT_INFO}
       echo "Created new sample script file at " ${RC_TEST_SCRIPT}
     fi
     if [ ! -f ${RC_KEY_FILE} ]; then
@@ -55,8 +54,7 @@ case "$1" in
       echo "Created new static test file at " ${RC_SAMPLE_WWW_FILE}
     fi
     if [ ! -f ${RC_CAPTCHA_FILE} ]; then
-      touch ${RC_CAPTCHA_FILE}
-      echo "Created new empty CAPTCHA file at " ${RC_CAPTCHA_FILE}
+      rm -rf ${RC_CAPTCHA_FILE}
     fi
     ;;
 esac

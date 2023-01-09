@@ -280,13 +280,7 @@ pub async fn setup(
             ))
             .unify(),
     );
-    let maybe_captcha = if cfg
-        .read()
-        .unwrap()
-        .config_value
-        .server
-        .captcha
-    {
+    let maybe_captcha = if cfg.read().unwrap().config_value.server.captcha {
         Some(Arc::new(RwLock::new(captcha::Captcha::new())))
     } else {
         None
@@ -941,9 +935,7 @@ fn api_captcha_filter(
     warp::get().and(warp::path("captcha")).map(move || {
         if let Some(captcha) = maybe_captcha.clone() {
             let (id, _, png_image) = captcha.write().unwrap().generate(true);
-            make_api_response_ok_with_result(
-                serde_json::json!({"id": id, "image": png_image}),
-            )
+            make_api_response_ok_with_result(serde_json::json!({"id": id, "image": png_image}))
         } else {
             make_api_response(Err(HTTPError::Authentication(
                 HTTPAuthenticationError::Captcha(
@@ -1054,16 +1046,11 @@ fn authentication_with_basic(
                                     .fold(None, |_, key_value| Some(key_value.clone()))
                                     .unwrap()
                                     .clone();
-                                if maybe_captcha
-                                    .unwrap()
-                                    .write()
-                                    .unwrap()
-                                    .compare_and_update(
-                                        key.to_string(),
-                                        value,
-                                        server_cfg.captcha_case_sensitive,
-                                    )
-                                {
+                                if maybe_captcha.unwrap().write().unwrap().compare_and_update(
+                                    key.to_string(),
+                                    value,
+                                    server_cfg.captcha_case_sensitive,
+                                ) {
                                     Ok(())
                                 } else {
                                     Err(HTTPAuthenticationError::InvalidCaptcha {})
@@ -1166,6 +1153,7 @@ async fn maybe_run_command(
                     ReportContext::Run,
                     report_data.clone(),
                     report_state_locked.clone(),
+                    command.http_path.clone().to_str().unwrap().to_string(),
                     None,
                 )
                 .await;
@@ -1228,6 +1216,7 @@ async fn maybe_get_command_state(
                     ReportContext::State,
                     report_data.clone(),
                     report_state_locked.clone(),
+                    command.http_path.clone().to_str().unwrap().to_string(),
                     None,
                 )
                 .await;
