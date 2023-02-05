@@ -94,7 +94,8 @@ enabled = true
 ## You can access `www.configuration` key-values from REST API `/public/configuration` endpoint.
 [www.configuration]
 ## RestCommander default dashboard uses the following key-values:
-service_name = "RestCommander"
-banner_title = "Simple, Flexible and Reliable"
-banner_text = "RestCommander helps you run your own scripts simply from its web dashboard or REST API"
+title = "RestCommander"
+banner-title = "Simple, Flexible and Reliable"
+banner-text = "{{title}} helps you run your own scripts simply from its web dashboard or REST API"
+login-title = "Login to {{title}}"
 footer = "Hosted on <a href=\"https://github.com/pouriya/RestCommander\" target=\"_blank\"><b>GitHub</b></a>"

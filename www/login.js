@@ -1,5 +1,6 @@
 import {ApiOpts, Api} from './api.js'
 import {maybeRemoveElement, setAttributes} from './utils.js'
+import {setConfiguration} from './configuration.js'
 
 async function maybeSetupCaptcha() {
     var captcha = await new Api(ApiOpts).captcha(true)
@@ -122,21 +123,8 @@ async function loginSubmitEventListener(event) {
 }
 
 async function main() {
-    const configuration = await new Api(ApiOpts).configuration(true)
-    if (configuration !== false) {
-        if ('service_name' in configuration) {
-            if (configuration.service_name !== '') {
-                document.getElementById('login-title').innerHTML = 'Login to ' + configuration.service_name
-                document.title = configuration.service_name
-            } else {
-                document.getElementById('login-title').innerHTML = 'Login'
-            }
-        } else {
-            console.log('Could not found `service_name` in server configuration')
-            document.getElementById('login-title').innerHTML = 'Login'
-        }
-    }
-    document.body.className = 'visible'
+    setConfiguration({'login-title': null, 'footer': null})
+    document.body.className = 'visible' + document.body.className.replace('invisible', '')
     document.getElementById('login-form').addEventListener('submit', loginSubmitEventListener)
     maybeSetupCaptcha()
 }
