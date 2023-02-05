@@ -1,5 +1,6 @@
 import {ApiOpts, Api} from './api.js'
 import {maybeRemoveElement, setAttributes} from './utils.js'
+import {setConfiguration} from './configuration.js'
 
 async function drawNavbar() {
     const commandsResult = await new Api(ApiOpts).commands(true)
@@ -506,6 +507,11 @@ function appendSettings(element, count) {
 
         formElement.appendChild(contextDivElement)
 
+        var formButtonDivElement = document.createElement('div')
+        setAttributes(
+            formButtonDivElement,
+            {'class': 'd-flex justify-content-center'}
+        )
         var formButtonElement = document.createElement('button')
         setAttributes(
             formButtonElement,
@@ -515,7 +521,8 @@ function appendSettings(element, count) {
             }
         )
         formButtonElement.innerHTML = 'Search'
-        formElement.appendChild(formButtonElement)
+        formButtonDivElement.appendChild(formButtonElement)
+        formElement.appendChild(formButtonDivElement)
         commandElement.appendChild(formElement)
         async function submitHandler(event) {
             event.preventDefault()
@@ -931,6 +938,7 @@ async function makeInputString(optionName, definition) {
     var description = makeOptionDescription(definition.description)
     var textArea = document.createElement('textarea');
     textArea.setAttribute('rows', '5')
+    textArea.setAttribute('cols', '80')
     textArea.setAttribute('name', optionName);
     if (defaultValue != null) {
         textArea.innerHTML = defaultValue;
@@ -1169,19 +1177,7 @@ async function main() {
         document.location = 'index.html'
         return
     }
-    const configuration = await new Api(ApiOpts).configuration(true)
-    if (configuration !== false) {
-        if ('service_name' in configuration) {
-            document.title = configuration.service_name
-        } else {
-            console.log('Could not found `service_name` in server configuration')
-        }
-        if ('footer' in configuration) {
-            document.getElementById('footer').innerHTML = configuration.footer
-        } else {
-            console.log('Could not found `footer` in server configuration')
-        }
-    }
+    setConfiguration({'footer': null})
     drawNavbar()
 }
 window.main = main
