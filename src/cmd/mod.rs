@@ -5,8 +5,8 @@ pub use crate::cmd::tree::{Command, CommandInfoGetState, CommandOptionInfo};
 use crate::cmd::tree::{
     CommandOptionInfoValueSize, CommandOptionInfoValueType, CommandOptionValue,
 };
-use std::collections::HashMap;
 use num_traits::cast::FromPrimitive;
+use std::collections::HashMap;
 
 pub mod errors;
 pub mod runner;
@@ -210,49 +210,67 @@ fn check_definition(
     }
 }
 
-
-fn check_string(_option: &str, input: &CommandOptionValue,) -> Result<CommandOptionValue, String> {
+fn check_string(_option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
     match input {
         CommandOptionValue::String(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap())),
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(serde_json::to_string(value).unwrap())),
-        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(serde_json::to_string(value).unwrap())),
+        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(
+            serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap(),
+        )),
+        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(
+            serde_json::to_string(value).unwrap(),
+        )),
+        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(
+            serde_json::to_string(value).unwrap(),
+        )),
         CommandOptionValue::None => Ok(CommandOptionValue::String("".to_string())),
     }
 }
 
-fn check_integer(_option: &str, input: &CommandOptionValue,) -> Result<CommandOptionValue, String> {
+fn check_integer(_option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
     match input {
         CommandOptionValue::Integer(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::Integer(if *bool { 1 } else { 0 })),
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::Integer(i64::from_f64(value.clone()).unwrap())),
-        CommandOptionValue::String(ref value) => {
-            match value.parse::<i64>() {
-                Ok(integer_value) => Ok(CommandOptionValue::Integer(integer_value)),
-                Err(_) => Err(format!("Could not convert `{}` to integer", value))
-            }
+        CommandOptionValue::Bool(ref bool) => {
+            Ok(CommandOptionValue::Integer(if *bool { 1 } else { 0 }))
+        }
+        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::Integer(
+            i64::from_f64(value.clone()).unwrap(),
+        )),
+        CommandOptionValue::String(ref value) => match value.parse::<i64>() {
+            Ok(integer_value) => Ok(CommandOptionValue::Integer(integer_value)),
+            Err(_) => Err(format!("Could not convert `{}` to integer", value)),
         },
         CommandOptionValue::None => Err(format!("Could not convert null value to integer")),
     }
 }
 
-fn check_float(option: &str, input: &CommandOptionValue,) -> Result<CommandOptionValue, String> {
+fn check_float(option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
     match input {
         CommandOptionValue::String(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap())),
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(serde_json::to_string(value).unwrap())),
-        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(serde_json::to_string(value).unwrap())),
+        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(
+            serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap(),
+        )),
+        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(
+            serde_json::to_string(value).unwrap(),
+        )),
+        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(
+            serde_json::to_string(value).unwrap(),
+        )),
         CommandOptionValue::None => Ok(CommandOptionValue::String("".to_string())),
     }
 }
 
-
-fn check_bool(option: &str, input: &CommandOptionValue,) -> Result<CommandOptionValue, String> {
+fn check_bool(option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
     match input {
         CommandOptionValue::String(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap())),
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(serde_json::to_string(value).unwrap())),
-        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(serde_json::to_string(value).unwrap())),
+        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(
+            serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap(),
+        )),
+        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(
+            serde_json::to_string(value).unwrap(),
+        )),
+        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(
+            serde_json::to_string(value).unwrap(),
+        )),
         CommandOptionValue::None => Ok(CommandOptionValue::String("".to_string())),
     }
 }
