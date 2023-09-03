@@ -293,7 +293,7 @@ pub fn maybe_print(_sample_name: CMDSample) {
                     sample_name
                 )
             } else {
-                format!("\n    {},", sample_name)
+                format!("\n    #[structopt(skip)]\n    {},", sample_name)
             };
             let (from, to) = (
                 PathBuf::from("samples").join(file_name.clone()),

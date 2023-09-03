@@ -1,27 +1,24 @@
 ARG DOCKER_REGISTRY
 ARG DOCKER_ALPINE_VERSION=latest
 FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION} as builder
-# Downloads restcommander to /bin/restcommander:
-ARG DOWNLOAD_URL=https://github.com/pouriya/RestCommander/releases/download/latest/restcommander-latest-x86_64-unknown-linux-musl-ubuntu-22.04
-RUN echo "Running RestCommander downloader script"             \
-    && export DEBUG=1                                          \
-    && set -xe                                                 \
-    && apk update                                              \
-    && apk --no-cache add curl                                 \
-    && curl -fsSLv --output /bin/restcommander ${DOWNLOAD_URL} \
-    && chmod a+x /bin/restcommander
-# Creates configuration at /restcommander:
-RUN echo "Running RestCommander configuration script"         \
-    && set -xe                                                \
-    && mkdir -p /restcommander && cd /restcommander           \
-    && mkdir -p scripts                                       \
-    && mkdir -p www                                           \
-    && restcommander sample config > config.toml              \
-    && sed -i 's|= \"127.0.0.1\"|= \"0.0.0.0\"|g' config.toml \
-    && restcommander sample self-signed-cert > cert.pem       \
-    && restcommander sample self-signed-key > key.pem         \
-    && restcommander sha512 admin > password-file.sha512      \
-    && touch captcha.txt
+# Download & setup restcommander:
+ARG RESTCOMMANDER_VERSION=latest
+ARG DOWNLOAD_URL=https://github.com/pouriya/RestCommander/releases/download/${RESTCOMMANDER_VERSION}/install.sh
+
+RUN set -xe && wget --no-check-certificate -O download.sh ${DOWNLOAD_URL} && chmod a+x download.sh && DEBUG=1 DOWNLOAD_MUSL_VERSION=1 ./download.sh
+# To test docker build in develompent:
+#     Run `make dev TARGET=x86_64-unknown-linux-musl`
+#     Comment above `RUN ...`
+#     Uncomment below `COPY ...`
+#     Run `[sudo] make docker`
+#COPY build/restcommander*musl*dev* .
+
+RUN mv restcommander-*-dev* restcommander && ls -lash restcommander
+COPY tools/setup.sh .
+RUN rm -rf /install-restcommander && chmod a+x setup.sh && DEBUG=1 ./setup.sh ./restcommander /install-restcommander ""
+RUN sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" /install-restcommander/etc/restcommander/config.toml
+RUN sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" /install-restcommander/etc/restcommander/config.toml.example
+
 
 FROM ${DOCKER_REGISTRY}alpine:${DOCKER_ALPINE_VERSION}
 ARG RESTCOMMANDER_VERSION
@@ -32,10 +29,9 @@ LABEL "org.opencontainers.image.url"="https://github.com/pouriya/restcommander"
 LABEL "org.opencontainers.image.source"="https://github.com/pouriya/restcommander"
 LABEL "org.opencontainers.image.version"="${RESTCOMMANDER_VERSION}"
 LABEL "org.opencontainers.image.licenses"="BSD-3-Clause"
-COPY --from=builder /restcommander /restcommander
-COPY --from=builder /bin/restcommander /bin/restcommander
-WORKDIR /restcommander
-VOLUME ["/restcommander", "/restcommander/scripts", "/restcommander/www"]
+ENV DOCKER_CONTAINER="1"
+WORKDIR /
+COPY --from=builder /install-restcommander /
 EXPOSE 1995
 ENTRYPOINT ["/bin/restcommander"]
-CMD ["config", "config.toml"]
+CMD ["config", "/etc/restcommander/config.toml"]

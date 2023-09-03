@@ -125,6 +125,10 @@ pub mod defaults {
         pub fn token_timeout() -> usize {
             usize::from_str(token_timeout_str()).unwrap()
         }
+
+        pub fn print_banner() -> bool {
+            true
+        }
     }
 
     pub mod commands {
@@ -320,12 +324,9 @@ impl CheckValue for CfgValue {
         self.server
             .check_value()
             .map_err(|reason| CfgError::Check(reason.to_string()))?;
-        // self.commands.check_value()
-        //     .map_err(
-        //         |reason| {
-        //             CfgError::Check(reason.to_string())
-        //         }
-        //     )?;
+        self.commands
+            .check_value()
+            .map_err(|reason| CfgError::Check(reason.to_string()))?;
         // self.logging.check_value()
         //     .map_err(
         //         |reason| {
@@ -459,7 +460,7 @@ pub struct CfgServer {
     #[structopt(
         name = "server-captcha-case-sensitive",
         long,
-        env = "RESTCOMMANDER_CAPTCHA_CASE_SENSITIVE"
+        env = "RESTCOMMANDER_SERVER_CAPTCHA_CASE_SENSITIVE"
     )]
     pub captcha_case_sensitive: bool,
 
@@ -474,7 +475,7 @@ pub struct CfgServer {
     #[structopt(
         name = "server-ip-whitelist",
         long,
-        env = "RESTCOMMANDER_CAPTCHA_CASE_SENSITIVE"
+        env = "RESTCOMMANDER_SERVER_IP_WHITELIST"
     )]
     pub ip_whitelist: Vec<String>,
 
@@ -501,6 +502,15 @@ pub struct CfgServer {
         env = "RESTCOMMANDER_SERVER_TOKEN_TIMEOUT",
     )]
     pub token_timeout: usize,
+
+    /// Print RestCommander ASCII banner
+    #[serde(default = "defaults::server::print_banner")]
+    #[structopt(
+        name = "server-print-banner",
+        long,
+        env = "RESTCOMMANDER_SERVER_PRINT_BANNER"
+    )]
+    pub print_banner: bool,
 }
 
 #[derive(Debug, Error)]
@@ -649,6 +659,7 @@ impl Default for CfgServer {
             ip_whitelist: defaults::server::ip_whitelist(),
             api_token: defaults::server::api_token(),
             token_timeout: defaults::server::token_timeout(),
+            print_banner: defaults::server::print_banner(),
         }
     }
 }
@@ -681,6 +692,28 @@ impl Default for CfgCommands {
             configuration: defaults::commands::configuration(),
         }
     }
+}
+
+impl CheckValue for CfgCommands {
+    type Error = CfgCommandsCheckError;
+
+    fn check_value(&mut self) -> Result<(), Self::Error> {
+        if self.root_directory.as_os_str().is_empty() {
+            self.root_directory = CfgCommands::default().root_directory;
+        }
+        if !self.root_directory.is_dir() {
+            return Err(CfgCommandsCheckError::BadRootDir(
+                self.root_directory.clone(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum CfgCommandsCheckError {
+    #[error("Commands root directory {0:?} is not a directory or could not be found")]
+    BadRootDir(PathBuf),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, StructOpt)]

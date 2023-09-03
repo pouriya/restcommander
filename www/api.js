@@ -59,7 +59,13 @@ class Api {
                        result.code = apiResult.code
                    }
                    if (result.result === null) {
-                       result.result = 'Done.'
+                       if (result.status < 300) {
+                           result.result = 'Done.'
+                       } else if (result.status >= 400) {
+                           result.result = 'Failed. For more information check server logs.'
+                       } else {
+                            console.log('Unhandled status code for defining `result.result`', result.status)
+                       }
                    }
                }
            )

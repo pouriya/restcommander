@@ -1,0 +1,47 @@
+html, body {
+    height: 100%;
+    scroll-behavior: smooth;
+}
+
+p {
+    white-space: pre-wrap !important;
+}
+
+textarea, select, input {
+    width: 100%;
+}
+
+.dropdown-menu .dropdown-menu {
+    top: -.5rem !important;
+}
+
+.btn-primary, .btn-secondary, #navigation-bar {
+    background-color: #2b2297;
+    border-color: #2b2297;
+}
+
+.btn-primary:hover, .btn-primary:focus, .btn-primary:active, .btn-primary.active {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-secondary:hover, .btn-secondary:focus, .btn-secondary:active, .btn-secondary.active {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+#navigation-bar + .btn-secondary {
+    border-radius: 0;
+    background-color: #2b2297;
+    border-color: #2b2297;
+}
+
+.btn-check:focus + .btn-secondary, .btn-secondary:focus, .btn-check:focus + .btn-primary, .btn-primary:focus {
+    box-shadow: none;
+}
+
+#command-result-text, #command-state-text {
+    color: #0e354d;
+    background-color: #f6f6f9;
+    border-radius: 3px;
+}

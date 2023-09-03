@@ -3,7 +3,7 @@ use crate::settings::CfgLogging;
 use std::io::Write;
 
 use structopt::clap::crate_name;
-use tracing::{debug, info};
+use tracing::debug;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{
     filter::Filtered, fmt::format::JsonFields, layer::SubscriberExt, reload::Handle,
@@ -77,7 +77,7 @@ pub fn update(config: CfgLogging, state: &mut LoggingState) {
         })
         .unwrap();
     state.worker_guard = logging_writer_guard;
-    info!(level = ?config.level_name, output = ?config.output, "Updated logging options.");
+    debug!(level = ?config.level_name, output = ?config.output, "Updated logging options.");
 }
 
 fn writer(config: &CfgLogging) -> (NonBlocking, WorkerGuard) {

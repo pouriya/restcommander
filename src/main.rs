@@ -67,6 +67,9 @@ async fn main() -> Result<(), String> {
     ));
     let (mut _http_server_sender, mut _http_server_receiver) =
         http::setup(cfg.clone(), commands.clone(), report_state.clone()).await?;
+    if cfg_instance.server.print_banner {
+        samples::maybe_print(samples::CMDSample::Banner)
+    }
     loop {
         match http::maybe_handle_message(&mut _http_server_receiver).await {
             Ok(true) => {

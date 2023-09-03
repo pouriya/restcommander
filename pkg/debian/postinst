@@ -21,12 +21,14 @@ case "$1" in
   configure)
     if [ ! -f ${RC_CFG_FILE} ]; then
       restcommander sample config > ${RC_CFG_FILE}
-      sed -i "s|= \"127.0.0.1\"|= \"0.0.0.0\"|g" ${RC_CFG_FILE}
-      sed -i "s|= \"password-file.sha512\"|= \"${RC_CFG_DIR}password-file.sha512\"|g" ${RC_CFG_FILE}
-      sed -i "s|= \"cert.pem\"|= \"${RC_CERT_FILE}\"|g" ${RC_CFG_FILE}
-      sed -i "s|= \"key.pem\"|= \"${RC_KEY_FILE}\"|g" ${RC_CFG_FILE}
-      sed -i "s|= \"scripts\"|= \"${RC_SCRIPTS_DIR}\"|g" ${RC_CFG_FILE}
-      sed -i "s|= \"www\"|= \"${RC_WWW_DIR}\"|g" ${RC_CFG_FILE}
+
+      sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" ${RC_CFG_FILE}
+      sed -i -E "s|captcha = (.*)|captcha = true|g" ${RC_CFG_FILE}
+      sed -i -E "s|#password_file = (.*)|password_file = \"${RC_PASSWORD_FILE}\"|g" ${RC_CFG_FILE}
+      sed -i -E "s|#tls_cert_file = (.*)|tls_cert_file = \"${RC_CERT_FILE}\"|g" ${RC_CFG_FILE}
+      sed -i -E "s|#tls_key_file = (.*)|tls_key_file = \"${RC_KEY_FILE}\"|g" ${RC_CFG_FILE}
+      sed -i -E "s|root_directory = (.*)|root_directory = \"${RC_SCRIPTS_DIR}\"|g" ${RC_CFG_FILE}
+      sed -i -E "s|static_directory = (.*)|static_directory = \"${RC_WWW_DIR}\"|g" ${RC_CFG_FILE}
       echo "Created new configuration file at " ${RC_CFG_FILE}
     fi
     if [ ! -f ${RC_PASSWORD_FILE} ]; then

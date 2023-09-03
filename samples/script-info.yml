@@ -1,4 +1,7 @@
-description: Sample script that accepts some input options
+description: |
+  Sample script that accepts some input options.
+  For test purposes, the script itself waits for 2s before exiting.
+  <i>Note that this script is just an example and does not use a JSON encoder.</i>
 version: 1.2.3
 # RestCommander will run `/path/to/script get-state` to get its current state.
 # For more info see https://github.com/pouriya/restcommander/blob/master/DOCUMENTATION.md#script-information-format
@@ -37,6 +40,6 @@ options:
     required: true
 
   qux:
-    description: This option type is boolean
+    description: The type of this option is <b>boolean</b>
     value_type: boolean
     default_value: false

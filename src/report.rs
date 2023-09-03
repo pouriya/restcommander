@@ -323,6 +323,7 @@ async fn setup(config: CfgLogging) -> Result<State, String> {
     let report_file = tokio::fs::OpenOptions::new()
         .write(true)
         .append(true)
+        .create(true)
         .open(config.report.clone())
         .await
         .map_err(|error| {
