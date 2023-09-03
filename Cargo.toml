@@ -1,13 +1,13 @@
 [package]
 name = "restcommander"
-version = "23.1.9"
+version = "23.9.3"
 edition = "2021"
 description = "HTTP REST API layer on top of scripts with a simple web dashboard"
 authors = ["pouriya.jahanbakhsh@gmail.com"]
 repository = "https://github.com/pouriya/RestCommander"
 
 [workspace.metadata.ci-tools]
-application_version = "23.01.09"
+application_version = "23.09.03"
 
 [build-dependencies]
 md5 = "0.7"
