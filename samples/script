@@ -4,25 +4,28 @@ case $1 in
     "get-state" )
       # Make a report:
       echo "REPORT reading state" >&2
-      echo "This could be new state"
+      echo "{\"could_be_our_state\": \"$(date)\"}"
       # For test purposes:
       sleep 2 || true
       exit 0
       ;;
 esac
 
-
 # Make some logs in different logging levels:
-echo "TRACE value of environment variable foo is "   ${foo} >&2
-echo "DEBUG value of environment variable bar is "   ${bar} >&2
-echo "INFO value of environment variable baz is "    ${baz} >&2
-echo "WARNING value of environment variable qux is " ${qux} >&2
+echo "TRACE value of environment variable foo is "   "${foo}" >&2
+echo "DEBUG value of environment variable bar is "   "${bar}" >&2
+echo "INFO value of environment variable baz is "    "${baz}" >&2
+echo "WARNING value of environment variable qux is " "${qux}" >&2
 # Make a report:
 echo "REPORT running command" >&2
 
-
 # Make a JSON output:
-echo "{\"foo\": \"${foo}\", \"bar\": \"${bar}\", \"baz\": \"${baz}\", \"qux\": \"${qux}\"}"
+if [ "${DOCKER_CONTAINER}" = "1" ]
+then
+  echo "{\"foo\": \"${foo}\", \"bar\": \"${bar}\", \"baz\": \"${baz}\", \"qux\": ${qux}, \"_hints\": [\"Read script source -> docker run --entrypoint=/bin/cat IMAGE /srv/restcommander/scripts/sample\", \"Read its info file -> docker run --entrypoint=/bin/cat IMAGE /srv/restcommander/scripts/sample.yml\"]}"
+else
+  echo "{\"foo\": \"${foo}\", \"bar\": \"${bar}\", \"baz\": \"${baz}\", \"qux\": ${qux}}"
+fi
 # For test purposes:
 sleep 2 || true
 

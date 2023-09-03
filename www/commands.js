@@ -763,7 +763,7 @@ async function makeCommandOptionsInputs(options, command) {
             updateResultBeforeRequest()
             const runResult = await new Api(ApiOpts).run(command.http_path, requestOptions)
             if (runResult.status !== 401 && runResult.status !== 0 && command.info.support_state) {
-                getAndDrawCommandState(command)
+                await getAndDrawCommandState(command)
             }
             updateResultAfterRequest(runResult)
             if (runResult.status === 401) {
@@ -1059,7 +1059,7 @@ async function makeInputBoolean(optionName, definition) {
         textArea.checked = defaultValue;
     };
     var flagText = document.createElement('span');
-    flagText.innerHTML = '  ' + optionName.bold();
+    flagText.innerHTML = '  ' + optionName.replace('-', ' ').replace('_', ' ').bold();
     var spanDiv = document.createElement('div');
     setAttributes(
         spanDiv,

@@ -22,7 +22,7 @@ use tokio::sync::mpsc::Receiver;
 use warp;
 use warp::fs::File;
 use warp::http::header::{HeaderMap, AUTHORIZATION, LOCATION};
-use warp::http::{Response, StatusCode};
+use warp::http::{HeaderValue, Response, StatusCode};
 use warp::hyper::body::Bytes;
 use warp::hyper::Body;
 use warp::path::Tail;
@@ -113,21 +113,21 @@ pub enum HTTPAuthenticationError {
 
 #[derive(Error, Debug, Clone)]
 pub enum HTTPAPIError {
-    #[error("{message:?}")]
+    #[error("{message}")]
     CommandNotFound { message: String },
-    #[error("{message:?}")]
+    #[error("{message}")]
     CheckInput { message: String },
-    #[error("{message:?}")]
+    #[error("{message}")]
     InitializeCommand { message: String },
-    #[error("{message:?}")]
+    #[error("{message}")]
     ReloadCommands { message: String },
-    #[error("{message:?}")]
+    #[error("{message}")]
     ReloadConfig { message: String },
     #[error("Password should not be empty")]
     EmptyPassword,
     #[error("Server configuration does not allow client to change the password")]
     NoPasswordFile,
-    #[error("Could not save new password to configured password file ({message:?})")]
+    #[error("Could not save new password to configured password file ({message})")]
     SaveNewPassword { message: String },
     #[error("{message}")]
     ReportNotAvailable { message: String },
@@ -1475,7 +1475,7 @@ async fn handle_rejection(rejection: Rejection) -> Result<Response<String>, Reje
     } else if let Some(missing_header) = rejection.find::<warp::reject::MissingHeader>() {
         if missing_header.name() == AUTHORIZATION.as_str() {
             let mut headers = HeaderMap::new();
-            headers.insert("WWW-Authenticate", "Bearer".parse().unwrap());
+            headers.insert("WWW-Authenticate", HeaderValue::from_str("Bearer").unwrap());
             make_api_response_with_headers(
                 Err(HTTPError::Authentication(HTTPAuthenticationError::Required)),
                 Some(headers),

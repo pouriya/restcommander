@@ -1,41 +1,49 @@
 TARGET=$(shell rustc -vV | awk '$$1 == "host:"{print $$2}')
-DEV_CMD=./target/${TARGET}/debug/restcommander
-DEV_DIR=tmp/
-DEV_CFG=${DEV_DIR}config.toml
-BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
-VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "version"{print $$4;exit}')
+BUILD_DIR=$(CURDIR)/build
 RELEASE_FILENAME_POSTFIX=
+DEV_CMD=${BUILD_DIR}/restcommander-${VERSION}-${TARGET}-dev${RELEASE_FILENAME_POSTFIX}
+RELEASE_CMD=${BUILD_DIR}/restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
+DEV_DIR=$(CURDIR)/_build
+BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
+VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "application_version"{print $$4;exit}')
 DOCKER_REGISTRY=
 DOCKER_ALPINE_VERSION=latest
 DOCKER_IMAGE_VERSION=${VERSION}
 
 
 all: release
-	@ ls -sh restcommander-*
 
 release: download-bootstrap
-	rm -rf restcommander-* || true
+	@ rm -rf ${BUILD_DIR}/restcommander-* || true
 	cargo build --release --target ${TARGET}
-	@ cp ./target/${TARGET}/release/restcommander restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
+	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/release/restcommander ${RELEASE_CMD}
+	@ ls -sh ${BUILD_DIR}/restcommander*
 
 deb:
-	rm -rf restcommander-*.deb || true
+	@ rm -rf ${BUILD_DIR}/restcommander-*.deb || true
 	cargo deb --target ${TARGET}
-	@ cp ./target/${TARGET}/debian/*.deb restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
+	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/debian/*.deb ${BUILD_DIR}/restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
 docker:
 	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --build-arg RESTCOMMANDER_VERSION=${VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} -t restcommander:latest .
-	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --build-arg RESTCOMMANDER_VERSION=${VERSION} --force-rm -t restcommander:tour -f TourDockerfile .
 
 dev: download-bootstrap
-	rm -rf restcommander-*-dev* || true
+	rm -rf ${BUILD_DIR}/restcommander-*-dev* || true
 	cargo build --target ${TARGET}
-	@ cp ./target/${TARGET}/debug/restcommander restcommander-${VERSION}-${TARGET}-dev${RELEASE_FILENAME_POSTFIX}
+	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/debug/restcommander ${DEV_CMD}
+	@ ls -sh ${BUILD_DIR}/restcommander-*-dev*
 
-setup-dev: dev ${DEV_DIR} ${DEV_CFG}
+setup-dev: dev
+	@ rm -rf ${DEV_DIR}/bin/restcommander ${DEV_DIR}/etc/restcommander/config.toml
+	@ ./tools/setup.sh ${DEV_CMD} ${DEV_DIR} ${DEV_DIR}
+	@ sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" ${DEV_DIR}/etc/restcommander/config.toml
+	@ sed -i -E "s|level_name = (.*)|level_name = \"debug\"|g" ${DEV_DIR}/etc/restcommander/config.toml
+	@ sed -i -E "s|report = (.*)|report = \"${DEV_DIR}/var/log/restcommander/report.log\"|g" ${DEV_DIR}/etc/restcommander/config.toml
 
 start-dev: setup-dev
-	cd ${DEV_DIR} && ../${DEV_CMD} config config.toml
+	@echo ""
+	@echo "Starting RestCommander"
+	${DEV_DIR}/bin/restcommander config ${DEV_DIR}/etc/restcommander/config.toml
 
 download-bootstrap: www/bootstrap.bundle.min.js www/bootstrap.min.css
 
@@ -45,35 +53,17 @@ www/bootstrap.bundle.min.js:
 www/bootstrap.min.css:
 	curl --silent --output www/bootstrap.min.css https://cdn.jsdelivr.net/npm/bootstrap@${BOOTSTRAP_VERSION}/dist/css/bootstrap.min.css
 
-${DEV_DIR}:
-	mkdir -p ${DEV_DIR}
-	mkdir -p ${DEV_DIR}www
-	mkdir -p ${DEV_DIR}scripts
-	${DEV_CMD} sample script > ${DEV_DIR}/scripts/test && chmod a+x ${DEV_DIR}scripts/test
-	${DEV_CMD} sample script-info > ${DEV_DIR}scripts/test.yml
-	cp www/* ${DEV_DIR}www/ && rm -rf ${DEV_DIR}www/bootstrap-version.txt ${DEV_DIR}www/README.md
-
-${DEV_CFG}:
-	${DEV_CMD} sample config > ${DEV_CFG}
-	cat ${DEV_CFG} | awk '$$1 == "level_name" {$$3="\"debug\""}{print $$0}' > ${DEV_CFG}.tmp
-	mv ${DEV_CFG}.tmp ${DEV_CFG}
-	${DEV_CMD} sha512 admin > ${DEV_DIR}password-file.sha512
-	${DEV_CMD} sample self-signed-key > ${DEV_DIR}key.pem
-	${DEV_CMD} sample self-signed-cert > ${DEV_DIR}cert.pem
-
 exit-code-status-code-mapping:
 	./tools/exit-code-status-code-mapping
 
-clean: clean-dev
-	rm -rf restcommander-*
-	mv src/www/mod.rs www_mod.rs && rm -rf src/www/* && mv www_mod.rs src/www/mod.rs
+clean:
+	@cargo clean
 
 clean-dev:
-	rm -rf ${DEV_DIR}
+	@rm -rf ${DEV_DIR}
 
-dist-clean: clean
-	cargo clean
-	rm -rf www/bootstrap.*.js www/bootstrap.*.css
+dist-clean: clean clean-dev
+	@rm -rf www/bootstrap.*.js www/bootstrap.*.css
 
 update-self-signed-certificate:
 	openssl genrsa 2048 > samples/self-signed-key.pem
@@ -87,10 +77,4 @@ lint:
 test:
 	cargo test --target ${TARGET}
 
-archive:
-	$(eval ARCHIVE_GENERIC_EXCLUDE=--exclude='restcommander' --exclude='*.deb' --exclude='*.tar.gz' --exclude='target' --exclude='tmp' --exclude='src/www/*')
-	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} -zcvf restcommander-${VERSION}.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}.tar.gz .
-	cd .. && tar ${ARCHIVE_GENERIC_EXCLUDE} --exclude='.git' -zcvf restcommander-${VERSION}-src.tar.gz RestCommander && cd RestCommander && mv ../restcommander-${VERSION}-src.tar.gz .
-	ls -sh *.tar.gz
-
-.PHONY: all release deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint test archive clean-dev
+.PHONY: all release deb docker dev setup-dev start-dev exit-code-status-code-mapping clean dist-clean update-self-signed-certificate lint test clean-dev

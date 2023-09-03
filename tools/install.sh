@@ -2,40 +2,54 @@
 
 set -e
 
-_version="latest"
-
-_ostype="$(uname -s)"
-# TODO: Check GLIBC version and set it to "gnu" if version > 2.29
-_clibtype="musl"
-
-if [ "$_ostype" = Linux ]; then
-  if ldd --version 2>&1 | grep -q 'musl'; then
-    _clibtype="musl"
-  fi
+if [ "${DEBUG}" = "1" ]
+then
+  set -xe
 fi
-case "$_ostype" in
+
+VERSION="latest"
+
+OS_TYPE="$(uname -s)"
+LINUX_CLIB_TYPE="musl"
+if [ "${OS_TYPE}" = "Linux" ]
+then
+  if [ "${DOWNLOAD_MUSL_VERSION}" = "1" ]
+  then
+    LINUX_CLIB_TYPE="musl"
+  fi
+  # TODO: Check GLIBC version on Linux and set ${OS_TYPE} to "gnu" if its version > 2.29
+#  if ldd --version 2>&1 | ...;
+#  then
+#    LINUX_CLIB_TYPE="gnu"
+#  fi
+fi
+
+case "${OS_TYPE}" in
   Linux)
-    _ostype=unknown-linux-$_clibtype-ubuntu-22.04
+    # TODO: Check OS version and set below to 22 if possible:
+    OS_TYPE=unknown-linux-${LINUX_CLIB_TYPE}-ubuntu-20.04
     ;;
   Darwin)
-    _ostype=apple-darwin-macos-12
+    # TODO: Check OS version and set below to 12 if possible:
+    OS_TYPE=apple-darwin-macos-11
     ;;
   MINGW* | MSYS* | CYGWIN* | Windows_NT)
-    _ostype=pc-windows-gnu-windows-2022.exe
+    # TODO: Check OS version and set below to 2022 if possible:
+    OS_TYPE=pc-windows-gnu-windows-2019.exe
     ;;
   *)
-    err "unrecognized OS type: $_ostype"
+    err "Unrecognized OS type: ${OS_TYPE}"
     ;;
 esac
 
-echo "Detected that RestCommander ($_ostype) would work on your system"
-_binary=restcommander-$_ostype
-_download_url=https://github.com/pouriya/RestCommander/releases/download/$_version/restcommander-$_version-x86_64-$_ostype
-echo "Attempt to download RestCommander from $_download_url"
-curl -LSsf --output $_binary $_download_url
-chmod a+x $_binary || true
-_version="$(./$_binary --version)"
-echo "$_version is downloaded to $_binary"
-echo "For simplicity you can rename it to restcommander by running:"
-echo "    mv $_binary restcommander"
+echo "Detected that RestCommander (${OS_TYPE}) would work on your system"
+EXECUTABLE="restcommander-${OS_TYPE}"
+DOWNLOAD_URL="https://github.com/pouriya/RestCommander/releases/download/${VERSION}/restcommander-${VERSION}-x86_64-${OS_TYPE}"
+echo "Attempt to download RestCommander from ${DOWNLOAD_URL}"
+wget -O ${EXECUTABLE} ${DOWNLOAD_URL} || curl curl -SsfL -o ${EXECUTABLE} ${DOWNLOAD_URL}
+chmod a+x ${EXECUTABLE}  || true
+NAME_AND_VERSION="$(./${EXECUTABLE} --version)"
+echo "${NAME_AND_VERSION} is downloaded to ${EXECUTABLE}"
+echo "For simplicity you can rename it to just restcommander by running:"
+echo "    mv ${EXECUTABLE} restcommander"
 echo "Installed successfully"
