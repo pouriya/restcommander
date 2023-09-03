@@ -1246,6 +1246,7 @@ dependencies = [
  "humantime",
  "is_executable",
  "md5",
+ "num-traits",
  "rand 0.8.5",
  "serde",
  "serde_derive",
