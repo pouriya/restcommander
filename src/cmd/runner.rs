@@ -17,7 +17,6 @@ pub type CommandOptionsValue = HashMap<String, CommandOptionValue>;
 pub struct CommandOutput {
     pub exit_code: i32,
     pub stdout: String,
-    pub stderr: String,
     pub decoded_stdout: Result<serde_json::Value, String>,
     pub stats: CommandStats,
     pub instruction_list: Vec<CommandInstruction>,
@@ -28,7 +27,6 @@ impl CommandOutput {
         Self {
             exit_code: 0,
             stdout: "".to_string(),
-            stderr: "".to_string(),
             decoded_stdout: Ok(serde_json::Value::String(String::new())),
             stats: CommandStats::new(),
             instruction_list: Vec::new(),
@@ -87,22 +85,13 @@ impl CommandStatsSize {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommandInput {
     #[serde(default)]
     pub options: CommandOptionsValue,
     #[serde(default)]
     pub statistics: bool,
-}
-
-impl Default for CommandInput {
-    fn default() -> Self {
-        Self {
-            options: Default::default(),
-            statistics: false,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -128,7 +117,7 @@ pub fn run_command(
     command: &PathBuf,
     option_list: Vec<String>,
     input: Option<&CommandInput>,
-    capture_stderr: bool,
+    _capture_stderr: bool,
     env_map: HashMap<String, String>,
 ) -> Result<CommandOutput, CommandError> {
     let mut input_string = None;
@@ -173,17 +162,15 @@ pub fn run_command(
         let mut child_stdin = child.stdin.take().unwrap();
         child_stdin
             .write_all(input_string.clone().unwrap().as_bytes())
-            .map(|result| {
+            .inspect(|_| {
                 trace!(command = ?command, options = ?input_string.clone().unwrap(), "Wrote options to process stdin");
-                result
             })
-            .map_err(|error| {
+            .inspect_err(|error| {
                 warn!(
                     command = ?command,
                     error = error.to_string().as_str(),
                     "Could not write options to process stdin"
                 );
-                error
             }).unwrap_or_default();
         child_stdin.flush().unwrap_or_default();
         write_to_stdin_duration = start_write_to_stdin.elapsed().as_micros();
@@ -281,14 +268,10 @@ pub fn run_command(
             Ok(value) => Ok(value),
             Err(reason) => Err(reason.to_string()),
         };
-    if !capture_stderr {
-        child_stderr = String::new()
-    };
     Ok(CommandOutput {
         instruction_list,
         decoded_stdout,
         stdout: child_stdout,
-        stderr: child_stderr,
         exit_code: child_exit_code,
         stats: CommandStats {
             duration: CommandStatsDuration {

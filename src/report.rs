@@ -4,11 +4,10 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 
 use thiserror::Error;
-use tokio::{
-    fs::{File, OpenOptions},
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    sync::mpsc,
-};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::sync::mpsc;
+use std::thread;
 use tracing::{debug, error, info};
 
 use serde_derive::{Deserialize, Serialize};
@@ -25,6 +24,7 @@ pub struct State {
 
 #[derive(Clone, Debug)]
 enum ChannelType {
+    #[allow(clippy::upper_case_acronyms)]
     MPSC(mpsc::Sender<Message>),
     Stdout,
     Stderr,
@@ -104,8 +104,8 @@ pub enum ReportContext {
     State,
 }
 
-pub async fn maybe_setup(config: CfgLogging, last_state: Option<State>) -> Result<State, String> {
-    maybe_stop(last_state).await;
+pub fn maybe_setup(config: CfgLogging, last_state: Option<State>) -> Result<State, String> {
+    maybe_stop(last_state);
     match config.report.to_str().unwrap_or_default() {
         "stdout" => Ok(State {
             channel: ChannelType::Stdout,
@@ -119,16 +119,16 @@ pub async fn maybe_setup(config: CfgLogging, last_state: Option<State>) -> Resul
             channel: ChannelType::Off,
             filename: PathBuf::from("off"),
         }),
-        _ => setup(config).await,
+        _ => setup(config),
     }
 }
 
-pub async fn maybe_stop(state: Option<State>) {
+pub fn maybe_stop(state: Option<State>) {
     if state.is_none() {
         return;
     }
     if let ChannelType::MPSC(producer) = state.unwrap().channel {
-        producer.send(Message::Stop).await.unwrap_or_else(|error| {
+        producer.send(Message::Stop).unwrap_or_else(|error| {
             error!(
                 error = error.to_string().as_str(),
                 "Could not send `Stop` message to report channel"
@@ -137,7 +137,7 @@ pub async fn maybe_stop(state: Option<State>) {
     }
 }
 
-pub async fn report(
+pub fn report(
     from: String,
     context: ReportContext,
     info: String,
@@ -169,7 +169,6 @@ pub async fn report(
             debug!("Attempt to send report to reporter thread");
             producer
                 .send(Message::Report(report))
-                .await
                 .unwrap_or_else(|error| {
                     error!(
                         error = error.to_string().as_str(),
@@ -180,7 +179,7 @@ pub async fn report(
     };
 }
 
-pub async fn search(
+pub fn search(
     maybe_from: Option<String>,
     maybe_before_time: Option<String>,
     maybe_after_time: Option<String>,
@@ -198,13 +197,12 @@ pub async fn search(
                 maybe_limit,
                 state.filename,
             )
-            .await
         }
         _ => Err(ReportError::NotAvailable),
     }
 }
 
-async fn search_in_file(
+fn search_in_file(
     maybe_from: Option<String>,
     maybe_before_time: Option<String>,
     maybe_after_time: Option<String>,
@@ -215,7 +213,6 @@ async fn search_in_file(
     let file = OpenOptions::new()
         .read(true)
         .open(filename.clone())
-        .await
         .map_err(|error| ReportError::Open {
             filename: filename.clone(),
             error: error.to_string(),
@@ -270,7 +267,7 @@ async fn search_in_file(
     }
     loop {
         let mut buffer = String::new();
-        match file_reader.read_line(&mut buffer).await {
+        match file_reader.read_line(&mut buffer) {
             Ok(0) => break,
             Err(error) => {
                 return Err(ReportError::Read {
@@ -318,27 +315,24 @@ async fn search_in_file(
     Ok(report_list)
 }
 
-async fn setup(config: CfgLogging) -> Result<State, String> {
-    let (producer, consumer) = mpsc::channel(32);
-    let report_file = tokio::fs::OpenOptions::new()
-        .write(true)
+fn setup(config: CfgLogging) -> Result<State, String> {
+    let (producer, consumer) = mpsc::channel();
+    let report_file = OpenOptions::new()
+        
         .append(true)
         .create(true)
         .open(config.report.clone())
-        .await
         .map_err(|error| {
             format!(
                 "Could not open report file {:?}: {}",
                 config.report,
-                error.to_string()
+                error
             )
         })?;
-    tokio::task::spawn({
-        let report_filename = config.report.clone();
-        async move {
-            debug!("Reporter thread started.");
-            report_loop(report_file, report_filename, consumer).await;
-        }
+    let report_filename = config.report.clone();
+    thread::spawn(move || {
+        debug!("Reporter thread started.");
+        report_loop(report_file, report_filename, consumer);
     });
     Ok(State {
         channel: ChannelType::MPSC(producer),
@@ -346,19 +340,18 @@ async fn setup(config: CfgLogging) -> Result<State, String> {
     })
 }
 
-async fn report_loop(mut file: File, filename: PathBuf, mut consumer: mpsc::Receiver<Message>) {
+fn report_loop(mut file: File, filename: PathBuf, consumer: mpsc::Receiver<Message>) {
     loop {
-        match consumer.recv().await {
-            Some(message) => match message {
-                Message::Report(report) => match file.write_all(report.as_bytes()).await {
-                    Err(error) => {
+        match consumer.recv() {
+            Ok(message) => match message {
+                Message::Report(report) => {
+                    if let Err(error) = file.write_all(report.as_bytes()) {
                         error!(report_file = ?filename, error = error.to_string().as_str(), "Could not write to report file");
                         debug!(report_file = ?filename, "Attempt to reopen report file");
-                        match tokio::fs::OpenOptions::new()
-                            .write(true)
+                        match OpenOptions::new()
+                            
                             .append(true)
                             .open(filename.clone())
-                            .await
                         {
                             Ok(new_file) => {
                                 file = new_file;
@@ -369,14 +362,13 @@ async fn report_loop(mut file: File, filename: PathBuf, mut consumer: mpsc::Rece
                             }
                         }
                     }
-                    _ => {}
                 },
                 Message::Stop => {
                     info!(report_file = ?filename, "Reported thread stopped.");
                     break;
                 }
             },
-            None => {
+            Err(_) => {
                 error!(report_file = ?filename, "Report channel is closed but the reporter thread did not get `Stop` message");
                 break;
             }
