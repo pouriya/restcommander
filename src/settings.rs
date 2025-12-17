@@ -14,7 +14,6 @@ use tracing::{info, trace, warn};
 
 use config::{Config, ConfigError, Environment, File};
 
-use warp::http::uri::PathAndQuery;
 
 use serde_derive::{Deserialize, Serialize};
 
@@ -214,7 +213,7 @@ pub mod defaults {
 ]
 pub enum CMDOpt {
     Config(CMDOptCfg),
-    Playground(CfgValue),
+    Playground(Box<CfgValue>),
     Sample(CMDSample),
     Sha512(CMDSha512),
     Base64(CMDBase64),
@@ -256,8 +255,6 @@ impl Cfg {
 
 #[derive(Debug, Error)]
 pub enum CfgError {
-    #[error("Server is started via command-line options and no configuration file is given to reload from.")]
-    NoConfigFileGiven,
     #[error("Could not read configuration file {filename:?}: {message:?}")]
     ReadFile {
         filename: PathBuf,
@@ -558,10 +555,11 @@ impl CheckValue for CfgServer {
                 host: self.host.clone(),
                 message: reason,
             })?;
-        if let Err(reason) = PathAndQuery::try_from(self.http_base_path.clone()) {
+        // Validate http_base_path is a valid URI path
+        if !self.http_base_path.starts_with("/") {
             return Err(CfgServerCheckError::HTTPBasePATH {
                 http_base_path: self.http_base_path.clone(),
-                message: reason.to_string(),
+                message: "HTTP base path must start with '/'".to_string(),
             });
         };
         if !self.http_base_path.clone().ends_with("/") {
@@ -835,20 +833,17 @@ impl CheckValue for CfgWWW {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum CfgLoggingLevelName {
     Trace,
     Debug,
+    #[default]
     Info,
     Warning,
     Error,
     Off,
 }
 
-impl Default for CfgLoggingLevelName {
-    fn default() -> Self {
-        Self::Info
-    }
-}
 
 impl std::str::FromStr for CfgLoggingLevelName {
     type Err = String;
@@ -894,15 +889,6 @@ pub struct CMDBase64 {
 }
 
 impl Cfg {
-    pub fn try_reload(&mut self) -> Result<(), CfgError> {
-        let config_value = match self.filename.clone() {
-            Some(filename) => CfgValue::try_from(filename),
-            None => Err(CfgError::NoConfigFileGiven),
-        }?;
-        self.config_value = config_value;
-        self.trace_log();
-        Ok(())
-    }
 }
 
 impl TryFrom<PathBuf> for Cfg {
@@ -947,7 +933,7 @@ pub fn try_setup() -> Result<Cfg, Option<String>> {
                     .askpass("Enter input text: ")
                     .map(|x| String::from_utf8(x.into()).unwrap())
                     .map_err(|reason| {
-                        Some(format!("Could not read password: {}", reason.to_string()))
+                        Some(format!("Could not read password: {}", reason))
                     })?
             }
             .trim()
@@ -966,7 +952,7 @@ pub fn try_setup() -> Result<Cfg, Option<String>> {
             maybe_print(sample_name);
             Err(None)
         }
-        CMDOpt::Playground(options) => Ok(Cfg::try_from(options).map_err(|reason| Some(reason))?),
+        CMDOpt::Playground(options) => Ok(Cfg::try_from(*options).map_err(Some)?),
         CMDOpt::Config(config_file) => Ok(
             Cfg::try_from(config_file.config_file).map_err(|reason| Some(reason.to_string()))?
         ),

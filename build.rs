@@ -54,7 +54,7 @@ fn check_md5(
 
 fn maybe_build_src_www() {
     let excluded_file_list = [BOOTSTRAP_VERSION_FILENAME, "README.md", "CONTRIBUTING.md"]
-        .map(|x| PathBuf::from(x))
+        .map(PathBuf::from)
         .to_vec();
     if !check_md5(
         PathBuf::from("www"),
@@ -96,10 +96,10 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
     let (has_bootstrap_js, has_bootstrap_css) = fs::read_dir("www").unwrap().fold(
         (false, false),
         |(has_bootstrap_js, has_bootstrap_css), filename| {
-            let filename = PathBuf::from(filename.unwrap().path().file_name().unwrap());
-            if filename == PathBuf::from(BOOTSTRAP_JS_FILENAME) {
+            let filename = filename.unwrap().path().file_name().unwrap().to_string_lossy().into_owned();
+            if filename == BOOTSTRAP_JS_FILENAME {
                 (true, has_bootstrap_css)
-            } else if filename == PathBuf::from(BOOTSTRAP_CSS_FILENAME) {
+            } else if filename == BOOTSTRAP_CSS_FILENAME {
                 (has_bootstrap_js, true)
             } else {
                 (has_bootstrap_js, has_bootstrap_css)
@@ -109,7 +109,7 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
     if !has_bootstrap_js || !has_bootstrap_css {
         log!(
             "Could not found {} in `www` directory, Will replace public bootstrap links inside `*.html` files",
-            if !has_bootstrap_js && !has_bootstrap_js {
+            if !has_bootstrap_js && !has_bootstrap_css {
                 format!("`{}` and `{}`", BOOTSTRAP_JS_FILENAME, BOOTSTRAP_CSS_FILENAME)
             } else if !has_bootstrap_js {
                 format!("`{}`", BOOTSTRAP_JS_FILENAME)
@@ -201,7 +201,7 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
 
 fn maybe_build_src_samples() {
     let excluded_file_list = ["README.md", SAMPLE_DESCRIPTIONS_FILENAME]
-        .map(|x| PathBuf::from(x))
+        .map(PathBuf::from)
         .to_vec();
     if !check_md5(
         PathBuf::from("samples"),
@@ -304,12 +304,8 @@ pub fn maybe_print(_sample_name: CMDSample) {
             (
                 format!("{}{}", enum_body, variant),
                 format!(
-                    "{}{}",
-                    function_body,
-                    format!(
-                        "\n        CMDSample::{} => include_str!({:?}).to_string(),",
-                        sample_name, file_name
-                    )
+                    "{}\n        CMDSample::{} => include_str!({:?}).to_string(),",
+                    function_body, sample_name, file_name
                 ),
             )
         },

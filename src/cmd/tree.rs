@@ -1,6 +1,5 @@
 use super::errors::CommandError;
 use crate::cmd::MAX_COMMAND_DIRECTORY_DEPTH;
-use crate::http::API_RUN_BASE_PATH;
 use serde_derive::{Deserialize, Serialize};
 use serde_yaml;
 use std::collections::HashMap;
@@ -14,8 +13,6 @@ pub struct Command {
     pub name: String,
     #[serde(skip)]
     pub file_path: PathBuf,
-    #[serde(skip)]
-    pub info_file_path: PathBuf,
     #[serde(skip_deserializing)]
     pub http_path: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -53,9 +50,10 @@ pub struct CommandOptionInfo {
     pub size: Option<CommandOptionInfoValueSize>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CommandOptionInfoValueType {
+    #[default]
     Any,
     Boolean,
     Integer,
@@ -96,15 +94,6 @@ impl Command {
             MAX_COMMAND_DIRECTORY_DEPTH,
         )?;
         Ok(())
-    }
-
-    pub fn replace(&mut self, other: Self) {
-        self.commands = other.commands;
-        self.http_path = other.http_path;
-        self.info = other.info;
-        self.is_directory = other.is_directory;
-        self.name = other.name;
-        self.file_path = other.file_path;
     }
 
     pub fn detect_commands(
@@ -164,7 +153,6 @@ impl Command {
                 let command = Command {
                     name: entry.file_name().unwrap().to_str().unwrap().to_string(),
                     file_path: entry.clone(),
-                    info_file_path: Default::default(),
                     http_path: http_base_path
                         .clone()
                         .join(entry.strip_prefix(root_directory).unwrap()),
@@ -186,10 +174,10 @@ impl Command {
         Ok(commands)
     }
 
-    pub fn new(root_directory: &PathBuf, http_base_path: &PathBuf) -> Result<Self, CommandError> {
+    pub fn new(root_directory: &std::path::Path, http_base_path: &std::path::Path) -> Result<Self, CommandError> {
         if !root_directory.is_dir() {
             return Err(CommandError::CommandIsNotDirectory {
-                http_path: root_directory.clone(),
+                http_path: root_directory.to_path_buf(),
             });
         };
         let mut command = Self {
@@ -199,9 +187,8 @@ impl Command {
                 .to_str()
                 .unwrap()
                 .to_string(),
-            file_path: root_directory.clone(),
-            info_file_path: Default::default(),
-            http_path: http_base_path.clone(),
+            file_path: root_directory.to_path_buf(),
+            http_path: http_base_path.to_path_buf(),
             info: None,
             is_directory: true,
             commands: HashMap::new(),
@@ -211,33 +198,32 @@ impl Command {
     }
 
     pub fn from_filename(
-        root_directory: &PathBuf,
-        filename: &PathBuf,
-        http_base_path: &PathBuf,
+        root_directory: &std::path::Path,
+        filename: &std::path::Path,
+        http_base_path: &std::path::Path,
     ) -> Result<(String, Self), CommandError> {
         if !filename.is_file() {
             return Err(CommandError::IsNotARegularFile {
-                filename: filename.clone(),
+                filename: filename.to_path_buf(),
             });
         };
         let name = PathBuf::from(filename.file_name().unwrap())
             .to_str()
             .unwrap()
             .to_string();
-        return Ok((
+        Ok((
             name.clone(),
             Command {
                 name,
-                file_path: filename.clone(),
-                info_file_path: Default::default(),
+                file_path: filename.to_path_buf(),
                 http_path: http_base_path
-                    .clone()
+                    .to_path_buf()
                     .join(filename.strip_prefix(root_directory).unwrap()),
-                info: Some(Command::detect_command_info(filename)?),
+                info: Some(Command::detect_command_info(&filename.to_path_buf())?),
                 is_directory: false,
                 commands: HashMap::new(),
             },
-        ));
+        ))
     }
 
     pub fn detect_command_info(command_filename: &PathBuf) -> Result<CommandInfo, CommandError> {
@@ -321,23 +307,20 @@ impl Command {
                     }
                 }
             };
-            match definition.value_type {
-                CommandOptionInfoValueType::Enum(ref list) => {
-                    if list.is_empty() {
-                        check_options = Err(format!(
-                            "value of option '{}' is an accepted_value_list which is empty",
-                            option
-                        ));
+            if let CommandOptionInfoValueType::Enum(ref list) = definition.value_type {
+                if list.is_empty() {
+                    check_options = Err(format!(
+                        "value of option '{}' is an accepted_value_list which is empty",
+                        option
+                    ));
+                    break;
+                };
+                if let Some(CommandOptionValue::String(ref value)) = definition.default_value {
+                    if !list.contains(value) {
+                        check_options = Err(format!("for option '{}' the default value should be in its default value list", option));
                         break;
-                    };
-                    if let Some(CommandOptionValue::String(ref value)) = definition.default_value {
-                        if !list.contains(value) {
-                            check_options = Err(format!("for option '{}' the default value should be in its default value list", option));
-                            break;
-                        }
                     }
                 }
-                _ => (),
             }
         }
         if let Ok(ref command_info) = check_options {
@@ -348,28 +331,5 @@ impl Command {
             command: command_filename.clone(),
             message: reason,
         })
-    }
-
-    pub fn replace_http_base_path(&mut self, base_path: &PathBuf) {
-        self.do_replace_http_base_path(&self.http_path.clone(), base_path);
-    }
-
-    fn do_replace_http_base_path(&mut self, old_base_path: &PathBuf, new_base_path: &PathBuf) {
-        let new_http_path = new_base_path
-            .clone()
-            .join(PathBuf::from(API_RUN_BASE_PATH).strip_prefix("/").unwrap())
-            .join(self.http_path.strip_prefix(old_base_path.clone()).unwrap());
-        self.http_path = new_http_path;
-        if self.is_directory {
-            for (_, command) in self.commands.iter_mut() {
-                command.do_replace_http_base_path(old_base_path, new_base_path)
-            }
-        };
-    }
-}
-
-impl Default for CommandOptionInfoValueType {
-    fn default() -> Self {
-        Self::Any
     }
 }

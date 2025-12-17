@@ -1,11 +1,10 @@
 use crate::cmd::errors::CommandError;
 pub use crate::cmd::runner::CommandInstruction;
 pub use crate::cmd::runner::{CommandInput, CommandOutput, CommandStats};
-pub use crate::cmd::tree::{Command, CommandInfoGetState, CommandOptionInfo};
+pub use crate::cmd::tree::{Command, CommandInfoGetState};
 use crate::cmd::tree::{
     CommandOptionInfoValueSize, CommandOptionInfoValueType, CommandOptionValue,
 };
-use num_traits::cast::FromPrimitive;
 use std::collections::HashMap;
 
 pub mod errors;
@@ -15,7 +14,7 @@ pub mod tree;
 static MAX_COMMAND_DIRECTORY_DEPTH: usize = 5;
 
 pub fn search_for_command(
-    command_path_list: &Vec<String>,
+    command_path_list: &[String],
     command: &Command,
 ) -> Result<Command, CommandError> {
     let first_element = command_path_list[0].clone();
@@ -26,7 +25,7 @@ pub fn search_for_command(
                 // println!("{:?} - {:?} - {:?}", second_element, command_path_list, command.name);
                 if command.commands.contains_key(second_element.as_str()) {
                     return search_for_command(
-                        &command_path_list[1..].to_owned(),
+                        &command_path_list[1..],
                         command.commands.get(second_element.as_str()).unwrap(),
                     );
                 };
@@ -46,10 +45,10 @@ pub fn search_for_command(
         };
         return Ok(command.clone());
     };
-    return Err(CommandError::FindCommand {
+    Err(CommandError::FindCommand {
         command_name: command.name.clone(),
         http_path: command.http_path.clone(),
-    });
+    })
 }
 
 pub fn run_command(
@@ -104,30 +103,28 @@ pub fn check_input(command: &Command, input: &CommandInput) -> Result<CommandInp
         let new_value = if new_input.options.contains_key(option.as_str()) {
             let input_value = new_input.options.get(option.as_str()).unwrap();
             check_definition(
-                &option,
+                option,
                 &definition.value_type,
                 input_value,
                 &definition.size,
             )?
-        } else {
-            if definition.default_value.is_none() {
-                match definition.value_type {
-                    CommandOptionInfoValueType::Boolean => CommandOptionValue::Bool(false),
-                    CommandOptionInfoValueType::Any => CommandOptionValue::None,
-                    _ => {
-                        // So it is required
-                        if definition.required {
-                            return Err(format!(
-                                "required option {} is not given and has no default value",
-                                option
-                            ));
-                        };
-                        unreachable!();
-                    }
+        } else if definition.default_value.is_none() {
+            match definition.value_type {
+                CommandOptionInfoValueType::Boolean => CommandOptionValue::Bool(false),
+                CommandOptionInfoValueType::Any => CommandOptionValue::None,
+                _ => {
+                    // So it is required
+                    if definition.required {
+                        return Err(format!(
+                            "required option {} is not given and has no default value",
+                            option
+                        ));
+                    };
+                    unreachable!();
                 }
-            } else {
-                definition.default_value.clone().unwrap()
             }
+        } else {
+            definition.default_value.clone().unwrap()
         };
         new_input.options.insert(option.clone(), new_value);
     }
@@ -148,16 +145,16 @@ fn check_definition(
         (CommandOptionInfoValueType::Any, value) => Ok(value.clone()),
 
         (CommandOptionInfoValueType::Boolean, CommandOptionValue::Bool(flag)) => {
-            Ok(CommandOptionValue::Bool(flag.clone()))
+            Ok(CommandOptionValue::Bool(*flag))
         }
         (CommandOptionInfoValueType::String, CommandOptionValue::String(value)) => {
             Ok(CommandOptionValue::String(value.clone()))
         }
         (CommandOptionInfoValueType::Integer, CommandOptionValue::Integer(value)) => {
-            Ok(CommandOptionValue::Integer(value.clone()))
+            Ok(CommandOptionValue::Integer(*value))
         }
         (CommandOptionInfoValueType::Float, CommandOptionValue::Float(value)) => {
-            Ok(CommandOptionValue::Float(value.clone()))
+            Ok(CommandOptionValue::Float(*value))
         }
         (CommandOptionInfoValueType::Enum(accepted_value_list), value) => match value {
             CommandOptionValue::String(string_value) => {
@@ -210,70 +207,6 @@ fn check_definition(
     }
 }
 
-fn check_string(_option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
-    match input {
-        CommandOptionValue::String(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(
-            serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap(),
-        )),
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(
-            serde_json::to_string(value).unwrap(),
-        )),
-        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(
-            serde_json::to_string(value).unwrap(),
-        )),
-        CommandOptionValue::None => Ok(CommandOptionValue::String("".to_string())),
-    }
-}
-
-fn check_integer(_option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
-    match input {
-        CommandOptionValue::Integer(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => {
-            Ok(CommandOptionValue::Integer(if *bool { 1 } else { 0 }))
-        }
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::Integer(
-            i64::from_f64(value.clone()).unwrap(),
-        )),
-        CommandOptionValue::String(ref value) => match value.parse::<i64>() {
-            Ok(integer_value) => Ok(CommandOptionValue::Integer(integer_value)),
-            Err(_) => Err(format!("Could not convert `{}` to integer", value)),
-        },
-        CommandOptionValue::None => Err(format!("Could not convert null value to integer")),
-    }
-}
-
-fn check_float(option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
-    match input {
-        CommandOptionValue::String(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(
-            serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap(),
-        )),
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(
-            serde_json::to_string(value).unwrap(),
-        )),
-        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(
-            serde_json::to_string(value).unwrap(),
-        )),
-        CommandOptionValue::None => Ok(CommandOptionValue::String("".to_string())),
-    }
-}
-
-fn check_bool(option: &str, input: &CommandOptionValue) -> Result<CommandOptionValue, String> {
-    match input {
-        CommandOptionValue::String(_) => Ok(input.clone()),
-        CommandOptionValue::Bool(ref bool) => Ok(CommandOptionValue::String(
-            serde_json::to_string(&serde_json::Value::Bool(*bool)).unwrap(),
-        )),
-        CommandOptionValue::Float(ref value) => Ok(CommandOptionValue::String(
-            serde_json::to_string(value).unwrap(),
-        )),
-        CommandOptionValue::Integer(ref value) => Ok(CommandOptionValue::String(
-            serde_json::to_string(value).unwrap(),
-        )),
-        CommandOptionValue::None => Ok(CommandOptionValue::String("".to_string())),
-    }
-}
 
 fn check_size(
     option: &str,
@@ -281,11 +214,11 @@ fn check_size(
     size_definition: &CommandOptionInfoValueSize,
 ) -> Result<(), String> {
     let maybe_input_size = match input {
-        &CommandOptionValue::String(ref x) => Some((x.len() as f64).clone()),
-        &CommandOptionValue::Integer(ref x) => Some((*x as f64).clone()),
-        &CommandOptionValue::Float(ref x) => Some(x.clone()),
-        &CommandOptionValue::Bool(_) => None,
-        &CommandOptionValue::None => None,
+        CommandOptionValue::String(ref x) => Some(x.len() as f64),
+        CommandOptionValue::Integer(x) => Some(*x as f64),
+        CommandOptionValue::Float(x) => Some(*x),
+        CommandOptionValue::Bool(_) => None,
+        CommandOptionValue::None => None,
     };
     if let Some(input_size) = maybe_input_size {
         if let Some(min_size) = size_definition.min {
