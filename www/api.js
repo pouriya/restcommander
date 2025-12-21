@@ -121,40 +121,12 @@ class Api {
         return this.fetch(http_path, filterFunction, 'POST', {'X-RESTCOMMANDER-STATISTICS': "true"}, JSON.stringify(options))
     }
 
-    async reloadConfig(filterFunction) {
-        return this.fetch('reload/config', filterFunction)
-    }
-
-    async reloadCommands(filterFunction) {
-        return this.fetch('reload/commands', filterFunction)
-    }
-
     async setPassword(password, filterFunction) {
         return this.fetch('setPassword', filterFunction, 'POST', {}, JSON.stringify({'password': password}))
     }
 
     async state(http_path, filterFunction) {
         return this.fetch(http_path, filterFunction, 'GET', {'X-RESTCOMMANDER-STATISTICS': "true"})
-    }
-
-    async report(before_time, after_time, context, from, limit, filterFunction) {
-        var body = {}
-        if (before_time !== undefined && before_time !== null && before_time !== '') {
-            body['before_time'] = before_time
-        }
-        if (after_time !== undefined && after_time !== null && after_time !== '') {
-            body['after_time'] = after_time
-        }
-        if (context !== undefined && context !== null && context !== '') {
-            body['context'] = context
-        }
-        if (from !== undefined && from !== null && from !== '') {
-            body['from'] = from
-        }
-        if (limit !== undefined && limit !== null && limit !== '') {
-            body['limit'] = limit
-        }
-        return this.fetch('report', filterFunction, 'POST', {}, JSON.stringify(body))
     }
 }
 

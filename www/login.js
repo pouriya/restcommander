@@ -10,14 +10,15 @@ async function maybeSetupCaptcha() {
 
     // Make new Elements:
     var captchaImageDivElement = document.createElement('div')
-    setAttributes(captchaImageDivElement, {'id': 'captcha-image', 'class': 'form-outline mb-4'})
+    setAttributes(captchaImageDivElement, {'id': 'captcha-image', 'class': 'mb-3 text-center'})
     var captchaImageElement = document.createElement('img')
     setAttributes(
         captchaImageElement,
             {
                 'src': 'data:image/png;base64,' + captcha.image,
                 'class': 'img-fluid',
-                'alt': 'CAPTCHA'
+                'alt': 'CAPTCHA',
+                'style': 'max-width: 100%; height: auto;'
             }
         )
     captchaImageDivElement.appendChild(captchaImageElement)
@@ -28,13 +29,13 @@ async function maybeSetupCaptcha() {
         {
             'id': 'captcha-renew',
             'type': 'button',
-            'class': 'btn btn-outline-secondary btn-block mb-4 justify-content-center'
+            'class': 'btn btn-outline-secondary w-100 mb-3'
         }
     )
     captchaRenewElement.innerHTML = 'Renew CAPTCHA'
 
     var captchaIdDivElement = document.createElement('div')
-    setAttributes(captchaIdDivElement, {'id': 'captcha-id', 'class': 'form-outline invisible d-none'})
+    setAttributes(captchaIdDivElement, {'id': 'captcha-id', 'class': 'd-none'})
     var captchaIdElement = document.createElement('input')
     setAttributes(
         captchaIdElement,
@@ -48,7 +49,10 @@ async function maybeSetupCaptcha() {
     captchaIdDivElement.appendChild(captchaIdElement)
 
     var captchaTextDivElement = document.createElement('div')
-    setAttributes(captchaTextDivElement, {'id': 'captcha-text', 'class': 'form-outline mb-4'})
+    setAttributes(captchaTextDivElement, {'id': 'captcha-text', 'class': 'mb-3'})
+    var captchaTextLabelElement = document.createElement('label')
+    setAttributes(captchaTextLabelElement, {'for': 'captcha-text-value', 'class': 'form-label visually-hidden'})
+    captchaTextLabelElement.innerHTML = 'CAPTCHA'
     var captchaTextElement = document.createElement('input')
     setAttributes(
         captchaTextElement,
@@ -56,17 +60,31 @@ async function maybeSetupCaptcha() {
             'type': 'text',
             'id': 'captcha-text-value',
             'name': 'captcha-text-value',
-            'class': 'form-control',
+            'class': 'form-control form-control-lg',
             'placeholder': 'CAPTCHA*',
             'required': 'required'
         }
     )
+    captchaTextDivElement.appendChild(captchaTextLabelElement)
     captchaTextDivElement.appendChild(captchaTextElement)
 
-    document.getElementById('captcha-image').replaceWith(captchaImageDivElement)
-    document.getElementById('captcha-renew').replaceWith(captchaRenewElement)
-    document.getElementById('captcha-id').replaceWith(captchaIdDivElement)
-    document.getElementById('captcha-text').replaceWith(captchaTextDivElement)
+    var oldCaptchaImage = document.getElementById('captcha-image')
+    var oldCaptchaRenew = document.getElementById('captcha-renew')
+    var oldCaptchaId = document.getElementById('captcha-id')
+    var oldCaptchaText = document.getElementById('captcha-text')
+    
+    if (oldCaptchaImage) oldCaptchaImage.replaceWith(captchaImageDivElement)
+    if (oldCaptchaRenew) oldCaptchaRenew.replaceWith(captchaRenewElement)
+    if (oldCaptchaId) oldCaptchaId.replaceWith(captchaIdDivElement)
+    if (oldCaptchaText) oldCaptchaText.replaceWith(captchaTextDivElement)
+    
+    // Show captcha elements
+    captchaImageDivElement.classList.remove('d-none')
+    captchaImageDivElement.classList.add('mb-3')
+    captchaRenewElement.classList.remove('d-none')
+    captchaRenewElement.classList.add('mb-3')
+    captchaTextDivElement.classList.remove('d-none')
+    captchaTextDivElement.classList.add('mb-3')
     captchaRenewElement.addEventListener('click', captchaRenewClickEventListener)
 }
 
@@ -74,10 +92,11 @@ async function maybeSetupCaptcha() {
 function hideLoginErrorElement() {
     var loginErrorElement = document.getElementById('login-error')
     loginErrorElement.innerHTML = ''
-    if (loginErrorElement.className.includes('invisible')) {
+    if (loginErrorElement.classList.contains('d-none')) {
         return
     }
-    loginErrorElement.className = 'invisible ' + loginErrorElement.className.replace('visible', '')
+    loginErrorElement.classList.add('d-none')
+    loginErrorElement.classList.remove('d-block')
 }
 
 async function captchaRenewClickEventListener() {
@@ -118,13 +137,15 @@ async function loginSubmitEventListener(event) {
     }
     var loginErrorElement = document.getElementById('login-error')
     loginErrorElement.innerHTML = authResult + ''
-    loginErrorElement.className = 'visible ' + loginErrorElement.className.replace('invisible ', '')
+    loginErrorElement.classList.remove('d-none')
+    loginErrorElement.classList.add('d-block')
     await maybeSetupCaptcha()
 }
 
 async function main() {
     setConfiguration({'login-title': null, 'footer': null})
-    document.body.className = 'visible' + document.body.className.replace('invisible', '')
+    document.body.classList.remove('invisible')
+    document.body.classList.add('visible')
     document.getElementById('login-form').addEventListener('submit', loginSubmitEventListener)
     maybeSetupCaptcha()
 }

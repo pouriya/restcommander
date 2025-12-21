@@ -1,9 +1,7 @@
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::time::Instant;
 use std::{process, process::Stdio};
 use tracing::{debug, error, info, trace, warn};
@@ -19,7 +17,6 @@ pub struct CommandOutput {
     pub stdout: String,
     pub decoded_stdout: Result<serde_json::Value, String>,
     pub stats: CommandStats,
-    pub instruction_list: Vec<CommandInstruction>,
 }
 
 impl CommandOutput {
@@ -29,7 +26,6 @@ impl CommandOutput {
             stdout: "".to_string(),
             decoded_stdout: Ok(serde_json::Value::String(String::new())),
             stats: CommandStats::new(),
-            instruction_list: Vec::new(),
         }
     }
 }
@@ -94,24 +90,6 @@ pub struct CommandInput {
     pub statistics: bool,
 }
 
-#[derive(Clone, Debug)]
-pub enum CommandInstruction {
-    Reload,
-    Report(String),
-}
-
-impl FromStr for CommandInstruction {
-    type Err = ErrorKind;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.starts_with("REPORT ") && s.len() > 7 {
-            return Ok(Self::Report(s[7..].to_string()));
-        }
-        match s.to_lowercase().as_str() {
-            "reload" => Ok(Self::Reload),
-            _ => Err(Self::Err::Unsupported),
-        }
-    }
-}
 
 pub fn run_command(
     command: &PathBuf,
@@ -212,7 +190,6 @@ pub fn run_command(
     let start_logging = Instant::now();
     child_stderr = child_stderr.trim_end().to_string();
     let mut child_log_buffer = String::new();
-    let mut instruction_list = Vec::new();
     for line in child_stderr.lines() {
         if line.starts_with("INFO") {
             info!(
@@ -242,10 +219,7 @@ pub fn run_command(
                 message = line.replacen("TRACE", "", 1).trim_start()
             )
         } else {
-            match line.parse::<CommandInstruction>() {
-                Ok(instruction) => instruction_list.push(instruction),
-                _ => child_log_buffer += line,
-            };
+            child_log_buffer += line;
         };
     }
     if !child_log_buffer.is_empty() {
@@ -269,7 +243,6 @@ pub fn run_command(
             Err(reason) => Err(reason.to_string()),
         };
     Ok(CommandOutput {
-        instruction_list,
         decoded_stdout,
         stdout: child_stdout,
         exit_code: child_exit_code,
