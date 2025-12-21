@@ -19,8 +19,7 @@ use crate::captcha;
 use crate::cmd;
 use crate::cmd::runner::CommandOptionValue;
 use crate::cmd::runner::CommandOptionsValue;
-use crate::cmd::{Command, CommandInput, CommandInstruction, CommandStats};
-use crate::report::{ReportContext, ReportError, State as ReportState};
+use crate::cmd::{Command, CommandInput, CommandStats};
 use crate::settings::Cfg;
 use crate::utils;
 use crate::www;
@@ -107,12 +106,6 @@ pub enum HTTPAPIError {
     NoPasswordFile,
     #[error("Could not save new password to configured password file ({message})")]
     SaveNewPassword { message: String },
-    #[error("{message}")]
-    ReportNotAvailable { message: String },
-    #[error("{message}")]
-    Report { message: String },
-    #[error("No report found")]
-    ReportNotFound,
 }
 
 impl HTTPAPIError {
@@ -125,9 +118,6 @@ impl HTTPAPIError {
             Self::EmptyPassword => 1007,
             Self::NoPasswordFile => 1008,
             Self::SaveNewPassword { .. } => 1010,
-            Self::ReportNotAvailable { .. } => 1011,
-            Self::Report { .. } => 1012,
-            Self::ReportNotFound => 1013,
         }
     }
 
@@ -139,9 +129,6 @@ impl HTTPAPIError {
             Self::EmptyPassword => 400,
             Self::NoPasswordFile => 503,
             Self::SaveNewPassword { .. } => 500,
-            Self::ReportNotAvailable { .. } => 406,
-            Self::Report { .. } => 500,
-            Self::ReportNotFound => 404,
         }
     }
 }
@@ -189,14 +176,6 @@ struct SetPassword {
     password: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct Report {
-    before_time: Option<String>,
-    after_time: Option<String>,
-    context: Option<ReportContext>,
-    from: Option<String>,
-    limit: Option<usize>,
-}
 
 #[inline]
 fn exit_code_to_status_code(exit_code: i32) -> u16 {
@@ -226,7 +205,6 @@ pub struct ServerConfig {
 pub fn setup(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
-    report_state: Arc<RwLock<ReportState>>,
 ) -> Result<ServerConfig, String> {
     let server_options = cfg.read().unwrap().config_value.server.clone();
     let host = server_options.host.clone();
@@ -243,7 +221,6 @@ pub fn setup(
     let handler_state = Arc::new(HandlerState {
         cfg: cfg.clone(),
         commands: commands.clone(),
-        report_state: report_state.clone(),
         tokens: tokens.clone(),
         maybe_captcha: maybe_captcha.clone(),
     });
@@ -320,7 +297,6 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
 pub struct HandlerState {
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
-    report_state: Arc<RwLock<ReportState>>,
     tokens: Arc<RwLock<HashMap<String, usize>>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
 }
@@ -362,18 +338,15 @@ fn handle_request(request: &Request, state: Arc<HandlerState>) -> RouilleRespons
         (POST) (/api/setPassword) => {
             api_set_password(request, &state.cfg, &state.tokens)
         },
-        (POST) (/api/report) => {
-            api_report(request, &state.report_state)
-        },
         _ => {
             // Handle dynamic routes for /api/run/* and /api/state/*
             if method == "POST" && url.starts_with("/api/run/") {
                 let tail = url.strip_prefix("/api/run/").unwrap_or("");
-                return api_run_command(request, &state.cfg, &state.commands, &state.report_state, &state.tokens, tail);
+                return api_run_command(request, &state.cfg, &state.commands, &state.tokens, tail);
             }
             if method == "GET" && url.starts_with("/api/state/") {
                 let tail = url.strip_prefix("/api/state/").unwrap_or("");
-                return api_get_command_state(request, &state.cfg, &state.commands, &state.report_state, &state.tokens, tail);
+                return api_get_command_state(request, &state.cfg, &state.commands, &state.tokens, tail);
             }
             RouilleResponse::text("Not Found").with_status_code(404)
         }
@@ -512,9 +485,17 @@ fn api_get_commands(
     cfg: &Arc<RwLock<Cfg>>,
 ) -> RouilleResponse {
     match check_authentication(request, tokens, cfg) {
-        Ok(_) => make_api_response_ok_with_result(
-            serde_json::to_value(commands.read().unwrap().deref()).unwrap(),
-        ),
+        Ok(_) => {
+            // Reload commands before returning them
+            if let Err(e) = commands.write().unwrap().reload() {
+                return make_api_response(Err(HTTPError::API(HTTPAPIError::InitializeCommand {
+                    message: format!("Failed to reload commands: {}", e),
+                })));
+            }
+            make_api_response_ok_with_result(
+                serde_json::to_value(commands.read().unwrap().deref()).unwrap(),
+            )
+        },
         Err(e) => make_api_response(Err(HTTPError::Authentication(e))),
     }
 }
@@ -539,42 +520,6 @@ fn api_set_password(
     }
 }
 
-fn api_report(request: &Request, report_state: &Arc<RwLock<ReportState>>) -> RouilleResponse {
-    let input: Report = match input::json_input(request) {
-        Ok(r) => r,
-        Err(_) => return make_api_response(Err(HTTPError::Deserialize("Invalid JSON".to_string()))),
-    };
-    
-    let report_state_locked = report_state.read().unwrap();
-    match crate::report::search(
-        input.from,
-        input.before_time,
-        input.after_time,
-        input.context,
-        input.limit,
-                    report_state_locked.clone(),
-    ) {
-                    Ok(report_list) => {
-                        if report_list.is_empty() {
-                            make_api_response(Err(HTTPError::API(HTTPAPIError::ReportNotFound)))
-                        } else {
-                            let report_list = report_list
-                                .into_iter()
-                                .map(|report| serde_json::to_value(&report).unwrap())
-                                .collect();
-                            make_api_response_ok_with_result(report_list)
-                        }
-                    }
-                    Err(error) => make_api_response(Err(HTTPError::API(match error {
-                        ReportError::NotAvailable => HTTPAPIError::ReportNotAvailable {
-                            message: error.to_string(),
-                        },
-                        _ => HTTPAPIError::Report {
-                            message: error.to_string(),
-                        },
-                    }))),
-    }
-}
 
 fn check_authentication(
     request: &Request,
@@ -635,7 +580,6 @@ fn api_run_command(
     request: &Request,
     cfg: &Arc<RwLock<Cfg>>,
     commands: &Arc<RwLock<Command>>,
-    report_state: &Arc<RwLock<ReportState>>,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     command_path: &str,
 ) -> RouilleResponse {
@@ -655,8 +599,6 @@ fn api_run_command(
                 commands.clone(),
                 command_path.to_string(),
                 input,
-                report_state.clone(),
-                request.remote_addr().to_string(),
             ) {
                 Ok(response) => response,
                 Err(e) => make_api_response(Err(HTTPError::API(e))),
@@ -670,7 +612,6 @@ fn api_get_command_state(
     request: &Request,
     cfg: &Arc<RwLock<Cfg>>,
     commands: &Arc<RwLock<Command>>,
-    report_state: &Arc<RwLock<ReportState>>,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     command_path: &str,
 ) -> RouilleResponse {
@@ -688,8 +629,6 @@ fn api_get_command_state(
         cfg.clone(),
         commands.clone(),
         command_path.to_string(),
-        report_state.clone(),
-        request.remote_addr().to_string(),
     ) {
         Ok(response) => response,
         Err(e) => make_api_response(Err(HTTPError::API(e))),
@@ -890,8 +829,6 @@ fn maybe_run_command(
     commands: Arc<RwLock<Command>>,
     command_path: String,
     command_input: CommandInput,
-    report_state: Arc<RwLock<ReportState>>,
-    address: String,
 ) -> Result<RouilleResponse, HTTPAPIError> {
     let root_command = commands.read().unwrap().clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
@@ -914,20 +851,6 @@ fn maybe_run_command(
             message: reason.to_string(),
         }
     })?;
-    for instruction in command_output.instruction_list.clone() {
-        let report_state_locked = report_state.read().unwrap();
-        if let CommandInstruction::Report(report_data) = instruction {
-            crate::report::report(
-                address.clone(),
-                ReportContext::Run,
-                report_data.clone(),
-                report_state_locked.clone(),
-                command.http_path.clone().to_str().unwrap().to_string(),
-                None,
-            );
-        };
-        drop(report_state_locked)
-    }
     let http_status_code = exit_code_to_status_code(command_output.exit_code) as u16;
     let http_response_body = if command_output.stdout.is_empty() {
         serde_json::Value::Null
@@ -952,8 +875,6 @@ fn maybe_get_command_state(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
     command_path: String,
-    report_state: Arc<RwLock<ReportState>>,
-    address: String,
 ) -> Result<RouilleResponse, HTTPAPIError> {
     let root_command = commands.read().unwrap().clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
@@ -973,20 +894,6 @@ fn maybe_get_command_state(
     .map_err(|reason| HTTPAPIError::InitializeCommand {
         message: reason.to_string(),
     })?;
-    for instruction in command_output.instruction_list.clone() {
-        let report_state_locked = report_state.read().unwrap();
-        if let CommandInstruction::Report(report_data) = instruction {
-            crate::report::report(
-                address.clone(),
-                ReportContext::State,
-                report_data.clone(),
-                report_state_locked.clone(),
-                command.http_path.clone().to_str().unwrap().to_string(),
-                None,
-            );
-        };
-        drop(report_state_locked)
-    }
     let http_status_code = exit_code_to_status_code(command_output.exit_code) as u16;
     let http_response_body = if command_output.stdout.is_empty() {
         serde_json::Value::Null

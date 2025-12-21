@@ -7,7 +7,6 @@ mod captcha;
 mod cmd;
 mod http;
 mod logging;
-mod report;
 mod samples;
 mod settings;
 mod utils;
@@ -57,10 +56,7 @@ fn main() -> Result<(), String> {
         )
         .map_err(|reason| reason.to_string())?,
     ));
-    let report_state = Arc::new(RwLock::new(
-        report::maybe_setup(cfg_instance.logging.clone(), None)?,
-    ));
-    let server_config = http::setup(cfg.clone(), commands.clone(), report_state.clone())?;
+    let server_config = http::setup(cfg.clone(), commands.clone())?;
     if cfg_instance.server.print_banner {
         samples::maybe_print(samples::CMDSample::Banner)
     }

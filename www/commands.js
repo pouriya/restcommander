@@ -3,234 +3,228 @@ import {maybeRemoveElement, setAttributes} from './utils.js'
 import {setConfiguration} from './configuration.js'
 
 async function drawNavbar() {
+    var loadingElement = document.getElementById('sidebar-loading')
+    var navigationBarElement = document.getElementById('navigation-bar')
+    
+    // Show loading
+    if (loadingElement) {
+        loadingElement.style.display = 'block'
+    }
+    if (navigationBarElement) {
+        navigationBarElement.innerHTML = ''
+    }
+    
     const commandsResult = await new Api(ApiOpts).commands(true)
+    
+    // Hide loading
+    if (loadingElement) {
+        loadingElement.style.display = 'none'
+    }
+    
     if (commandsResult === false) {
+        if (navigationBarElement) {
+            navigationBarElement.innerHTML = '<div class="p-3 text-white text-center">Failed to load commands</div>'
+        }
+        // Still show settings even if commands failed
+        appendSettings(navigationBarElement)
         return false
     }
+    
     const commands = commandsResult.commands
-    await console.log('Got', Object.keys(commands).length, 'command(s)')
+    const commandCount = Object.keys(commands).length
+    await console.log('Got', commandCount, 'command(s)')
 
-    var navigationBarElement = document.getElementById('navigation-bar')
-    navigationBarElement.innerHTML = ''
-    doDrawNavbar(commands, navigationBarElement, 1)
+    if (navigationBarElement) {
+        navigationBarElement.innerHTML = ''
+        
+        if (commandCount === 0) {
+            // No commands - only show settings
+            var guideElement = document.getElementById('guide')
+            if (guideElement) {
+                guideElement.textContent = 'No commands available. Please configure commands in the server.'
+            }
+            // Only show settings
+            appendSettings(navigationBarElement)
+            return true
+        }
+        
+        // Create tree structure for commands
+        var treeList = document.createElement('ul')
+        setAttributes(treeList, {'class': 'sidebar-tree list-unstyled mb-0'})
+        await drawTreeNav(commands, treeList, 0)
+        navigationBarElement.appendChild(treeList)
+        
+        // Add settings at the bottom
+        appendSettings(navigationBarElement)
+        
+        // Update guide message
+        updateGuideMessageAfterLoad()
+    }
+    
+    return true
 }
 
-async function doDrawNavbar(commands, parentElement, depth) {
-    var count = 0;
-    await console.log('depth', depth, '|', 'command count:', Object.keys(commands).length)
+function updateGuideMessageAfterLoad() {
+    var guideElement = document.getElementById('guide')
+    if (guideElement) {
+        guideElement.textContent = 'Select a menu item to start'
+    }
+}
+
+async function drawTreeNav(commands, parentElement, depth) {
     for (const key in commands) {
-        count++;
         const command = commands[key];
         const keyName = key.replaceAll('-', ' ').replaceAll('_', ' ')
-        await console.log('count:', count, '|', 'keyName:', keyName)
-        if (depth === 1) {
-            const id = 'dropdownMenuLink-'+ depth.toString() + '-' + count.toString()
-            var aElement = document.createElement('a')
-            setAttributes(
-                aElement,
-                {
-                    'class': 'btn border-0 btn-secondary dropdown-toggle text-capitalize',
-                     'href': "#",
-                     'role': 'button',
-                     'id': id,
-                     'data-bs-toggle': 'dropdown',
-                     'data-bs-auto-close': 'outside',
-                     'aria-expanded': 'false'
-                }
-            )
-            aElement.innerHTML = keyName
-            parentElement.appendChild(aElement)
-            var ulElement = document.createElement('ul')
-            setAttributes(
-                ulElement,
-                {
-                    'class': 'dropdown-menu',
-                    'aria-labelledby': id
-                }
-            )
-            if (command.is_directory) {
-                await doDrawNavbar(command.commands, ulElement, depth+1)
-            } else {
-                var liElement = document.createElement('li')
-                var aElement = document.createElement('a')
-                setAttributes(
-                    aElement,
-                    {
-                        'class': 'dropdown-item text-capitalize',
-                        'href': "#"
-                    }
-                )
-                aElement.innerHTML = keyName
-                await addCommandClickEventListener(keyName, command, aElement)
-                liElement.appendChild(aElement)
-                ulElement.appendChild(liElement)
-            }
-            parentElement.appendChild(ulElement)
+        
+        var listItem = document.createElement('li')
+        setAttributes(listItem, {'class': 'sidebar-item'})
+        
+        if (command.is_directory) {
+            // It's a folder - create collapsible tree node
+            var folderId = 'folder-' + depth + '-' + key.replace(/[^a-zA-Z0-9]/g, '-')
+            
+            var folderToggle = document.createElement('button')
+            setAttributes(folderToggle, {
+                'class': 'sidebar-folder-toggle w-100 text-start d-flex align-items-center',
+                'type': 'button',
+                'data-bs-toggle': 'collapse',
+                'data-bs-target': '#' + folderId,
+                'aria-expanded': 'false',
+                'aria-controls': folderId
+            })
+            
+            var folderIcon = document.createElement('span')
+            setAttributes(folderIcon, {'class': 'sidebar-icon me-2'})
+            // Folder icon (plus icon for folders)
+            folderIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>'
+            
+            var folderName = document.createElement('span')
+            folderName.className = 'text-capitalize flex-grow-1'
+            folderName.textContent = keyName
+            
+            var folderChevron = document.createElement('span')
+            setAttributes(folderChevron, {'class': 'sidebar-chevron ms-auto'})
+            folderChevron.innerHTML = '<svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>'
+            
+            folderToggle.appendChild(folderIcon)
+            folderToggle.appendChild(folderName)
+            folderToggle.appendChild(folderChevron)
+            
+            var folderChildren = document.createElement('ul')
+            setAttributes(folderChildren, {
+                'class': 'sidebar-tree collapse list-unstyled',
+                'id': folderId,
+                'style': 'padding-left: calc(var(--sidebar-indent-base) + var(--sidebar-indent-unit) * ' + depth + ');'
+            })
+            
+            await drawTreeNav(command.commands, folderChildren, depth + 1)
+            
+            listItem.appendChild(folderToggle)
+            listItem.appendChild(folderChildren)
         } else {
-            const id = 'dropdownSubMenuLink-'+ depth.toString() + '-' + count.toString()
-            if (command.is_directory) {
-                var liElement = document.createElement('li')
-                setAttributes(
-                    liElement,
-                    {
-                        'class': 'dropend'
-                    }
-                )
-                var aElement = document.createElement('a')
-                setAttributes(
-                    aElement,
-                    {
-                        'class': 'dropdown-item text-capitalize',
-                        'href': "#",
-                        'id': id,
-                        'data-bs-toggle': 'dropdown',
-                        'data-bs-auto-close': 'outside',
-                        'aria-expanded': 'false'
-                    }
-                )
-                aElement.innerHTML = keyName + ' »'
-                liElement.appendChild(aElement)
-                var ulElement = document.createElement('ul')
-                setAttributes(
-                    ulElement,
-                    {
-                        'class': 'dropdown-menu',
-                        'aria-labelledby': id
-                    }
-                )
-                await doDrawNavbar(command.commands, ulElement, depth+1)
-                liElement.appendChild(ulElement)
-                parentElement.appendChild(liElement)
-            } else {
-                var liElement = document.createElement('li')
-                var aElement = document.createElement('a')
-                setAttributes(
-                    aElement,
-                    {
-                        'class': 'dropdown-item text-capitalize',
-                        'href': "#"
-                    }
-                )
-                aElement.innerHTML = keyName
-                await addCommandClickEventListener(keyName, command, aElement)
-                liElement.appendChild(aElement)
-                parentElement.appendChild(liElement)
-            }
+            // It's a command - create clickable link
+            var commandLink = document.createElement('a')
+            setAttributes(commandLink, {
+                'class': 'sidebar-command w-100 text-start d-flex align-items-center text-capitalize',
+                'href': '#'
+            })
+            
+            var commandIcon = document.createElement('span')
+            setAttributes(commandIcon, {'class': 'sidebar-icon me-2'})
+            // Command icon (terminal/play icon for commands)
+            commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.921 11.5L1.353 8.394a.5.5 0 0 1 0-.788l4.568-3.106A.5.5 0 0 1 6.5 5v6a.5.5 0 0 1-.579.5zM7.854 8.146l-1 .5a.5.5 0 0 0-.354.854v2.5a.5.5 0 0 0 .354.854l1 .5a.5.5 0 0 0 .646-.353V8.5a.5.5 0 0 0-.646-.354zm4.292 0a.5.5 0 0 1 .646.354v5.793a.5.5 0 0 1-.646.353l-1-.5a.5.5 0 0 1-.354-.854v-2.5a.5.5 0 0 1 .354-.854l1-.5z"/><path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0z"/></svg>'
+            
+            var commandName = document.createElement('span')
+            commandName.textContent = keyName
+            
+            commandLink.appendChild(commandIcon)
+            commandLink.appendChild(commandName)
+            
+            await addCommandClickEventListener(keyName, command, commandLink)
+            
+            listItem.appendChild(commandLink)
         }
-    }
-    if (depth === 1) {
-        count++
-        appendSettings(parentElement, count)
+        
+        parentElement.appendChild(listItem)
     }
 }
 
-function appendSettings(element, count) {
-    const id = 'dropdownMenuLink-1-' + count.toString()
-    var aElement = document.createElement('a')
-    setAttributes(
-        aElement,
-        {
-            'class': 'btn border-0 btn-secondary dropdown-toggle text-capitalize',
-             'href': "#",
-             'role': 'button',
-             'id': id,
-             'data-bs-toggle': 'dropdown',
-             'data-bs-auto-close': 'outside',
-             'aria-expanded': 'false'
-        }
-    )
-    aElement.innerHTML = 'Settings'
-    element.appendChild(aElement)
-    var ulElement = document.createElement('ul')
-    setAttributes(
-        ulElement,
-        {
-            'class': 'dropdown-menu',
-            'aria-labelledby': id
-        }
-    )
-    var LogoutLiElement = document.createElement('li')
-    var LogoutAElement = document.createElement('a')
-    setAttributes(
-        LogoutAElement,
-        {
-            'class': 'dropdown-item text-capitalize',
-            'href': "#",
-            'id': 'settings-logout'
-        }
-    )
-    LogoutAElement.innerHTML = 'Logout'
-    LogoutAElement.onclick = async function() {
+function appendSettings(element) {
+    var settingsDiv = document.createElement('div')
+    setAttributes(settingsDiv, {'class': 'sidebar-settings border-top border-secondary mt-auto'})
+    
+    var settingsId = 'settings-folder'
+    var settingsToggle = document.createElement('button')
+    setAttributes(settingsToggle, {
+        'class': 'sidebar-folder-toggle w-100 text-start d-flex align-items-center',
+        'type': 'button',
+        'data-bs-toggle': 'collapse',
+        'data-bs-target': '#' + settingsId,
+        'aria-expanded': 'false',
+        'aria-controls': settingsId
+    })
+    
+    var settingsIcon = document.createElement('span')
+    setAttributes(settingsIcon, {'class': 'sidebar-icon me-2'})
+    settingsIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.86z"/></svg>'
+    
+    var settingsName = document.createElement('span')
+    settingsName.className = 'text-capitalize flex-grow-1'
+    settingsName.textContent = 'Settings'
+    
+    var settingsChevron = document.createElement('span')
+    setAttributes(settingsChevron, {'class': 'sidebar-chevron ms-auto'})
+    settingsChevron.innerHTML = '<svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/></svg>'
+    
+    settingsToggle.appendChild(settingsIcon)
+    settingsToggle.appendChild(settingsName)
+    settingsToggle.appendChild(settingsChevron)
+    
+    var settingsList = document.createElement('ul')
+    setAttributes(settingsList, {
+        'class': 'sidebar-tree collapse list-unstyled',
+        'id': settingsId,
+        'style': 'padding-left: var(--sidebar-indent-base);'
+    })
+    // Logout
+    var logoutItem = document.createElement('li')
+    var logoutLink = document.createElement('a')
+    setAttributes(logoutLink, {
+        'class': 'sidebar-command w-100 text-start d-flex align-items-center text-capitalize',
+        'href': '#',
+        'id': 'settings-logout'
+    })
+    var logoutIcon = document.createElement('span')
+    setAttributes(logoutIcon, {'class': 'sidebar-icon me-2'})
+    logoutIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0z"/><path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/></svg>'
+    var logoutName = document.createElement('span')
+    logoutName.textContent = 'Logout'
+    logoutLink.appendChild(logoutIcon)
+    logoutLink.appendChild(logoutName)
+    logoutLink.onclick = async function() {
+        closeSidebar()
         document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
         document.location = 'index.html'
     }
-    LogoutLiElement.appendChild(LogoutAElement)
-    ulElement.appendChild(LogoutLiElement)
+    logoutItem.appendChild(logoutLink)
+    settingsList.appendChild(logoutItem)
 
-    var ReloadConfigLiElement = document.createElement('li')
-    var ReloadConfigAElement = document.createElement('a')
-    setAttributes(
-        ReloadConfigAElement,
-        {
-            'class': 'dropdown-item text-capitalize',
-            'href': "#"
-        }
-    )
-    ReloadConfigAElement.innerHTML = 'Reload Configuration'
-    ReloadConfigAElement.onclick = async function() {
-        document.getElementById('command').innerHTML = ''
-        updateResultBeforeRequest()
-        var reloadResult = await new Api(ApiOpts).reloadConfig()
-        if (reloadResult.ok === true) {
-            reloadResult.result = 'Configuration reloaded successfully.'
-        }
-        updateResultAfterRequest(reloadResult)
-        if (reloadResult.status === 401) {
-            changeLogoutToLogin()
-        }
-    }
-    ReloadConfigLiElement.appendChild(ReloadConfigAElement)
-    ulElement.appendChild(ReloadConfigLiElement)
-
-    var ReloadCommandsLiElement = document.createElement('li')
-    var ReloadCommandsAElement = document.createElement('a')
-    setAttributes(
-        ReloadCommandsAElement,
-        {
-            'class': 'dropdown-item text-capitalize',
-            'href': "#"
-        }
-    )
-    ReloadCommandsAElement.innerHTML = 'Reload Commands'
-    ReloadCommandsAElement.onclick = async function() {
-        document.getElementById('command').innerHTML = ''
-        updateResultBeforeRequest()
-        var reloadResult = await new Api(ApiOpts).reloadCommands()
-        if (reloadResult.ok === true) {
-            reloadResult.result = 'Commands reloaded successfully.'
-        }
-        updateResultAfterRequest(reloadResult)
-        if (reloadResult.ok === true) {
-            drawNavbar()
-        }
-        if (reloadResult.status === 401) {
-            changeLogoutToLogin()
-        }
-    }
-    ReloadCommandsLiElement.appendChild(ReloadCommandsAElement)
-    ulElement.appendChild(ReloadCommandsLiElement)
-
-    var setPasswordLiElement = document.createElement('li')
-    var setPasswordAElement = document.createElement('a')
-    setAttributes(
-        setPasswordAElement,
-        {
-            'class': 'dropdown-item text-capitalize',
-            'href': "#"
-        }
-    )
-    setPasswordAElement.innerHTML = 'Set New Password'
-    setPasswordAElement.onclick = async function() {
+    // Set New Password
+    var setPasswordItem = document.createElement('li')
+    var setPasswordLink = document.createElement('a')
+    setAttributes(setPasswordLink, {
+        'class': 'sidebar-command w-100 text-start d-flex align-items-center text-capitalize',
+        'href': '#'
+    })
+    var setPasswordIcon = document.createElement('span')
+    setAttributes(setPasswordIcon, {'class': 'sidebar-icon me-2'})
+    setPasswordIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 1a2 2 0 0 1 2 2v4H6V3a2 2 0 0 1 2-2zm3 6V3a3 3 0 0 0-6 0v4a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM5 8h6a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/></svg>'
+    var setPasswordName = document.createElement('span')
+    setPasswordName.textContent = 'Set New Password'
+    setPasswordLink.appendChild(setPasswordIcon)
+    setPasswordLink.appendChild(setPasswordName)
+    setPasswordLink.onclick = async function() {
+        closeSidebar()
         var commandElement = document.getElementById('command')
         commandElement.innerHTML = ''
         document.getElementById('command-result').innerHTML = ''
@@ -298,265 +292,73 @@ function appendSettings(element, count) {
         }
         formElement.addEventListener('submit', submitHandler)
     }
-    setPasswordLiElement.appendChild(setPasswordAElement)
-    ulElement.appendChild(setPasswordLiElement)
-
-    var reportLiElement = document.createElement('li')
-    var reportAElement = document.createElement('a')
-    setAttributes(
-        reportAElement,
-        {
-            'class': 'dropdown-item text-capitalize',
-            'href': "#"
-        }
-    )
-    reportAElement.innerHTML = 'Reports'
-    reportAElement.onclick = async function() {
-        var commandElement = document.getElementById('command')
-        commandElement.innerHTML = ''
-        document.getElementById('command-result').innerHTML = ''
-
-        var headerElement = document.createElement('h')
-        setAttributes(
-            headerElement,
-            {'class': 'h3 my-4'}
-        )
-        headerElement.innerHTML = 'Reports'
-        commandElement.appendChild(headerElement)
-
-        var textElement = document.createElement('p')
-        setAttributes(
-            textElement,
-            {'class': 'my-3 text-start text-break'}
-        )
-        textElement.innerHTML = 'Filter service reports.'
-        commandElement.appendChild(textElement)
-
-        var formElement = document.createElement('form')
-        setAttributes(
-            formElement,
-            {'class': 'text-start'}
-        )
-
-        var afterTimeDivElement = document.createElement('div')
-        setAttributes(
-            afterTimeDivElement,
-            {'class': 'form-group'}
-        )
-        var afterTimeLabelElement = document.createElement('label')
-        setAttributes(
-            afterTimeLabelElement,
-            {
-                'for': 'after-time',
-                'class': 'mt-3'
-            }
-        )
-        afterTimeLabelElement.innerHTML = 'Show reports after this time (e.g. 2022-12-22 14:59:07)'
-        var afterTimeInputElement = document.createElement('input')
-        setAttributes(
-            afterTimeInputElement,
-            {
-                'class': 'form-control',
-                'type': 'text',
-                'id': 'after-time',
-                'name': 'after_time',
-                'placeholder': 'YYYY-MM-DD HH:MM:SS',
-            }
-        )
-        afterTimeDivElement.appendChild(afterTimeLabelElement)
-        afterTimeDivElement.appendChild(afterTimeInputElement)
-        formElement.appendChild(afterTimeDivElement)
-
-        var beforeTimeDivElement = document.createElement('div')
-        setAttributes(
-            beforeTimeDivElement,
-            {'class': 'form-group'}
-        )
-        var beforeTimeLabelElement = document.createElement('label')
-        setAttributes(
-            beforeTimeLabelElement,
-            {
-                'for': 'before-time',
-                'class': 'mt-3'
-            }
-        )
-        beforeTimeLabelElement.innerHTML = 'Show reports before this time (e.g. 2022-12-22 14:59:07)'
-        var beforeTimeInputElement = document.createElement('input')
-        setAttributes(
-            beforeTimeInputElement,
-            {
-                'class': 'form-control',
-                'type': 'text',
-                'id': 'before-time',
-                'name': 'before_time',
-                'placeholder': 'YYYY-MM-DD HH:MM:SS',
-            }
-        )
-        beforeTimeDivElement.appendChild(beforeTimeLabelElement)
-        beforeTimeDivElement.appendChild(beforeTimeInputElement)
-        formElement.appendChild(beforeTimeDivElement)
-
-        var fromDivElement = document.createElement('div')
-        setAttributes(
-            fromDivElement,
-            {'class': 'form-group'}
-        )
-        var fromLabelElement = document.createElement('label')
-        setAttributes(
-            fromLabelElement,
-            {
-                'for': 'from-time',
-                'class': 'mt-3'
-            }
-        )
-        fromLabelElement.innerHTML = 'Show reports from this IP:PORT address. * is allowed to wildcard check. (e.g. 192.168.*)'
-        var fromInputElement = document.createElement('input')
-        setAttributes(
-            fromInputElement,
-            {
-                'class': 'form-control',
-                'type': 'text',
-                'id': 'from',
-                'name': 'from',
-                'placeholder': '127.0.0.1:*',
-            }
-        )
-        fromDivElement.appendChild(fromLabelElement)
-        fromDivElement.appendChild(fromInputElement)
-        formElement.appendChild(fromDivElement)
-
-        var limitDivElement = document.createElement('div')
-        setAttributes(
-            limitDivElement,
-            {'class': 'form-group'}
-        )
-        var limitLabelElement = document.createElement('label')
-        setAttributes(
-            limitLabelElement,
-            {
-                'for': 'limit',
-                'class': 'mt-3'
-            }
-        )
-        limitLabelElement.innerHTML = 'Maximum number of reports to fetch.'
-        var limitInputElement = document.createElement('input')
-        setAttributes(
-            limitInputElement,
-            {
-                'class': 'form-control',
-                'type': 'number',
-                'id': 'limit',
-                'name': 'limit',
-                'placeholder': '20',
-                'value': 20,
-                'min': 1,
-            }
-        )
-        limitDivElement.appendChild(limitLabelElement)
-        limitDivElement.appendChild(limitInputElement)
-        formElement.appendChild(limitDivElement)
-
-        var contextDivElement = document.createElement('div')
-        setAttributes(
-            contextDivElement,
-            {'class': 'form-group'}
-        )
-        var contextLabelElement = document.createElement('label')
-        setAttributes(
-            contextLabelElement,
-            {
-                'for': 'context',
-                'class': 'mt-3 text-break'
-            }
-        )
-        contextLabelElement.innerHTML = 'Context of report. Was it for running an operation or fetching state?'
-        var contextSelectElement = document.createElement('select')
-        setAttributes(
-            contextSelectElement,
-            {
-                'class': 'form-control',
-                'name': 'context',
-            }
-        )
-        var contextOptionEverythingElement = document.createElement('option')
-        setAttributes(
-            contextOptionEverythingElement,
-            {
-                'value': '',
-                'selected': 'selected',
-            }
-        )
-        contextOptionEverythingElement.innerHTML = 'Everything'
-        contextSelectElement.appendChild(contextOptionEverythingElement)
-        var contextOptionOperationElement = document.createElement('option')
-        setAttributes(
-            contextOptionOperationElement,
-            {'value': 'run'}
-        )
-        contextOptionOperationElement.innerHTML = 'Run'
-        contextSelectElement.appendChild(contextOptionOperationElement)
-        var contextOptionFetchStateElement = document.createElement('option')
-        setAttributes(
-            contextOptionFetchStateElement,
-            {'value': 'state'}
-        )
-        contextOptionFetchStateElement.innerHTML = 'State'
-        contextSelectElement.appendChild(contextOptionFetchStateElement)
-        contextDivElement.appendChild(contextLabelElement)
-        contextDivElement.appendChild(contextSelectElement)
-
-        formElement.appendChild(contextDivElement)
-
-        var formButtonDivElement = document.createElement('div')
-        setAttributes(
-            formButtonDivElement,
-            {'class': 'd-flex justify-content-center'}
-        )
-        var formButtonElement = document.createElement('button')
-        setAttributes(
-            formButtonElement,
-            {
-                'class': 'btn btn-sm btn-primary btn-block mt-3 justify-content-center fw-bold',
-                'type': 'submit'
-            }
-        )
-        formButtonElement.innerHTML = 'Search'
-        formButtonDivElement.appendChild(formButtonElement)
-        formElement.appendChild(formButtonDivElement)
-        commandElement.appendChild(formElement)
-        async function submitHandler(event) {
-            event.preventDefault()
-            var inputs = new FormData(event.target);
-            const before_time = inputs.get('before_time')
-            const after_time = inputs.get('after_time')
-            const context = inputs.get('context')
-            const from = inputs.get('from')
-            var limit = inputs.get('limit')
-            if (limit !== null) {
-                limit = parseInt(limit)
-            }
-            updateResultBeforeRequest()
-            const reportsResult = await new Api(ApiOpts).report(before_time, after_time, context, from, limit)
-            updateResultAfterRequest(reportsResult)
-            if (reportsResult.status === 401) {
-                changeLogoutToLogin()
-            }
-        }
-        formElement.addEventListener('submit', submitHandler)
-    }
-    reportLiElement.appendChild(reportAElement)
-    ulElement.appendChild(reportLiElement)
-
-    element.appendChild(ulElement)
+    setPasswordItem.appendChild(setPasswordLink)
+    settingsList.appendChild(setPasswordItem)
+    
+    settingsDiv.appendChild(settingsToggle)
+    settingsDiv.appendChild(settingsList)
+    element.appendChild(settingsDiv)
 }
 
 async function addCommandClickEventListener(commandName, command, element) {
     element.onclick = async function() {
+        // Close sidebar after selecting a command
+        closeSidebar()
+        
         var commandElement = document.getElementById('command')
         commandElement.innerHTML = ''
         var commandResultElement = document.getElementById('command-result')
         commandResultElement.innerHTML = ''
         await drawCommand(commandName, command, commandElement)
+    }
+}
+
+async function toggleSidebar() {
+    var sidebar = document.getElementById('sidebar')
+    var backdrop = document.getElementById('sidebar-backdrop')
+    var toggleButton = document.getElementById('sidebar-toggle')
+    
+    if (!sidebar) return
+    
+    if (sidebar.classList.contains('show')) {
+        // Close sidebar
+        closeSidebar()
+    } else {
+        // Open sidebar - always fetch commands fresh
+        sidebar.classList.add('show')
+        if (backdrop && window.innerWidth < 768) {
+            backdrop.classList.add('show')
+        }
+        if (window.innerWidth < 768) {
+            document.body.style.overflow = 'hidden'
+        }
+        
+        // Hide hamburger button when sidebar opens
+        if (toggleButton) {
+            toggleButton.style.display = 'none'
+        }
+        
+        // Always fetch commands when opening
+        await drawNavbar()
+    }
+}
+
+function closeSidebar() {
+    var sidebar = document.getElementById('sidebar')
+    var backdrop = document.getElementById('sidebar-backdrop')
+    var toggleButton = document.getElementById('sidebar-toggle')
+    
+    if (sidebar) {
+        sidebar.classList.remove('show')
+        if (backdrop) {
+            backdrop.classList.remove('show')
+        }
+        document.body.style.overflow = ''
+    }
+    
+    // Show hamburger button when sidebar closes
+    if (toggleButton) {
+        toggleButton.style.display = 'block'
     }
 }
 
@@ -866,12 +668,20 @@ async function makeInputEnum(optionName, definition) {
     if ('default_value' in definition) {
         defaultValue = definition.default_value;
     };
+    
+    // Create form group container
+    var formGroup = document.createElement('div')
+    setAttributes(formGroup, {'class': 'mb-4'})
+    
+    var header = makeOptionHeader(optionName)
+    var description = makeOptionDescription(definition.description)
+    
     var selectElement = document.createElement('select');
     setAttributes(
         selectElement,
         {
             'name': optionName,
-            'class': 'mb-4'
+            'class': 'form-select form-select-lg'
         }
     )
     var valueList = definition.value_type.enum;
@@ -900,20 +710,17 @@ async function makeInputEnum(optionName, definition) {
         selectElement.appendChild(enumValue);
     }
 
-    var header = makeOptionHeader(optionName)
-
-    var description = makeOptionDescription(definition.description)
-    var selectElementDiv = document.createElement('div')
-    selectElementDiv.appendChild(selectElement)
-    return [header, description, selectElementDiv];
+    formGroup.appendChild(header)
+    formGroup.appendChild(description)
+    formGroup.appendChild(selectElement)
+    return [formGroup];
 }
 
 async function makeInputString(optionName, definition) {
-    var stringElement = document.createElement('div');
-    setAttributes(
-        stringElement,
-        {}
-    )
+    // Create form group container
+    var formGroup = document.createElement('div');
+    setAttributes(formGroup, {'class': 'mb-4'})
+    
     var required = definition.required;
     var defaultValue = null;
     if ('default_value' in definition) {
@@ -936,27 +743,37 @@ async function makeInputString(optionName, definition) {
 
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
+    
     var textArea = document.createElement('textarea');
-    textArea.setAttribute('rows', '5')
-    textArea.setAttribute('cols', '80')
-    textArea.setAttribute('name', optionName);
+    setAttributes(textArea, {
+        'rows': '5',
+        'name': optionName,
+        'class': 'form-control'
+    })
     if (defaultValue != null) {
         textArea.innerHTML = defaultValue;
     };
     if (required) {
         textArea.setAttribute('required', 'required');
     };
-    stringElement.appendChild(header);
-    stringElement.appendChild(description);
-    var textAreaDiv = document.createElement('div')
-    textAreaDiv.appendChild(textArea)
-    stringElement.appendChild(textAreaDiv);
-    return [stringElement];
+    if (min_size > 0) {
+        textArea.setAttribute('minlength', min_size);
+    }
+    if (max_size !== null) {
+        textArea.setAttribute('maxlength', max_size);
+    }
+    
+    formGroup.appendChild(header);
+    formGroup.appendChild(description);
+    formGroup.appendChild(textArea);
+    return [formGroup];
 }
 
 async function makeInputInteger(optionName, definition) {
-    var StringElement = document.createElement('div');
-    StringElement.setAttribute('class', 'command-option-integer');
+    // Create form group container
+    var formGroup = document.createElement('div');
+    setAttributes(formGroup, {'class': 'mb-4'})
+    
     var required = definition.required;
     var defaultValue = null;
     if ('default_value' in definition) {
@@ -965,36 +782,43 @@ async function makeInputInteger(optionName, definition) {
 
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
-    var textArea = document.createElement('input');
-    textArea.setAttribute('name', optionName);
-    textArea.setAttribute('type', 'number');
+    
+    var inputElement = document.createElement('input');
+    setAttributes(inputElement, {
+        'name': optionName,
+        'type': 'number',
+        'class': 'form-control form-control-lg'
+    })
     if ('size' in definition) {
         if ('min' in definition.size) {
             if (definition.size.min !== null) {
-                textArea.setAttribute('min', definition.size.min);
+                inputElement.setAttribute('min', definition.size.min);
             };
         };
         if ('max' in definition.size) {
             if (definition.size.max !== null) {
-                textArea.setAttribute('max', definition.size.max);
+                inputElement.setAttribute('max', definition.size.max);
             };
         };
     }
     if (defaultValue != null) {
-        textArea.setAttribute('value', defaultValue);
+        inputElement.setAttribute('value', defaultValue);
     };
     if (required) {
-        textArea.setAttribute('required', 'required');
+        inputElement.setAttribute('required', 'required');
     };
-    StringElement.appendChild(header);
-    StringElement.appendChild(description);
-    StringElement.appendChild(textArea);
-    return [header, description, textArea];
+    
+    formGroup.appendChild(header);
+    formGroup.appendChild(description);
+    formGroup.appendChild(inputElement);
+    return [formGroup];
 }
 
 async function makeInputFloat(optionName, definition) {
-    var StringElement = document.createElement('div');
-    StringElement.setAttribute('class', 'command-option-float');
+    // Create form group container
+    var formGroup = document.createElement('div');
+    setAttributes(formGroup, {'class': 'mb-4'})
+    
     var required = definition.required;
     var defaultValue = null;
     if ('default_value' in definition) {
@@ -1003,40 +827,44 @@ async function makeInputFloat(optionName, definition) {
 
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
-    var textArea = document.createElement('input');
-    textArea.setAttribute('name', optionName);
-    textArea.setAttribute('type', 'number');
-    textArea.setAttribute('step', '0.000000001');
+    
+    var inputElement = document.createElement('input');
+    setAttributes(inputElement, {
+        'name': optionName,
+        'type': 'number',
+        'step': '0.000000001',
+        'class': 'form-control form-control-lg'
+    })
     if ('size' in definition) {
         if ('min' in definition.size) {
             if (definition.size.min !== null) {
-                textArea.setAttribute('min', definition.size.min);
+                inputElement.setAttribute('min', definition.size.min);
             };
         };
         if ('max' in definition.size) {
             if (definition.size.max !== null) {
-                textArea.setAttribute('max', definition.size.max);
+                inputElement.setAttribute('max', definition.size.max);
             };
         };
     }
     if (defaultValue != null) {
-        textArea.setAttribute('value', defaultValue);
+        inputElement.setAttribute('value', defaultValue);
     };
     if (required) {
-        textArea.setAttribute('required', 'required');
+        inputElement.setAttribute('required', 'required');
     };
-    StringElement.appendChild(header);
-    StringElement.appendChild(description);
-    StringElement.appendChild(textArea);
-    return [header, description, textArea];
+    
+    formGroup.appendChild(header);
+    formGroup.appendChild(description);
+    formGroup.appendChild(inputElement);
+    return [formGroup];
 }
 
 async function makeInputBoolean(optionName, definition) {
-    var booleanElement = document.createElement('div');
-    setAttributes(
-        booleanElement,
-        {}
-    );
+    // Create form group container
+    var formGroup = document.createElement('div');
+    setAttributes(formGroup, {'class': 'mb-4'})
+    
     var required = definition.required;
     var defaultValue = null;
     if ('default_value' in definition) {
@@ -1045,52 +873,57 @@ async function makeInputBoolean(optionName, definition) {
 
     var header = makeOptionHeader(optionName)
     var description = makeOptionDescription(definition.description)
-    var textArea = document.createElement('input');
+    
+    var checkboxDiv = document.createElement('div');
+    setAttributes(checkboxDiv, {'class': 'form-check'})
+    
+    var checkboxInput = document.createElement('input');
     setAttributes(
-        textArea,
+        checkboxInput,
         {
             'name': optionName,
             'type': 'checkbox',
             'value': 'true',
-            'style': 'width:auto;'
+            'class': 'form-check-input',
+            'id': 'checkbox-' + optionName
         }
     )
     if (defaultValue != null) {
-        textArea.checked = defaultValue;
+        checkboxInput.checked = defaultValue;
     };
-    var flagText = document.createElement('span');
-    flagText.innerHTML = '  ' + optionName.replace('-', ' ').replace('_', ' ').bold();
-    var spanDiv = document.createElement('div');
-    setAttributes(
-        spanDiv,
-        {
-            'class': 'mb-4 text-start'
-        }
-    )
-    spanDiv.appendChild(textArea)
-    spanDiv.appendChild(flagText)
-    booleanElement.appendChild(header);
-    booleanElement.appendChild(description);
-    booleanElement.appendChild(spanDiv)
+    
+    var checkboxLabel = document.createElement('label');
+    setAttributes(checkboxLabel, {
+        'class': 'form-check-label',
+        'for': 'checkbox-' + optionName
+    })
+    checkboxLabel.innerHTML = optionName.replaceAll('-', ' ').replaceAll('_', ' ')
+    
+    checkboxDiv.appendChild(checkboxInput)
+    checkboxDiv.appendChild(checkboxLabel)
+    
+    formGroup.appendChild(header);
+    formGroup.appendChild(description);
+    formGroup.appendChild(checkboxDiv);
 
-    return [booleanElement];
+    return [formGroup];
 }
 
 function makeOptionDescription(text) {
-    var description = document.createElement('p')
+    var description = document.createElement('div')
     setAttributes(
         description,
-        {'class': 'text-start text-break'}
+        {'class': 'form-text text-muted mb-3'}
     )
     description.innerHTML = text
     return description
 }
 
 function makeOptionHeader(name) {
-    var header = document.createElement('h3')
+    var header = document.createElement('label')
     setAttributes(
         header,
-        {'class': 'h3 mt-2 mb-1 text-capitalize text-start'}
+        {'class': 'form-label fw-semibold mb-2 text-capitalize'}
     )
     header.innerHTML = name.replaceAll('-', ' ').replaceAll('_', ' ')
     return header
@@ -1152,9 +985,15 @@ function doPrettifyResponse(x, indent) {
 
 function changeLogoutToLogin() {
     var logoutElement = document.getElementById('settings-logout')
-    logoutElement.innerHTML = 'Login'
-    logoutElement.onclick = async function() {
-        document.location = 'login.html'
+    if (logoutElement) {
+        var nameSpan = logoutElement.querySelector('span:not(.sidebar-icon)')
+        if (nameSpan) {
+            nameSpan.textContent = 'Login'
+        }
+        logoutElement.onclick = async function() {
+            closeSidebar()
+            document.location = 'login.html'
+        }
     }
     var commandResultElement = document.getElementById('command-result')
     if (commandResultElement !== null) {
@@ -1178,6 +1017,49 @@ async function main() {
         return
     }
     setConfiguration({'footer': null})
-    drawNavbar()
+    
+    // Setup sidebar toggle button
+    var toggleButton = document.getElementById('sidebar-toggle')
+    var closeButton = document.getElementById('sidebar-close')
+    var backdrop = document.getElementById('sidebar-backdrop')
+    
+    if (toggleButton) {
+        toggleButton.addEventListener('click', toggleSidebar)
+    }
+    
+    if (closeButton) {
+        closeButton.addEventListener('click', closeSidebar)
+    }
+    
+    if (backdrop) {
+        backdrop.addEventListener('click', closeSidebar)
+    }
+    
+    // Close sidebar when clicking on main content area
+    var mainContent = document.querySelector('.main-content')
+    if (mainContent) {
+        mainContent.addEventListener('click', function(event) {
+            // Only close if sidebar is open and we're not clicking inside sidebar
+            var sidebar = document.getElementById('sidebar')
+            if (sidebar && sidebar.classList.contains('show')) {
+                var clickedInsideSidebar = sidebar.contains(event.target)
+                if (!clickedInsideSidebar) {
+                    closeSidebar()
+                }
+            }
+        })
+    }
+    
+    // Sidebar starts closed on both desktop and mobile
+    // Commands will be loaded only when user clicks hamburger button
+    closeSidebar()
+    updateGuideMessage()
+}
+
+function updateGuideMessage() {
+    var guideElement = document.getElementById('guide')
+    if (guideElement) {
+        guideElement.textContent = 'Click the menu button to view available commands'
+    }
 }
 window.main = main
