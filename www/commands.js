@@ -127,8 +127,8 @@ async function drawTreeNav(commands, parentElement, depth) {
             
             var commandIcon = document.createElement('span')
             setAttributes(commandIcon, {'class': 'sidebar-icon me-2'})
-            // Command icon (play button for commands)
-            commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>'
+            // Command icon (terminal/play icon for commands)
+            commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.921 11.5L1.353 8.394a.5.5 0 0 1 0-.788l4.568-3.106A.5.5 0 0 1 6.5 5v6a.5.5 0 0 1-.579.5zM7.854 8.146l-1 .5a.5.5 0 0 0-.354.854v2.5a.5.5 0 0 0 .354.854l1 .5a.5.5 0 0 0 .646-.353V8.5a.5.5 0 0 0-.646-.354zm4.292 0a.5.5 0 0 1 .646.354v5.793a.5.5 0 0 1-.646.353l-1-.5a.5.5 0 0 1-.354-.854v-2.5a.5.5 0 0 1 .354-.854l1-.5z"/><path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0z"/></svg>'
             
             var commandName = document.createElement('span')
             commandName.textContent = keyName
@@ -403,12 +403,6 @@ async function drawCommand(commandName, command, element) {
             commandStateDivElement,
             {'class': '', 'id': 'command-state'}
         )
-        var waitingElement = document.createElement('p')
-        setAttributes(
-            waitingElement,
-            {'class': 'text-center', 'id': 'command-state-text'}
-        )
-        commandStateDivElement.appendChild(waitingElement)
         element.appendChild(commandStateDivElement)
         getAndDrawCommandState(command)
     }
@@ -423,13 +417,29 @@ async function drawCommand(commandName, command, element) {
 
 async function getAndDrawCommandState(command) {
     // Show waiting message for state
-    var waitingElement = document.createElement('p')
-    setAttributes(
-        waitingElement,
-        {'class': 'text-center', 'id': 'command-state-text'}
-    )
-    waitingElement.innerHTML = 'Waiting for state...'.italics()
-    document.getElementById('command-state-text').replaceWith(waitingElement)
+    var stateContainer = document.getElementById('command-state')
+    if (stateContainer) {
+        var waitingCard = document.createElement('div')
+        setAttributes(
+            waitingCard,
+            {'class': 'card border-info mb-4'}
+        )
+        var waitingCardBody = document.createElement('div')
+        setAttributes(
+            waitingCardBody,
+            {'class': 'card-body'}
+        )
+        var waitingText = document.createElement('p')
+        setAttributes(
+            waitingText,
+            {'class': 'card-text text-center mb-0', 'id': 'command-state-text'}
+        )
+        waitingText.innerHTML = 'Waiting for state...'.italics()
+        waitingCardBody.appendChild(waitingText)
+        waitingCard.appendChild(waitingCardBody)
+        stateContainer.innerHTML = ''
+        stateContainer.appendChild(waitingCard)
+    }
     
     const runResult = await new Api(ApiOpts).state(command.http_path.replace('run', 'state'))
     afterGetCommandState(command, runResult)
@@ -439,22 +449,54 @@ async function getAndDrawCommandState(command) {
 }
 
 async function afterGetCommandState(command, runResult) {
+    var stateContainer = document.getElementById('command-state')
+    if (!stateContainer) {
+        return
+    }
+    
     var result = runResult.result
     const resultText = prettifyResponse(result, 0)
-    var resultTextElement = document.createElement('p')
+    
+    // Create Bootstrap info card for state
+    var stateCard = document.createElement('div')
+    setAttributes(
+        stateCard,
+        {'class': 'card border-info mb-4'}
+    )
+    
+    var cardHeader = document.createElement('div')
+    setAttributes(
+        cardHeader,
+        {'class': 'card-header bg-info text-white'}
+    )
+    cardHeader.innerHTML = '<strong>Current State</strong>'
+    stateCard.appendChild(cardHeader)
+    
+    var cardBody = document.createElement('div')
+    setAttributes(
+        cardBody,
+        {'class': 'card-body'}
+    )
+    
+    var resultTextElement = document.createElement('pre')
     setAttributes(
         resultTextElement,
         {
-            'class': 'p-1 text-start text-break',
-            'id': 'command-state-text'
+            'class': 'card-text text-start text-break mb-0',
+            'id': 'command-state-text',
+            'style': 'white-space: pre-wrap; font-family: monospace; font-size: 0.875rem;'
         }
     )
     if (runResult.status === 200) {
-        resultTextElement.innerHTML = resultText
+        resultTextElement.textContent = resultText
     } else {
-        resultTextElement.innerHTML = 'Error: ' + resultText
+        resultTextElement.textContent = 'Error: ' + resultText
     }
-    document.getElementById('command-state-text').replaceWith(resultTextElement)
+    cardBody.appendChild(resultTextElement)
+    stateCard.appendChild(cardBody)
+    
+    stateContainer.innerHTML = ''
+    stateContainer.appendChild(stateCard)
 }
 
 async function makeCommandOptionsInputs(options, command) {
@@ -573,82 +615,155 @@ async function makeCommandOptionsInputs(options, command) {
 }
 
 function updateResultBeforeRequest() {
-    var waitingElement = document.createElement('p')
-    setAttributes(
-        waitingElement,
-        {'class': 'text-center'}
-    )
-    waitingElement.innerHTML = 'Waiting for response...'.italics()
     var resultElement = document.getElementById('command-result')
+    if (!resultElement) {
+        return
+    }
+    
+    // Create waiting card
+    var waitingCard = document.createElement('div')
+    setAttributes(
+        waitingCard,
+        {'class': 'card border-secondary mb-4'}
+    )
+    var waitingCardBody = document.createElement('div')
+    setAttributes(
+        waitingCardBody,
+        {'class': 'card-body'}
+    )
+    var waitingText = document.createElement('p')
+    setAttributes(
+        waitingText,
+        {'class': 'card-text text-center mb-0'}
+    )
+    waitingText.innerHTML = 'Waiting for response...'.italics()
+    waitingCardBody.appendChild(waitingText)
+    waitingCard.appendChild(waitingCardBody)
+    
     resultElement.innerHTML = ''
-    resultElement.appendChild(waitingElement)
+    resultElement.appendChild(waitingCard)
 }
 
 function updateResultAfterRequest(runResult) {
-    var resultHeaderElement = document.createElement('h3')
-    setAttributes(
-        resultHeaderElement,
-        {'class': 'h3 my-0 text-capitalize text-center'}
-    )
-    resultHeaderElement.innerHTML = 'Result'
-
-    var statusCodeTextElement = document.createElement('p')
-    setAttributes(
-        statusCodeTextElement,
-        {
-            'class': 'fst-italic text-center alert text-secondary',
-            'id': 'status-code-text'
-        }
-    )
-    var statusCodeTextSmallElement = document.createElement('small')
-    statusCodeTextElement.innerHTML = 'Status: '
-    var statusCodeElement =  document.createElement('span')
-    var statusCodeClass = 'text-success'
-    if (runResult.ok == false) {
-        statusCodeClass = 'text-danger'
+    var resultElement = document.getElementById('command-result')
+    if (!resultElement) {
+        return
     }
-    setAttributes(
-        statusCodeElement,
-        {'class': statusCodeClass}
-    )
-    statusCodeElement.innerHTML = runResult.status.toString().bold()
-    if (runResult.message !== undefined) {
-        statusCodeElement.innerHTML += ' ' + runResult.message.bold()
+    
+    // Determine card variant based on result
+    var cardVariant = 'border-secondary' // default
+    var cardHeaderClass = 'bg-secondary text-white'
+    var cardTitle = 'Result'
+    
+    if (runResult.status === 401) {
+        // Warning card for 401 (login needed)
+        cardVariant = 'border-warning'
+        cardHeaderClass = 'bg-warning text-dark'
+        cardTitle = 'Authentication Required'
+    } else if (runResult.status === 404) {
+        // Secondary card for 404 (not found)
+        cardVariant = 'border-secondary'
+        cardHeaderClass = 'bg-secondary text-white'
+        cardTitle = 'Not Found'
+    } else if (runResult.ok === true) {
+        // Success card for successful runs
+        cardVariant = 'border-success'
+        cardHeaderClass = 'bg-success text-white'
+        cardTitle = 'Command Executed Successfully'
+    } else if (runResult.ok === false) {
+        // Danger card for failed runs
+        cardVariant = 'border-danger'
+        cardHeaderClass = 'bg-danger text-white'
+        cardTitle = 'Command Execution Failed'
     }
-    statusCodeTextSmallElement.appendChild(statusCodeElement)
-    statusCodeTextElement.appendChild(statusCodeTextSmallElement)
-    var statusCodeDivElement = document.createElement('div')
+    
+    // Create Bootstrap card
+    var resultCard = document.createElement('div')
     setAttributes(
-            statusCodeDivElement,
-            {'class': 'my-0 py-0'}
-        )
-    statusCodeDivElement.appendChild(statusCodeTextElement)
-
+        resultCard,
+        {'class': 'card ' + cardVariant + ' mb-4'}
+    )
+    
+    // Card header
+    var cardHeader = document.createElement('div')
+    setAttributes(
+        cardHeader,
+        {'class': 'card-header ' + cardHeaderClass}
+    )
+    var cardTitleElement = document.createElement('strong')
+    cardTitleElement.textContent = cardTitle
+    cardHeader.appendChild(cardTitleElement)
+    
+    resultCard.appendChild(cardHeader)
+    
+    // Card body with result content
+    var cardBody = document.createElement('div')
+    setAttributes(
+        cardBody,
+        {'class': 'card-body'}
+    )
+    
     var result = runResult.result
     const resultText = prettifyResponse(result, 0)
-    var resultTextElement = document.createElement('p')
+    var resultTextElement = document.createElement('pre')
     setAttributes(
         resultTextElement,
         {
-            'class': 'p-1 text-start text-break',
-            'id': 'command-result-text'
+            'class': 'card-text text-start text-break mb-0',
+            'id': 'command-result-text',
+            'style': 'white-space: pre-wrap; font-family: monospace; font-size: 0.875rem;'
         }
     )
-    resultTextElement.innerHTML = resultText
-    var resultDivElement = document.createElement('div')
-    setAttributes(
-                resultDivElement,
-                {'class': 'mb-5'}
-            )
-    resultDivElement.appendChild(resultTextElement)
-
-    var resultElement = document.getElementById('command-result')
-    resultElement.innerHTML = ''
-    resultElement.appendChild(resultHeaderElement)
-    if (runResult.status !== 0) {
-        resultElement.appendChild(statusCodeDivElement)
+    resultTextElement.textContent = resultText
+    cardBody.appendChild(resultTextElement)
+    
+    // Add login button for 401 errors
+    if (runResult.status === 401) {
+        var loginButtonDiv = document.createElement('div')
+        setAttributes(
+            loginButtonDiv,
+            {'class': 'mt-3 text-center'}
+        )
+        var loginButton = document.createElement('a')
+        setAttributes(
+            loginButton,
+            {
+                'class': 'btn btn-warning btn-sm fw-bold',
+                'href': 'login.html'
+            }
+        )
+        loginButton.textContent = 'Login Again'
+        loginButtonDiv.appendChild(loginButton)
+        cardBody.appendChild(loginButtonDiv)
     }
-    resultElement.appendChild(resultDivElement)
+    
+    // Add status code as small text at the bottom if available (only for non-standard status codes)
+    if (runResult.status !== 0 && runResult.status !== 200 && runResult.status !== 401 && runResult.status !== 404) {
+        var statusTextDiv = document.createElement('div')
+        setAttributes(
+            statusTextDiv,
+            {'class': 'mt-3 pt-3 border-top'}
+        )
+        var statusText = document.createElement('small')
+        setAttributes(
+            statusText,
+            {
+                'class': 'text-muted',
+                'style': 'font-size: 0.6rem;'
+            }
+        )
+        statusText.textContent = 'HTTP Status: ' + runResult.status.toString()
+        if (runResult.message !== undefined) {
+            statusText.textContent += ' ' + runResult.message
+        }
+        statusTextDiv.appendChild(statusText)
+        cardBody.appendChild(statusTextDiv)
+    }
+    
+    resultCard.appendChild(cardBody)
+    
+    resultElement.innerHTML = ''
+    resultElement.appendChild(resultCard)
 
     var runButtonElement = document.getElementById('run-button')
     if (runButtonElement !== null) {
@@ -989,19 +1104,7 @@ function changeLogoutToLogin() {
             document.location = 'login.html'
         }
     }
-    var commandResultElement = document.getElementById('command-result')
-    if (commandResultElement !== null) {
-        var helpElement = document.createElement('a')
-        setAttributes(
-            helpElement,
-            {
-                'class': 'mb-5 btn btn-sm btn-primary fw-bold',
-                'href': 'login.html'
-            }
-        )
-        helpElement.innerHTML = 'Login Again'
-        commandResultElement.appendChild(helpElement)
-    }
+    // Note: 401 errors are now handled in the result card with a warning card and login button
 }
 
 async function main() {
