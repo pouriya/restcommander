@@ -385,6 +385,7 @@ fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> Roui
                     Some("jpg") | Some("jpeg") => "image/jpeg",
                     Some("png") => "image/png",
                     Some("ico") => "image/x-icon",
+                    Some("ttf") => "font/ttf",
                     _ => "application/octet-stream",
                 };
                 return RouilleResponse::from_data(mime_type, data);

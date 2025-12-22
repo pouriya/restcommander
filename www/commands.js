@@ -484,7 +484,7 @@ async function afterGetCommandState(command, runResult) {
         {
             'class': 'card-text text-start text-break mb-0',
             'id': 'command-state-text',
-            'style': 'white-space: pre-wrap; font-family: monospace; font-size: 0.875rem;'
+            'style': 'white-space: pre-wrap; font-family: \'Inconsolata\', monospace; font-size: 0.875rem;'
         }
     )
     if (runResult.status === 200) {
@@ -711,7 +711,7 @@ function updateResultAfterRequest(runResult) {
         {
             'class': 'card-text text-start text-break mb-0',
             'id': 'command-result-text',
-            'style': 'white-space: pre-wrap; font-family: monospace; font-size: 0.875rem;'
+            'style': 'white-space: pre-wrap; font-family: \'Inconsolata\', monospace; font-size: 0.875rem;'
         }
     )
     resultTextElement.textContent = resultText
