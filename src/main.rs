@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, RwLock};
 
-
 mod captcha;
 mod cmd;
 mod http;
@@ -60,9 +59,9 @@ fn main() -> Result<(), String> {
     if cfg_instance.server.print_banner {
         samples::maybe_print(samples::CMDSample::Banner)
     }
-    
+
     // Start server in main thread - this will block forever
     http::start_server(server_config)?;
-    
+
     Ok(())
 }

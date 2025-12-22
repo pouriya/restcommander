@@ -14,7 +14,6 @@ use tracing::{info, trace, warn};
 
 use config::{Config, ConfigError, Environment, File};
 
-
 use serde_derive::{Deserialize, Serialize};
 
 use ttyaskpass::AskPass;
@@ -844,7 +843,6 @@ pub enum CfgLoggingLevelName {
     Off,
 }
 
-
 impl std::str::FromStr for CfgLoggingLevelName {
     type Err = String;
 
@@ -888,8 +886,7 @@ pub struct CMDBase64 {
     input: Option<String>,
 }
 
-impl Cfg {
-}
+impl Cfg {}
 
 impl TryFrom<PathBuf> for Cfg {
     type Error = CfgError;
@@ -932,9 +929,7 @@ pub fn try_setup() -> Result<Cfg, Option<String>> {
                     .with_star('*')
                     .askpass("Enter input text: ")
                     .map(|x| String::from_utf8(x.into()).unwrap())
-                    .map_err(|reason| {
-                        Some(format!("Could not read password: {}", reason))
-                    })?
+                    .map_err(|reason| Some(format!("Could not read password: {}", reason)))?
             }
             .trim()
             .to_string();

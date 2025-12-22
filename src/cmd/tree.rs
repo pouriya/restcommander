@@ -174,7 +174,10 @@ impl Command {
         Ok(commands)
     }
 
-    pub fn new(root_directory: &std::path::Path, http_base_path: &std::path::Path) -> Result<Self, CommandError> {
+    pub fn new(
+        root_directory: &std::path::Path,
+        http_base_path: &std::path::Path,
+    ) -> Result<Self, CommandError> {
         if !root_directory.is_dir() {
             return Err(CommandError::CommandIsNotDirectory {
                 http_path: root_directory.to_path_buf(),
@@ -317,7 +320,10 @@ impl Command {
                 };
                 if let Some(CommandOptionValue::String(ref value)) = definition.default_value {
                     if !list.contains(value) {
-                        check_options = Err(format!("for option '{}' the default value should be in its default value list", option));
+                        check_options = Err(format!(
+                            "for option '{}' the default value should be in its default value list",
+                            option
+                        ));
                         break;
                     }
                 }

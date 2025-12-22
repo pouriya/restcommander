@@ -96,7 +96,13 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
     let (has_bootstrap_js, has_bootstrap_css) = fs::read_dir("www").unwrap().fold(
         (false, false),
         |(has_bootstrap_js, has_bootstrap_css), filename| {
-            let filename = filename.unwrap().path().file_name().unwrap().to_string_lossy().into_owned();
+            let filename = filename
+                .unwrap()
+                .path()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
             if filename == BOOTSTRAP_JS_FILENAME {
                 (true, has_bootstrap_css)
             } else if filename == BOOTSTRAP_CSS_FILENAME {
