@@ -127,8 +127,8 @@ async function drawTreeNav(commands, parentElement, depth) {
             
             var commandIcon = document.createElement('span')
             setAttributes(commandIcon, {'class': 'sidebar-icon me-2'})
-            // Command icon (terminal/play icon for commands)
-            commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.921 11.5L1.353 8.394a.5.5 0 0 1 0-.788l4.568-3.106A.5.5 0 0 1 6.5 5v6a.5.5 0 0 1-.579.5zM7.854 8.146l-1 .5a.5.5 0 0 0-.354.854v2.5a.5.5 0 0 0 .354.854l1 .5a.5.5 0 0 0 .646-.353V8.5a.5.5 0 0 0-.646-.354zm4.292 0a.5.5 0 0 1 .646.354v5.793a.5.5 0 0 1-.646.353l-1-.5a.5.5 0 0 1-.354-.854v-2.5a.5.5 0 0 1 .354-.854l1-.5z"/><path fill-rule="evenodd" d="M1 8a7 7 0 1 0 14 0A7 7 0 0 0 1 8zm15 0A8 8 0 1 1 0 8a8 8 0 0 1 16 0z"/></svg>'
+            // Command icon (play button for commands)
+            commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>'
             
             var commandName = document.createElement('span')
             commandName.textContent = keyName
