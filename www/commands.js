@@ -1,5 +1,5 @@
 import {ApiOpts, Api} from './api.js'
-import {maybeRemoveElement, setAttributes} from './utils.js'
+import {setAttributes} from './utils.js'
 import {setConfiguration} from './configuration.js'
 
 async function drawNavbar() {
@@ -58,17 +58,13 @@ async function drawNavbar() {
         appendSettings(navigationBarElement)
         
         // Update guide message
-        updateGuideMessageAfterLoad()
+        var guideElement = document.getElementById('guide')
+        if (guideElement) {
+            guideElement.textContent = 'Select a menu item to start'
+        }
     }
     
     return true
-}
-
-function updateGuideMessageAfterLoad() {
-    var guideElement = document.getElementById('guide')
-    if (guideElement) {
-        guideElement.textContent = 'Select a menu item to start'
-    }
 }
 
 async function drawTreeNav(commands, parentElement, depth) {
@@ -426,15 +422,7 @@ async function drawCommand(commandName, command, element) {
 }
 
 async function getAndDrawCommandState(command) {
-    await beforeGetCommandState(command)
-    const runResult = await new Api(ApiOpts).state(command.http_path.replace('run', 'state'))
-    afterGetCommandState(command, runResult)
-    if (runResult.status === 401) {
-        changeLogoutToLogin()
-    }
-}
-
-async function beforeGetCommandState(command) {
+    // Show waiting message for state
     var waitingElement = document.createElement('p')
     setAttributes(
         waitingElement,
@@ -442,6 +430,12 @@ async function beforeGetCommandState(command) {
     )
     waitingElement.innerHTML = 'Waiting for state...'.italics()
     document.getElementById('command-state-text').replaceWith(waitingElement)
+    
+    const runResult = await new Api(ApiOpts).state(command.http_path.replace('run', 'state'))
+    afterGetCommandState(command, runResult)
+    if (runResult.status === 401) {
+        changeLogoutToLogin()
+    }
 }
 
 async function afterGetCommandState(command, runResult) {
@@ -1053,10 +1047,7 @@ async function main() {
     // Sidebar starts closed on both desktop and mobile
     // Commands will be loaded only when user clicks hamburger button
     closeSidebar()
-    updateGuideMessage()
-}
-
-function updateGuideMessage() {
+    // Update guide message
     var guideElement = document.getElementById('guide')
     if (guideElement) {
         guideElement.textContent = 'Click the menu button to view available commands'

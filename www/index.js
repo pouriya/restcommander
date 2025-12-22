@@ -1,5 +1,5 @@
 import {ApiOpts, Api} from './api.js'
-import {maybeRemoveElement, setAttributes} from './utils.js'
+import {setAttributes} from './utils.js'
 import {setConfiguration} from './configuration.js'
 
 async function main() {

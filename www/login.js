@@ -1,5 +1,5 @@
 import {ApiOpts, Api} from './api.js'
-import {maybeRemoveElement, setAttributes} from './utils.js'
+import {setAttributes} from './utils.js'
 import {setConfiguration} from './configuration.js'
 
 async function maybeSetupCaptcha() {
@@ -85,7 +85,12 @@ async function maybeSetupCaptcha() {
     captchaRenewElement.classList.add('mb-3')
     captchaTextDivElement.classList.remove('d-none')
     captchaTextDivElement.classList.add('mb-3')
-    captchaRenewElement.addEventListener('click', captchaRenewClickEventListener)
+    // Handle CAPTCHA renewal click
+    captchaRenewElement.addEventListener('click', async function(event) {
+        event.preventDefault()
+        hideLoginErrorElement()
+        await maybeSetupCaptcha()
+    })
 }
 
 
@@ -97,12 +102,6 @@ function hideLoginErrorElement() {
     }
     loginErrorElement.classList.add('d-none')
     loginErrorElement.classList.remove('d-block')
-}
-
-async function captchaRenewClickEventListener() {
-    event.preventDefault()
-    hideLoginErrorElement()
-    await maybeSetupCaptcha()
 }
 
 async function loginSubmitEventListener(event) {
