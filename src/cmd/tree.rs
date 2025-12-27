@@ -1,12 +1,19 @@
 use super::errors::CommandError;
 use crate::cmd::MAX_COMMAND_DIRECTORY_DEPTH;
+use serde::ser::{SerializeMap, Serializer};
+use serde::Serialize as SerializeTrait;
 use serde_derive::{Deserialize, Serialize};
-use serde_yaml;
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::fs;
 use std::path::PathBuf;
 use tracing::{debug, trace, warn};
+
+// Cloneable error representation for storage in HashMap
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CommandErrorInfo {
+    code: i32,
+    message: String,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Command {
@@ -19,17 +26,36 @@ pub struct Command {
     pub info: Option<CommandInfo>,
     #[serde(default)]
     pub is_directory: bool,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub commands: HashMap<String, Command>,
+    #[serde(
+        skip_serializing_if = "HashMap::is_empty",
+        serialize_with = "serialize_commands_map",
+        default
+    )]
+    pub commands: HashMap<String, Result<Command, CommandErrorInfo>>,
+}
+
+fn serialize_commands_map<S>(
+    commands: &HashMap<String, Result<Command, CommandErrorInfo>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(Some(commands.len()))?;
+    for (k, v) in commands {
+        map.serialize_entry(k, &CommandResultWrapper(v))?;
+    }
+    map.end()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommandInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    #[serde(default, skip_serializing)]
-    pub state: Option<CommandInfoGetState>,
     #[serde(default, skip_deserializing)]
     pub support_state: bool,
     #[serde(default)]
@@ -78,13 +104,6 @@ pub struct CommandOptionInfoValueSize {
     pub max: Option<i64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CommandInfoGetState {
-    Options(Vec<String>),
-    Constant(String),
-}
-
 impl Command {
     pub fn reload(&mut self) -> Result<(), CommandError> {
         self.commands = Self::detect_commands(
@@ -101,7 +120,7 @@ impl Command {
         directory: &PathBuf,
         http_base_path: &PathBuf,
         recursion_count: usize,
-    ) -> Result<HashMap<String, Command>, CommandError> {
+    ) -> Result<HashMap<String, Result<Command, CommandErrorInfo>>, CommandError> {
         if recursion_count == 0 {
             warn!(
                 directory = ?directory,
@@ -127,29 +146,42 @@ impl Command {
                 .path();
             if entry.is_file() {
                 if !is_executable::is_executable(entry.clone()) {
-                    if let Some(extension) = entry.extension() {
-                        if extension == "yaml" || extension == "yml" {
-                            continue;
-                        };
-                    };
                     warn!(filename = ?entry, "It is not executable and will be discarded.");
                     continue;
                 };
-                let (command_name, command) =
+                let (command_name, result_command) =
                     Self::from_filename(root_directory, &entry, &http_base_path.clone())?;
-                debug!(
-                    command = command_name.as_str(),
-                    filename = ?entry,
-                    "Detected new command.",
-                );
-                trace!(
-                    command = command_name.as_str(),
-                    filename = ?entry,
-                    info = ?command,
-                );
-                commands.insert(command_name, command);
+                match &result_command {
+                    Ok(cmd) => {
+                        debug!(
+                            command = command_name.as_str(),
+                            filename = ?entry,
+                            "Detected new command.",
+                        );
+                        trace!(
+                            command = command_name.as_str(),
+                            filename = ?entry,
+                            info = ?cmd.info,
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            command = command_name.as_str(),
+                            filename = ?entry,
+                            error = ?e,
+                            "Failed to detect command information.",
+                        );
+                    }
+                }
+                commands.insert(command_name, result_command);
             };
             if entry.is_dir() {
+                let sub_commands = Command::detect_commands(
+                    root_directory,
+                    &entry,
+                    http_base_path,
+                    recursion_count - 1,
+                )?;
                 let command = Command {
                     name: entry.file_name().unwrap().to_str().unwrap().to_string(),
                     file_path: entry.clone(),
@@ -158,16 +190,11 @@ impl Command {
                         .join(entry.strip_prefix(root_directory).unwrap()),
                     info: None,
                     is_directory: true,
-                    commands: Command::detect_commands(
-                        root_directory,
-                        &entry,
-                        http_base_path,
-                        recursion_count - 1,
-                    )?,
+                    commands: sub_commands,
                 };
                 commands.insert(
                     entry.file_name().unwrap().to_str().unwrap().to_string(),
-                    command,
+                    Ok(command),
                 );
             }
         }
@@ -204,7 +231,7 @@ impl Command {
         root_directory: &std::path::Path,
         filename: &std::path::Path,
         http_base_path: &std::path::Path,
-    ) -> Result<(String, Self), CommandError> {
+    ) -> Result<(String, Result<Self, CommandErrorInfo>), CommandError> {
         if !filename.is_file() {
             return Err(CommandError::IsNotARegularFile {
                 filename: filename.to_path_buf(),
@@ -214,90 +241,116 @@ impl Command {
             .to_str()
             .unwrap()
             .to_string();
-        Ok((
-            name.clone(),
-            Command {
-                name,
-                file_path: filename.to_path_buf(),
-                http_path: http_base_path
-                    .to_path_buf()
-                    .join(filename.strip_prefix(root_directory).unwrap()),
-                info: Some(Command::detect_command_info(&filename.to_path_buf())?),
-                is_directory: false,
-                commands: HashMap::new(),
-            },
-        ))
+        let http_path = http_base_path
+            .to_path_buf()
+            .join(filename.strip_prefix(root_directory).unwrap());
+
+        match Command::detect_command_info(&filename.to_path_buf()) {
+            Ok(info) => Ok((
+                name.clone(),
+                Ok(Command {
+                    name,
+                    file_path: filename.to_path_buf(),
+                    http_path,
+                    info: Some(info),
+                    is_directory: false,
+                    commands: HashMap::new(),
+                }),
+            )),
+            Err(error) => {
+                // Convert CommandError to CommandErrorInfo for storage
+                let error_info = CommandErrorInfo {
+                    code: error.error_code(),
+                    message: error.to_string(),
+                };
+                Ok((name.clone(), Err(error_info)))
+            }
+        }
     }
 
     pub fn detect_command_info(command_filename: &PathBuf) -> Result<CommandInfo, CommandError> {
-        let mut info_filename = PathBuf::from(format!(
-            "{}.yaml",
-            command_filename.clone().to_str().unwrap()
-        ));
-        if !info_filename.exists() {
-            info_filename.set_extension("yml");
-        };
-        if !info_filename.exists() {
-            warn!(command_filename = ?command_filename, "No .yaml or .yml information file found");
-            return Ok(CommandInfo {
-                description: command_filename
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                version: None,
-                state: None,
-                support_state: false,
-                options: Default::default(),
+        use crate::cmd::runner;
+
+        let name = command_filename
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        // Execute script with --help flag (parse_stderr_logs=false since stderr contains JSON)
+        let output = runner::run_command(
+            command_filename,
+            vec!["--help".to_string()],
+            None,
+            false, // Don't parse stderr logs for --help, it contains JSON
+            HashMap::new(),
+        )?;
+
+        // Check exit code - must be 0
+        if output.exit_code != 0 {
+            // We need http_path for the error, but we don't have it here
+            // This will be set properly in from_filename
+            return Err(CommandError::CommandHelpFailed {
+                file_path: command_filename.clone(),
+                http_path: PathBuf::new(), // Will be set properly in from_filename
+                exit_code: output.exit_code,
+                stdout: output.stdout.clone(),
+                stderr: output.stderr.clone(),
+                name: name.clone(),
             });
-        };
-        if !info_filename.is_file() {
-            return Err(CommandError::CommandInfoFileNotIsNotFile {
-                filename: command_filename.clone(),
-            });
-        };
-        let info_file_content = fs::read_to_string(info_filename.clone()).map_err(|reason| {
-            CommandError::ReadCommandInfoFile {
-                filename: command_filename.clone(),
-                message: reason,
-            }
-        })?;
-        if info_file_content.trim().is_empty() {
-            return Ok(CommandInfo {
-                description: command_filename
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-                version: None,
-                state: None,
-                support_state: false,
-                options: Default::default(),
-            });
-        };
-        let mut command_info =
-            serde_yaml::from_str::<CommandInfo>(&info_file_content).map_err(|reason| {
-                CommandError::DecodeCommandInfo {
-                    filename: info_filename.clone(),
-                    message: reason,
-                }
-            })?;
-        if command_info.state.is_some() {
-            command_info.support_state = true;
         }
-        let mut check_options = Ok(command_info.clone());
-        for (option, definition) in command_info.options {
-            if !definition.required && definition.default_value.is_none() {
-                check_options = Err(format!(
-                    "option {:?} is optional and does not have a default value",
-                    option
-                ));
-                break;
-            };
-            if let Some(ref default_value) = definition.default_value {
-                match (definition.value_type.clone(), default_value) {
+
+        // Parse JSON from stdout
+        let help_json: serde_json::Value =
+            serde_json::from_str(&output.stdout).map_err(|e| CommandError::InvalidCommandInfo {
+                command: command_filename.clone(),
+                message: format!("could not parse --help stdout as JSON: {}", e),
+            })?;
+
+        // Extract fields with defaults
+        let title = help_json
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = help_json
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| name.clone());
+        let version = help_json
+            .get("version")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let support_state = help_json
+            .get("state")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        // Parse JSON from stderr (options definition)
+        // For --help, stderr should be pure JSON (no log filtering)
+        let options: HashMap<String, CommandOptionInfo> = if output.stderr.trim().is_empty() {
+            HashMap::new()
+        } else {
+            serde_json::from_str(&output.stderr).map_err(|e| CommandError::InvalidCommandInfo {
+                command: command_filename.clone(),
+                message: format!("could not parse --help stderr as JSON for options: {}", e),
+            })?
+        };
+
+        // Validate options structure
+        for (option_name, option_info) in &options {
+            if !option_info.required && option_info.default_value.is_none() {
+                return Err(CommandError::InvalidCommandInfo {
+                    command: command_filename.clone(),
+                    message: format!(
+                        "option {:?} is optional and does not have a default value",
+                        option_name
+                    ),
+                });
+            }
+            if let Some(ref default_value) = option_info.default_value {
+                match (&option_info.value_type, default_value) {
                     (CommandOptionInfoValueType::Any, _) => (),
                     (CommandOptionInfoValueType::Enum(_), CommandOptionValue::String(_)) => (),
                     (CommandOptionInfoValueType::String, CommandOptionValue::String(_)) => (),
@@ -305,37 +358,81 @@ impl Command {
                     (CommandOptionInfoValueType::Float, CommandOptionValue::Float(_)) => (),
                     (CommandOptionInfoValueType::Boolean, CommandOptionValue::Bool(_)) => (),
                     _ => {
-                        check_options = Err(format!("for option '{}' the default value type should be the same as value type", option));
-                        break;
+                        return Err(CommandError::InvalidCommandInfo {
+                            command: command_filename.clone(),
+                            message: format!("for option '{}' the default value type should be the same as value type", option_name),
+                        });
                     }
                 }
-            };
-            if let CommandOptionInfoValueType::Enum(ref list) = definition.value_type {
+            }
+            if let CommandOptionInfoValueType::Enum(ref list) = option_info.value_type {
                 if list.is_empty() {
-                    check_options = Err(format!(
-                        "value of option '{}' is an accepted_value_list which is empty",
-                        option
-                    ));
-                    break;
-                };
-                if let Some(CommandOptionValue::String(ref value)) = definition.default_value {
+                    return Err(CommandError::InvalidCommandInfo {
+                        command: command_filename.clone(),
+                        message: format!(
+                            "value of option '{}' is an accepted_value_list which is empty",
+                            option_name
+                        ),
+                    });
+                }
+                if let Some(CommandOptionValue::String(ref value)) = option_info.default_value {
                     if !list.contains(value) {
-                        check_options = Err(format!(
-                            "for option '{}' the default value should be in its default value list",
-                            option
-                        ));
-                        break;
+                        return Err(CommandError::InvalidCommandInfo {
+                            command: command_filename.clone(),
+                            message: format!("for option '{}' the default value should be in its default value list", option_name),
+                        });
                     }
                 }
             }
         }
-        if let Ok(ref command_info) = check_options {
-            debug!(command_filename = ?command_filename, info_filename = ?info_filename, "Detected command information.");
-            trace!(command_filename = ?command_filename, info_filename = ?info_filename, info = ?command_info);
-        };
-        check_options.map_err(|reason| CommandError::InvalidCommandInfo {
-            command: command_filename.clone(),
-            message: reason,
+
+        debug!(command_filename = ?command_filename, "Detected command information from --help.");
+        trace!(command_filename = ?command_filename, description = ?description, support_state = ?support_state);
+
+        Ok(CommandInfo {
+            title,
+            description,
+            version,
+            support_state,
+            options,
         })
+    }
+}
+
+// Wrapper type for serializing Result<Command, CommandErrorInfo>
+struct CommandResultWrapper<'a>(&'a Result<Command, CommandErrorInfo>);
+
+impl<'a> SerializeTrait for CommandResultWrapper<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self.0 {
+            Ok(command) => {
+                let mut map = serializer.serialize_map(None)?;
+                if command.is_directory {
+                    map.serialize_entry("type", "directory")?;
+                } else {
+                    map.serialize_entry("type", "command")?;
+                }
+                map.serialize_entry("name", &command.name)?;
+                map.serialize_entry("http_path", &command.http_path)?;
+                map.serialize_entry("is_directory", &command.is_directory)?;
+                if let Some(ref info) = command.info {
+                    map.serialize_entry("info", info)?;
+                }
+                if !command.commands.is_empty() {
+                    map.serialize_entry("commands", &command.commands)?;
+                }
+                map.end()
+            }
+            Err(error) => {
+                let mut map = serializer.serialize_map(None)?;
+                map.serialize_entry("type", "error")?;
+                map.serialize_entry("code", &error.code)?;
+                map.serialize_entry("message", &error.message)?;
+                map.end()
+            }
+        }
     }
 }

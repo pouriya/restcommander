@@ -780,6 +780,24 @@ textarea, select, input {
     color: var(--text-on-primary);
 }
 
+.sidebar-command-error {
+    color: #fca5a5 !important; /* red-300 for light background */
+}
+
+.sidebar-command-error:hover {
+    background-color: rgba(239, 68, 68, 0.2) !important; /* danger color with opacity */
+    color: #fca5a5 !important;
+}
+
+[data-theme="dark"] .sidebar-command-error {
+    color: #f87171 !important; /* red-400 for dark theme */
+}
+
+[data-theme="dark"] .sidebar-command-error:hover {
+    background-color: rgba(239, 68, 68, 0.3) !important;
+    color: #f87171 !important;
+}
+
 .sidebar-icon {
     display: inline-flex;
     align-items: center;

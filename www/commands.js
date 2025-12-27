@@ -68,6 +68,14 @@ async function drawNavbar() {
     return true
 }
 
+// Helper function to get display name (title if exists, otherwise fallback to name)
+function getDisplayName(command, fallbackName) {
+    if (command.info && command.info.title) {
+        return command.info.title
+    }
+    return fallbackName
+}
+
 async function drawTreeNav(commands, parentElement, depth) {
     for (const key in commands) {
         const command = commands[key];
@@ -75,6 +83,32 @@ async function drawTreeNav(commands, parentElement, depth) {
         
         var listItem = document.createElement('li')
         setAttributes(listItem, {'class': 'sidebar-item'})
+        
+        // Handle error items
+        if (command.type === 'error') {
+            var errorLink = document.createElement('a')
+            setAttributes(errorLink, {
+                'class': 'sidebar-command sidebar-command-error w-100 text-start d-flex align-items-center text-capitalize',
+                'href': '#'
+            })
+            
+            var errorIcon = document.createElement('span')
+            setAttributes(errorIcon, {'class': 'sidebar-icon me-2'})
+            // Error icon (exclamation icon for errors)
+            errorIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>'
+            
+            var errorName = document.createElement('span')
+            errorName.textContent = keyName
+            
+            errorLink.appendChild(errorIcon)
+            errorLink.appendChild(errorName)
+            
+            await addErrorClickEventListener(keyName, command, errorLink)
+            
+            listItem.appendChild(errorLink)
+            parentElement.appendChild(listItem)
+            continue
+        }
         
         if (command.is_directory) {
             // It's a folder - create collapsible tree node
@@ -132,12 +166,13 @@ async function drawTreeNav(commands, parentElement, depth) {
             commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>'
             
             var commandName = document.createElement('span')
-            commandName.textContent = keyName
+            var displayName = getDisplayName(command, keyName)
+            commandName.textContent = displayName
             
             commandLink.appendChild(commandIcon)
             commandLink.appendChild(commandName)
             
-            await addCommandClickEventListener(keyName, command, commandLink)
+            await addCommandClickEventListener(displayName, command, commandLink)
             
             listItem.appendChild(commandLink)
         }
@@ -310,6 +345,19 @@ async function addCommandClickEventListener(commandName, command, element) {
     }
 }
 
+async function addErrorClickEventListener(errorName, errorData, element) {
+    element.onclick = async function() {
+        // Close sidebar after selecting an error
+        closeSidebar()
+        
+        var commandElement = document.getElementById('command')
+        commandElement.innerHTML = ''
+        var commandResultElement = document.getElementById('command-result')
+        commandResultElement.innerHTML = ''
+        await drawError(errorName, errorData, commandElement)
+    }
+}
+
 async function toggleSidebar() {
     var sidebar = document.getElementById('sidebar')
     var backdrop = document.getElementById('sidebar-backdrop')
@@ -359,6 +407,105 @@ function closeSidebar() {
     }
 }
 
+async function drawError(errorName, errorData, element) {
+    await console.log('Drawing error', errorName)
+    
+    var errorHeaderElement = document.createElement('h1')
+    setAttributes(
+        errorHeaderElement,
+        {
+            'id': 'error-header',
+            'class': 'h1 my-4 text-capitalize'
+        }
+    )
+    
+    var errorIcon = document.createElement('span')
+    errorIcon.innerHTML = '<svg width="32" height="32" fill="currentColor" viewBox="0 0 16 16" style="vertical-align: middle; margin-right: 0.5rem; color: var(--color-danger);"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg>'
+    errorHeaderElement.appendChild(errorIcon)
+    
+    var errorNameSpan = document.createElement('span')
+    errorNameSpan.textContent = errorName
+    errorHeaderElement.appendChild(errorNameSpan)
+    element.appendChild(errorHeaderElement)
+    
+    // Error message card
+    var errorCard = document.createElement('div')
+    setAttributes(
+        errorCard,
+        {'class': 'card border-danger mb-4'}
+    )
+    
+    var cardHeader = document.createElement('div')
+    setAttributes(
+        cardHeader,
+        {'class': 'card-header bg-danger text-white'}
+    )
+    cardHeader.innerHTML = '<strong>Error</strong>'
+    errorCard.appendChild(cardHeader)
+    
+    var cardBody = document.createElement('div')
+    setAttributes(
+        cardBody,
+        {'class': 'card-body'}
+    )
+    
+    // Error code
+    var errorCodeElement = document.createElement('p')
+    setAttributes(
+        errorCodeElement,
+        {'class': 'text-muted mb-2'}
+    )
+    errorCodeElement.innerHTML = '<strong>Error Code:</strong> ' + errorData.code
+    cardBody.appendChild(errorCodeElement)
+    
+    // Error message
+    var errorMessageElement = document.createElement('p')
+    setAttributes(
+        errorMessageElement,
+        {'class': 'card-text text-start text-break mb-3'}
+    )
+    errorMessageElement.innerHTML = escapeHtml(errorData.message)
+    cardBody.appendChild(errorMessageElement)
+    
+    // Reload button
+    var reloadButtonDiv = document.createElement('div')
+    setAttributes(
+        reloadButtonDiv,
+        {'class': 'mt-3 d-grid'}
+    )
+    var reloadButton = document.createElement('button')
+    setAttributes(
+        reloadButton,
+        {
+            'class': 'btn btn-primary btn-lg fw-bold w-100',
+            'type': 'button',
+            'id': 'reload-commands-button'
+        }
+    )
+    reloadButton.innerHTML = '<svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16" style="vertical-align: middle; margin-right: 0.5rem;"><path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/><path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/></svg> Reload Commands'
+    reloadButton.onclick = async function() {
+        reloadButton.disabled = true
+        reloadButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Reloading...'
+        // Reload the commands by re-drawing the navbar
+        await drawNavbar()
+        // After reload, close sidebar and show guide message
+        closeSidebar()
+        var commandElement = document.getElementById('command')
+        commandElement.innerHTML = ''
+        var commandResultElement = document.getElementById('command-result')
+        commandResultElement.innerHTML = ''
+        var guideElement = document.getElementById('guide')
+        if (guideElement) {
+            guideElement.textContent = 'Select a menu item to start'
+        }
+    }
+    reloadButtonDiv.appendChild(reloadButton)
+    cardBody.appendChild(reloadButtonDiv)
+    
+    errorCard.appendChild(cardBody)
+    element.appendChild(errorCard)
+}
+
 async function drawCommand(commandName, command, element) {
     await console.log('Drawing command', commandName)
     var commandInfo = command.info;
@@ -371,7 +518,9 @@ async function drawCommand(commandName, command, element) {
             'class': 'h1 my-4 text-capitalize'
         }
     )
-    commandHeaderElement.innerHTML = commandName
+    // Use title if available, otherwise use the provided commandName
+    var displayName = getDisplayName(command, commandName)
+    commandHeaderElement.innerHTML = displayName
     if ('version' in commandInfo) {
         var smallElement = document.createElement('small')
         setAttributes(
@@ -383,7 +532,7 @@ async function drawCommand(commandName, command, element) {
     }
     element.appendChild(commandHeaderElement)
 
-    if (commandInfo.description != commandName) {
+    if (commandInfo.description != displayName) {
         var commandDescriptionElement = makeOptionDescription(commandInfo.description)
         element.appendChild(commandDescriptionElement)
     }
