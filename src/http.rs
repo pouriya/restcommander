@@ -9,9 +9,9 @@ use tracing::{debug, info, trace};
 use serde_derive::Deserialize;
 use serde_json::json;
 
-use thiserror::Error;
-use rouille::{Request, Response as RouilleResponse};
 use rouille::input;
+use rouille::{Request, Response as RouilleResponse};
+use thiserror::Error;
 
 use wildmatch::WildMatch;
 
@@ -57,7 +57,6 @@ impl HTTPError {
         }
     }
 }
-
 
 #[derive(Error, Debug, Clone)]
 pub enum HTTPAuthenticationError {
@@ -176,7 +175,6 @@ struct SetPassword {
     password: String,
 }
 
-
 #[inline]
 fn exit_code_to_status_code(exit_code: i32) -> u16 {
     match exit_code {
@@ -216,7 +214,7 @@ pub fn setup(
         None
     };
     let tokens = Arc::new(RwLock::new(HashMap::new()));
-    
+
     // Create shared state for handlers
     let handler_state = Arc::new(HandlerState {
         cfg: cfg.clone(),
@@ -226,7 +224,7 @@ pub fn setup(
     });
 
     let address = format!("{}:{}", host, port);
-    
+
     if server_options.tls_cert_file.clone().is_some()
         && server_options.tls_key_file.clone().is_some()
     {
@@ -235,15 +233,15 @@ pub fn setup(
             .map_err(|e| format!("Could not read cert file: {}", e))?;
         let key_bytes = std::fs::read(server_options.tls_key_file.clone().unwrap())
             .map_err(|e| format!("Could not read key file: {}", e))?;
-        
-            debug!(
+
+        debug!(
             "Prepared HTTPS server on {}:{} with cert file {:?} and key file {:?}",
-                host,
-                port,
-                server_options.tls_cert_file.clone().unwrap(),
-                server_options.tls_key_file.clone().unwrap()
-            );
-        
+            host,
+            port,
+            server_options.tls_cert_file.clone().unwrap(),
+            server_options.tls_key_file.clone().unwrap()
+        );
+
         Ok(ServerConfig {
             handler_state,
             address,
@@ -253,7 +251,7 @@ pub fn setup(
         })
     } else {
         debug!("Prepared HTTP server on {}:{}", host, port);
-        
+
         Ok(ServerConfig {
             handler_state,
             address,
@@ -267,13 +265,13 @@ pub fn setup(
 pub fn start_server(config: ServerConfig) -> Result<(), String> {
     let state = config.handler_state.clone();
     let address = config.address.clone();
-    
+
     info!(
         address = address.as_str(),
         tls = config.has_tls,
         "Starting server"
     );
-    
+
     if let (Some(cert), Some(key)) = (config.tls_cert, config.tls_key) {
         // rouille::Server::new_ssl takes cert and key as Vec<u8>
         let _server = rouille::Server::new_ssl(
@@ -281,16 +279,16 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
             move |request| handle_request(request, state.clone()),
             cert,
             key,
-        ).map_err(|e| format!("Failed to start HTTPS server: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to start HTTPS server: {}", e))?;
         // Server blocks here - call run() to start
         _server.run();
     } else {
-        rouille::start_server(
-            address,
-            move |request| handle_request(request, state.clone()),
-        );
+        rouille::start_server(address, move |request| {
+            handle_request(request, state.clone())
+        });
     }
-    
+
     Ok(())
 }
 
@@ -303,21 +301,21 @@ pub struct HandlerState {
 
 fn handle_request(request: &Request, state: Arc<HandlerState>) -> RouilleResponse {
     http_logging_rouille(request);
-    
+
     let url = request.url();
     let method = request.method();
-    
+
     // Handle root redirect
     if method == "GET" && url == "/" {
         return redirect_root_to_index_html(&state.cfg);
     }
-    
+
     // Handle static files
     if method == "GET" && url.starts_with("/static/") {
         let tail = url.strip_prefix("/static/").unwrap_or("");
         return handle_static(request, &state.cfg, tail);
     }
-    
+
     // Handle API routes
     rouille::router!(request,
         (GET) (/api/public/captcha) => {
@@ -361,8 +359,11 @@ fn http_logging_rouille(_request: &Request) {
 fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
     let cfg_value = cfg.read().unwrap().config_value.clone();
     if cfg_value.www.enabled {
-        RouilleResponse::redirect_301(format!("{}static/index.html", cfg_value.server.http_base_path))
-            } else {
+        RouilleResponse::redirect_301(format!(
+            "{}static/index.html",
+            cfg_value.server.http_base_path
+        ))
+    } else {
         RouilleResponse::text("<html><body>Service Unavailable!</body></html>")
             .with_status_code(403)
     }
@@ -384,18 +385,19 @@ fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> Roui
                     Some("jpg") | Some("jpeg") => "image/jpeg",
                     Some("png") => "image/png",
                     Some("ico") => "image/x-icon",
+                    Some("ttf") => "font/ttf",
                     _ => "application/octet-stream",
                 };
                 return RouilleResponse::from_data(mime_type, data);
             }
         }
     }
-    
+
     // Fall back to internal static files
     if let Some((bytes, maybe_mime_type)) = www::handle_static(tail.to_string()) {
         let mime_type = maybe_mime_type.unwrap_or_else(|| "application/octet-stream".to_string());
         RouilleResponse::from_data(mime_type, bytes)
-                        } else {
+    } else {
         RouilleResponse::text("Not Found").with_status_code(404)
     }
 }
@@ -404,7 +406,7 @@ fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> Rouille
     if let Some(captcha) = maybe_captcha {
         let (id, _, png_image) = captcha.write().unwrap().generate(true);
         make_api_response_ok_with_result(serde_json::json!({"id": id, "image": png_image}))
-                                    } else {
+    } else {
         make_api_response(Err(HTTPError::Authentication(
             HTTPAuthenticationError::Captcha(
                 std::io::Error::from(std::io::ErrorKind::Unsupported).to_string(),
@@ -415,7 +417,12 @@ fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> Rouille
 
 fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
     make_api_response_ok_with_result(serde_json::Value::Object(
-        cfg.read().unwrap().config_value.www.configuration.clone()
+        cfg.read()
+            .unwrap()
+            .config_value
+            .www
+            .configuration
+            .clone()
             .into_iter()
             .fold(serde_json::Map::new(), |mut acc, item| {
                 acc.insert(item.0, serde_json::Value::String(item.1));
@@ -424,7 +431,11 @@ fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
     ))
 }
 
-fn api_auth_test(request: &Request, tokens: &Arc<RwLock<HashMap<String, usize>>>, cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
+fn api_auth_test(
+    request: &Request,
+    tokens: &Arc<RwLock<HashMap<String, usize>>>,
+    cfg: &Arc<RwLock<Cfg>>,
+) -> RouilleResponse {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => make_api_response_ok(),
         Err(e) => make_api_response(Err(HTTPError::Authentication(e))),
@@ -450,12 +461,12 @@ fn api_auth_token_handler(
     } else {
         HashMap::new()
     };
-    
+
     match authentication_with_basic(
-                    cfg.clone(),
-                    maybe_captcha.clone(),
+        cfg.clone(),
+        maybe_captcha.clone(),
         authorization_value.to_string(),
-                    form,
+        form,
     ) {
         Err(error) => make_api_response(Err(HTTPError::Authentication(error))),
         Ok(_) => {
@@ -463,7 +474,7 @@ fn api_auth_token_handler(
             let token_timeout = cfg.read().unwrap().config_value.server.token_timeout;
             let timestamp = time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)
-            .unwrap()
+                .unwrap()
                 .as_secs() as usize
                 + token_timeout;
             tokens.write().unwrap().insert(token.clone(), timestamp);
@@ -471,7 +482,10 @@ fn api_auth_token_handler(
                 Ok(serde_json::json!({ "token": token })),
                 Some(vec![(
                     std::borrow::Cow::Borrowed("Set-Cookie"),
-                    std::borrow::Cow::Owned(format!("token={}; Path=/; Max-Age={}; SameSite=None; Secure;", token, token_timeout)),
+                    std::borrow::Cow::Owned(format!(
+                        "token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
+                        token, token_timeout
+                    )),
                 )]),
             )
         }
@@ -495,7 +509,7 @@ fn api_get_commands(
             make_api_response_ok_with_result(
                 serde_json::to_value(commands.read().unwrap().deref()).unwrap(),
             )
-        },
+        }
         Err(e) => make_api_response(Err(HTTPError::Authentication(e))),
     }
 }
@@ -507,10 +521,14 @@ fn api_set_password(
 ) -> RouilleResponse {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => {
-        let input: SetPassword = match input::json_input(request) {
-            Ok(p) => p,
-            Err(_) => return make_api_response(Err(HTTPError::Deserialize("Invalid JSON".to_string()))),
-        };
+            let input: SetPassword = match input::json_input(request) {
+                Ok(p) => p,
+                Err(_) => {
+                    return make_api_response(Err(HTTPError::Deserialize(
+                        "Invalid JSON".to_string(),
+                    )))
+                }
+            };
             match try_set_password(cfg.clone(), input) {
                 Ok(_) => make_api_response_ok(),
                 Err(e) => make_api_response(Err(HTTPError::API(e))),
@@ -520,17 +538,16 @@ fn api_set_password(
     }
 }
 
-
 fn check_authentication(
     request: &Request,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     cfg: &Arc<RwLock<Cfg>>,
 ) -> Result<(), HTTPAuthenticationError> {
-            let cfg_value = cfg.read().unwrap().config_value.clone();
+    let cfg_value = cfg.read().unwrap().config_value.clone();
     if cfg_value.server.password_sha512.is_empty() {
         return Ok(());
     }
-    
+
     let token = extract_token(request)?;
     authentication_with_token(tokens.clone(), token, cfg.clone())
 }
@@ -545,7 +562,7 @@ fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
             }
         }
     }
-    
+
     // Try Authorization header
     if let Some(auth_header) = request.header("Authorization") {
         let parts: Vec<&str> = auth_header.splitn(2, ' ').collect();
@@ -556,16 +573,19 @@ fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
             header_value: auth_header.to_string(),
         });
     }
-    
+
     Err(HTTPAuthenticationError::TokenNotFound)
 }
 
-fn check_ip_address_rouille(request: &Request, cfg: &Arc<RwLock<Cfg>>) -> Result<(), HTTPAuthenticationError> {
+fn check_ip_address_rouille(
+    request: &Request,
+    cfg: &Arc<RwLock<Cfg>>,
+) -> Result<(), HTTPAuthenticationError> {
     let ip_whitelist = cfg.read().unwrap().config_value.server.ip_whitelist.clone();
     if ip_whitelist.is_empty() {
         return Ok(());
     }
-    
+
     let remote_addr = request.remote_addr();
     let ip = remote_addr.ip().to_string();
     for wildcard_ip in ip_whitelist {
@@ -587,23 +607,17 @@ fn api_run_command(
     if let Err(e) = check_ip_address_rouille(request, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
     }
-    
+
     // Check authentication
     if let Err(e) = check_authentication(request, tokens, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
     }
-    
+
     match extract_command_input(request, cfg) {
-        Ok(input) => {
-            match maybe_run_command(
-                commands.clone(),
-                command_path.to_string(),
-                input,
-            ) {
-                Ok(response) => response,
-                Err(e) => make_api_response(Err(HTTPError::API(e))),
-            }
-        }
+        Ok(input) => match maybe_run_command(commands.clone(), command_path.to_string(), input) {
+            Ok(response) => response,
+            Err(e) => make_api_response(Err(HTTPError::API(e))),
+        },
         Err(e) => make_api_response(Err(e)),
     }
 }
@@ -619,25 +633,24 @@ fn api_get_command_state(
     if let Err(e) = check_ip_address_rouille(request, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
     }
-    
+
     // Check authentication
     if let Err(e) = check_authentication(request, tokens, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
     }
-    
-    match maybe_get_command_state(
-        cfg.clone(),
-        commands.clone(),
-        command_path.to_string(),
-    ) {
+
+    match maybe_get_command_state(cfg.clone(), commands.clone(), command_path.to_string()) {
         Ok(response) => response,
         Err(e) => make_api_response(Err(HTTPError::API(e))),
     }
 }
 
-fn extract_command_input(request: &Request, cfg: &Arc<RwLock<Cfg>>) -> Result<CommandInput, HTTPError> {
+fn extract_command_input(
+    request: &Request,
+    cfg: &Arc<RwLock<Cfg>>,
+) -> Result<CommandInput, HTTPError> {
     let mut input = CommandInput::default();
-    
+
     // Extract from headers
     let mut options = CommandOptionsValue::new();
     for (header_name, header_value) in request.headers() {
@@ -653,12 +666,15 @@ fn extract_command_input(request: &Request, cfg: &Arc<RwLock<Cfg>>) -> Result<Co
                 .unwrap_or_else(|_| CommandOptionValue::String(value_str.to_string()));
             options.insert(key, value);
         } else {
-            let key = format!("RESTCOMMANDER_HEADER_{}", header_name_upper.replace("-", "_"));
+            let key = format!(
+                "RESTCOMMANDER_HEADER_{}",
+                header_name_upper.replace("-", "_")
+            );
             let value = CommandOptionValue::String(header_value.to_string());
             options.insert(key, value);
         }
     }
-    
+
     // Add client IP and port
     let remote_addr = request.remote_addr();
     options.insert(
@@ -669,7 +685,7 @@ fn extract_command_input(request: &Request, cfg: &Arc<RwLock<Cfg>>) -> Result<Co
         "RESTCOMMANDER_CLIENT_PORT".to_string(),
         CommandOptionValue::Integer(remote_addr.port() as i64),
     );
-    
+
     // Extract from body (JSON or form)
     let content_type = request.header("Content-Type").unwrap_or("");
     let body_options = if content_type.contains("application/json") {
@@ -681,17 +697,18 @@ fn extract_command_input(request: &Request, cfg: &Arc<RwLock<Cfg>>) -> Result<Co
     } else {
         CommandOptionsValue::new()
     };
-    
+
     // Extract from query string
     let query_options = {
         let query = request.raw_query_string();
         if query.is_empty() {
             CommandOptionsValue::new()
         } else {
-            serde_urlencoded::from_str::<CommandOptionsValue>(query).unwrap_or_else(|_| CommandOptionsValue::new())
+            serde_urlencoded::from_str::<CommandOptionsValue>(query)
+                .unwrap_or_else(|_| CommandOptionsValue::new())
         }
     };
-    
+
     // Unify all options
     input.options = unify_options(vec![
         options,
@@ -699,7 +716,7 @@ fn extract_command_input(request: &Request, cfg: &Arc<RwLock<Cfg>>) -> Result<Co
         body_options,
         add_configuration_to_options(cfg.clone()),
     ]);
-    
+
     Ok(input)
 }
 
@@ -1043,8 +1060,7 @@ fn unify_options(options_list: Vec<CommandOptionsValue>) -> CommandOptionsValue 
                 trace!(option = option.as_str(), old = ?options.get(option.as_str()).unwrap(), new = ?value, "Replacing value for option.")
             };
             if let CommandOptionValue::String(ref value_string) = value {
-                value = serde_json::from_str::<CommandOptionValue>(value_string)
-                    .unwrap_or(value)
+                value = serde_json::from_str::<CommandOptionValue>(value_string).unwrap_or(value)
             }
             options.insert(option, value);
         }
@@ -1066,14 +1082,24 @@ fn make_api_response(result: Result<serde_json::Value, HTTPError>) -> RouilleRes
 
 fn make_api_response_with_headers(
     result: Result<serde_json::Value, HTTPError>,
-    maybe_headers: Option<Vec<(std::borrow::Cow<'static, str>, std::borrow::Cow<'static, str>)>>,
+    maybe_headers: Option<
+        Vec<(
+            std::borrow::Cow<'static, str>,
+            std::borrow::Cow<'static, str>,
+        )>,
+    >,
 ) -> RouilleResponse {
     make_api_response_with_header_and_stats(result, maybe_headers, None, None)
 }
 
 fn make_api_response_with_header_and_stats(
     result: Result<serde_json::Value, HTTPError>,
-    maybe_headers: Option<Vec<(std::borrow::Cow<'static, str>, std::borrow::Cow<'static, str>)>>,
+    maybe_headers: Option<
+        Vec<(
+            std::borrow::Cow<'static, str>,
+            std::borrow::Cow<'static, str>,
+        )>,
+    >,
     maybe_statistics: Option<CommandStats>,
     maybe_status_code: Option<u16>,
 ) -> RouilleResponse {
@@ -1102,10 +1128,10 @@ fn make_api_response_with_header_and_stats(
         );
     };
     let status_code = if let Some(status_code) = maybe_status_code {
-            status_code
-        } else if let Err(ref error) = result {
-            error.http_status_code()
-        } else {
+        status_code
+    } else if let Err(ref error) = result {
+        error.http_status_code()
+    } else {
         200
     };
     if let Err(error) = result {
@@ -1114,8 +1140,8 @@ fn make_api_response_with_header_and_stats(
             serde_json::Value::Number(serde_json::Number::from(error.http_error_code())),
         );
     };
-    let mut response = RouilleResponse::text(serde_json::to_string(&body).unwrap())
-        .with_status_code(status_code);
+    let mut response =
+        RouilleResponse::text(serde_json::to_string(&body).unwrap()).with_status_code(status_code);
     response.headers.push((
         std::borrow::Cow::Borrowed("Content-Type"),
         std::borrow::Cow::Borrowed("application/json; charset=utf-8"),

@@ -49,9 +49,6 @@ class Api {
                    result.status = response.status
                    result.message = response.statusText
                    result.ok = apiResult.ok
-                   if (result.ok === false) {
-                        result.result = 'A service error occurred.\nPlease contact service administrator for more information.'
-                   }
                    if (apiResult.hasOwnProperty('result')) {
                         result.result = apiResult.result
                    }

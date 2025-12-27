@@ -1,6 +1,7 @@
 import {ApiOpts, Api} from './api.js'
-import {maybeRemoveElement, setAttributes} from './utils.js'
+import {setAttributes} from './utils.js'
 import {setConfiguration} from './configuration.js'
+import {initTheme, toggleTheme} from './theme.js'
 
 async function maybeSetupCaptcha() {
     var captcha = await new Api(ApiOpts).captcha(true)
@@ -85,7 +86,12 @@ async function maybeSetupCaptcha() {
     captchaRenewElement.classList.add('mb-3')
     captchaTextDivElement.classList.remove('d-none')
     captchaTextDivElement.classList.add('mb-3')
-    captchaRenewElement.addEventListener('click', captchaRenewClickEventListener)
+    // Handle CAPTCHA renewal click
+    captchaRenewElement.addEventListener('click', async function(event) {
+        event.preventDefault()
+        hideLoginErrorElement()
+        await maybeSetupCaptcha()
+    })
 }
 
 
@@ -97,12 +103,6 @@ function hideLoginErrorElement() {
     }
     loginErrorElement.classList.add('d-none')
     loginErrorElement.classList.remove('d-block')
-}
-
-async function captchaRenewClickEventListener() {
-    event.preventDefault()
-    hideLoginErrorElement()
-    await maybeSetupCaptcha()
 }
 
 async function loginSubmitEventListener(event) {
@@ -143,6 +143,14 @@ async function loginSubmitEventListener(event) {
 }
 
 async function main() {
+    initTheme()
+    
+    // Setup theme toggle button
+    const themeToggle = document.getElementById('theme-toggle')
+    if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme)
+    }
+    
     setConfiguration({'login-title': null, 'footer': null})
     document.body.classList.remove('invisible')
     document.body.classList.add('visible')

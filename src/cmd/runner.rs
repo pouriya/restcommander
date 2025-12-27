@@ -90,7 +90,6 @@ pub struct CommandInput {
     pub statistics: bool,
 }
 
-
 pub fn run_command(
     command: &PathBuf,
     option_list: Vec<String>,

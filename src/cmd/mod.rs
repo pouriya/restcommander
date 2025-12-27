@@ -206,7 +206,6 @@ fn check_definition(
     }
 }
 
-
 fn check_size(
     option: &str,
     input: &CommandOptionValue,

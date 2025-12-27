@@ -23,11 +23,4 @@ function setAttributes(element, attributes) {
     }
 }
 
-function maybeRemoveElement(elementId) {
-    var element = document.getElementById(elementId)
-    if (element !== null) {
-        element.remove()
-    }
-}
-
-export {getUrlWithBasePath, setAttributes, maybeRemoveElement}
+export {getUrlWithBasePath, setAttributes}
