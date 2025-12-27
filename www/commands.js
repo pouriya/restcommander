@@ -396,7 +396,7 @@ async function drawCommand(commandName, command, element) {
                 'class': 'h3 my-4 text-capitalize text-start'
             }
         )
-        commandStateHeaderElement.innerHTML = 'Current State'
+        commandStateHeaderElement.innerHTML = 'State'
         element.appendChild(commandStateHeaderElement)
         var commandStateDivElement = document.createElement('div')
         setAttributes(
@@ -561,7 +561,7 @@ async function makeCommandOptionsInputs(options, command) {
         {
             'type': 'submit',
             'id': 'run-button',
-            'class': 'btn btn-sm btn-primary btn-block px-3'
+            'class': 'btn btn-primary w-100 px-4 fw-bold'
         }
     )
     submitElement.innerHTML = 'RUN'
@@ -767,7 +767,7 @@ function updateResultAfterRequest(runResult) {
 
     var runButtonElement = document.getElementById('run-button')
     if (runButtonElement !== null) {
-        runButtonElement.innerHTML = 'Run Again'
+        runButtonElement.innerHTML = 'RUN AGAIN'
     }
 }
 
