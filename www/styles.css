@@ -509,6 +509,68 @@ textarea, select, input {
     line-height: var(--line-height-relaxed);
 }
 
+/* JSON Syntax Highlighting - Light Theme */
+.json-string {
+    color: #059669; /* green-600 */
+}
+
+.json-number.json-int {
+    color: #2563eb; /* blue-600 */
+}
+
+.json-number.json-float {
+    color: #0284c7; /* sky-600 */
+}
+
+.json-boolean {
+    color: #d97706; /* amber-600 */
+}
+
+.json-null {
+    color: #7c3aed; /* violet-600 */
+}
+
+.json-key {
+    color: #1e40af; /* blue-800 */
+    font-weight: 500;
+}
+
+.json-error {
+    color: var(--color-danger);
+    font-weight: 500;
+}
+
+/* JSON Syntax Highlighting - Dark Theme */
+[data-theme="dark"] .json-string {
+    color: #10b981; /* green-500 */
+}
+
+[data-theme="dark"] .json-number.json-int {
+    color: #60a5fa; /* blue-400 */
+}
+
+[data-theme="dark"] .json-number.json-float {
+    color: #38bdf8; /* sky-400 */
+}
+
+[data-theme="dark"] .json-boolean {
+    color: #fbbf24; /* amber-400 */
+}
+
+[data-theme="dark"] .json-null {
+    color: #a78bfa; /* violet-400 */
+}
+
+[data-theme="dark"] .json-key {
+    color: #93c5fd; /* blue-300 */
+    font-weight: 500;
+}
+
+[data-theme="dark"] .json-error {
+    color: #f87171; /* red-400 */
+    font-weight: 500;
+}
+
 /* ============================================
    Dropdown Menus
    ============================================ */

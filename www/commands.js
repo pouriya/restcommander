@@ -456,7 +456,7 @@ async function afterGetCommandState(command, runResult) {
     }
     
     var result = runResult.result
-    const resultText = prettifyResponse(result, 0)
+    const resultText = prettifyResponse(result, 0, !runResult.ok)
     
     // Create Bootstrap info card for state
     var stateCard = document.createElement('div')
@@ -488,11 +488,7 @@ async function afterGetCommandState(command, runResult) {
             'style': 'white-space: pre-wrap; font-family: \'Inconsolata\', monospace; font-size: 0.875rem;'
         }
     )
-    if (runResult.status === 200) {
-        resultTextElement.textContent = resultText
-    } else {
-        resultTextElement.textContent = 'Error: ' + resultText
-    }
+    resultTextElement.innerHTML = resultText
     cardBody.appendChild(resultTextElement)
     stateCard.appendChild(cardBody)
     
@@ -705,7 +701,7 @@ function updateResultAfterRequest(runResult) {
     )
     
     var result = runResult.result
-    const resultText = prettifyResponse(result, 0)
+    const resultText = prettifyResponse(result, 0, !runResult.ok)
     var resultTextElement = document.createElement('pre')
     setAttributes(
         resultTextElement,
@@ -715,7 +711,7 @@ function updateResultAfterRequest(runResult) {
             'style': 'white-space: pre-wrap; font-family: \'Inconsolata\', monospace; font-size: 0.875rem;'
         }
     )
-    resultTextElement.textContent = resultText
+    resultTextElement.innerHTML = resultText
     cardBody.appendChild(resultTextElement)
     
     // Add login button for 401 errors
@@ -1039,19 +1035,35 @@ function makeOptionHeader(name) {
     return header
 }
 
-function prettifyResponse(x, indent) {
-    var result = doPrettifyResponse(x, indent)
+function prettifyResponse(x, indent, error=false) {
+    var result = doPrettifyResponse(x, indent, error)
     return result.trim()
 }
 
-function doPrettifyResponse(x, indent) {
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function doPrettifyResponse(x, indent, error=false) {
     var result = '';
+    var strJsonClass = 'json-string';
+    if (error) {
+        strJsonClass = 'json-error';
+    }
     switch (typeof x) {
         case 'string':
-            result = x;
+            result = '<span class="' + strJsonClass + '">' + escapeHtml(x) + '</span>';
             break;
         case 'number':
-            result = x.toString();
+            // Check if it's an integer or float
+            if (Number.isInteger(x)) {
+                result = '<span class="json-number json-int">' + escapeHtml(x.toString()) + '</span>';
+            } else {
+                result = '<span class="json-number json-float">' + escapeHtml(x.toString()) + '</span>';
+            }
             break;
         case 'object':
             if (Array.isArray(x)) {
@@ -1064,27 +1076,28 @@ function doPrettifyResponse(x, indent) {
                         listIndent += 1
                     }
                     for (var i = 0; i < x.length; i++) {
-                        result += doPrettifyResponse(x[i], listIndent);
+                        result += doPrettifyResponse(x[i], listIndent, error);
                     };
                 }
             } else if (x === null) {
-                result = 'None';
+                result = '<span class="json-null">None</span>';
             } else {
                 for (var key in x) {
                     const value = x[key];
-                    result += key + ':' + doPrettifyResponse(value, indent + 1);
+                    result += '<span class="json-key">' + escapeHtml(key) + '</span>:';
+                    result += doPrettifyResponse(value, indent + 1, error);
                 };
             };
             break;
         case 'boolean':
             if (x) {
-                result = 'True';
+                result = '<span class="json-boolean">True</span>';
             } else {
-                result = 'False';
+                result = '<span class="json-boolean">False</span>';
             };
             break;
         default:
-            result += x;
+            result += escapeHtml(String(x));
     };
     if (indent > 0) {
         result = '    '.repeat(indent) + result;
