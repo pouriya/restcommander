@@ -1,6 +1,7 @@
 import {ApiOpts, Api} from './api.js'
 import {setAttributes} from './utils.js'
 import {setConfiguration} from './configuration.js'
+import {initTheme, toggleTheme} from './theme.js'
 
 async function drawNavbar() {
     var loadingElement = document.getElementById('sidebar-loading')
@@ -128,7 +129,7 @@ async function drawTreeNav(commands, parentElement, depth) {
             var commandIcon = document.createElement('span')
             setAttributes(commandIcon, {'class': 'sidebar-icon me-2'})
             // Command icon (play icon for commands)
-            commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6 12.796V3.204L11.481 8 6 12.796zm.659.753l5.48-4.796a1 1 0 0 0 0-1.506L6.66 2.451C6.011 1.885 5 2.345 5 3.204v9.592a1 1 0 0 0 1.659.753z"/></svg>'
+            commandIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/></svg>'
             
             var commandName = document.createElement('span')
             commandName.textContent = keyName
@@ -290,32 +291,6 @@ function appendSettings(element) {
     }
     setPasswordItem.appendChild(setPasswordLink)
     settingsList.appendChild(setPasswordItem)
-
-    // Theme Toggle
-    var themeItem = document.createElement('li')
-    var themeLink = document.createElement('a')
-    setAttributes(themeLink, {
-        'class': 'sidebar-command w-100 text-start d-flex align-items-center text-capitalize',
-        'href': '#',
-        'id': 'settings-theme-toggle'
-    })
-    var themeIcon = document.createElement('span')
-    setAttributes(themeIcon, {'class': 'sidebar-icon me-2', 'id': 'theme-icon'})
-    // Default to moon icon (light mode, so show moon to switch to dark)
-    themeIcon.innerHTML = '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278zM4.858 1.311A7.269 7.269 0 0 0 1.025 7.71c0 4.02 3.279 7.276 7.319 7.276a7.316 7.316 0 0 0 5.205-2.162c-.337.042-.68.063-1.029.063-4.61 0-8.343-3.714-8.343-8.29 0-1.167.242-2.278.681-3.286z"/></svg>'
-    var themeName = document.createElement('span')
-    themeName.textContent = 'Toggle Theme'
-    themeLink.appendChild(themeIcon)
-    themeLink.appendChild(themeName)
-    themeLink.onclick = function() {
-        toggleTheme()
-        closeSidebar()
-    }
-    themeItem.appendChild(themeLink)
-    settingsList.appendChild(themeItem)
-    
-    // Update theme icon based on current theme
-    updateThemeIcon()
     
     settingsDiv.appendChild(settingsToggle)
     settingsDiv.appendChild(settingsList)
@@ -587,7 +562,7 @@ async function makeCommandOptionsInputs(options, command) {
         {
             'type': 'submit',
             'id': 'run-button',
-            'class': 'btn btn-primary w-100 px-4'
+            'class': 'btn btn-primary btn-lg w-100 px-4 fw-bold'
         }
     )
     submitElement.innerHTML = 'RUN'
@@ -748,13 +723,13 @@ function updateResultAfterRequest(runResult) {
         var loginButtonDiv = document.createElement('div')
         setAttributes(
             loginButtonDiv,
-            {'class': 'mt-3 text-center'}
+            {'class': 'mt-3 d-grid'}
         )
         var loginButton = document.createElement('a')
         setAttributes(
             loginButton,
             {
-                'class': 'btn btn-warning btn-sm fw-bold',
+                'class': 'btn btn-warning btn-lg fw-bold w-100',
                 'href': 'login.html'
             }
         )
@@ -1134,6 +1109,14 @@ function changeLogoutToLogin() {
 }
 
 async function main() {
+    initTheme()
+    
+    // Setup theme toggle button
+    const themeToggle = document.getElementById('theme-toggle')
+    if (themeToggle) {
+        themeToggle.addEventListener('click', toggleTheme)
+    }
+    
     const authResult = await new Api(ApiOpts).testAuth(true)
     if (authResult === false) {
         document.location = 'index.html'

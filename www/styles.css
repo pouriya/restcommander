@@ -100,6 +100,215 @@
 }
 
 /* ============================================
+   Dark Theme Overrides
+   ============================================ */
+[data-theme="dark"] {
+    /* Background Colors */
+    --bg-primary: #1e293b;
+    --bg-secondary: #0f172a;
+    --bg-tertiary: #1e293b;
+    
+    /* Text Colors */
+    --text-primary: #ffffff;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    
+    /* Border Colors */
+    --border-color: #334155;
+    --border-color-dark: #475569;
+    
+    /* Code/Result Display Colors */
+    --code-bg: #1e293b;
+    --code-text: #e2e8f0;
+    --code-border: #334155;
+    
+    /* Shadows - adjusted for dark theme */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Dark Theme - Bootstrap Card Overrides */
+[data-theme="dark"] .card {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .card-body {
+    background-color: var(--bg-primary);
+}
+
+[data-theme="dark"] .card-header {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .card-header.bg-info {
+    background-color: rgba(6, 182, 212, 0.2) !important;
+    border-color: rgba(6, 182, 212, 0.4);
+}
+
+[data-theme="dark"] .card-header.bg-success {
+    background-color: rgba(16, 185, 129, 0.2) !important;
+    border-color: rgba(16, 185, 129, 0.4);
+}
+
+[data-theme="dark"] .card-header.bg-warning {
+    background-color: rgba(245, 158, 11, 0.2) !important;
+    border-color: rgba(245, 158, 11, 0.4);
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .card-header.bg-warning.text-dark {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .card-header.bg-danger {
+    background-color: rgba(239, 68, 68, 0.2) !important;
+    border-color: rgba(239, 68, 68, 0.4);
+}
+
+[data-theme="dark"] .card-header.bg-secondary {
+    background-color: rgba(100, 116, 139, 0.2) !important;
+    border-color: rgba(100, 116, 139, 0.4);
+}
+
+/* Dark Theme - Form Control Overrides */
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .form-select {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .form-select:focus {
+    background-color: var(--bg-secondary);
+    border-color: var(--color-primary);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .form-control::placeholder,
+[data-theme="dark"] .form-select::placeholder {
+    color: var(--text-muted);
+}
+
+/* Dark Theme - Bootstrap Utility Class Overrides */
+[data-theme="dark"] .bg-light {
+    background-color: var(--bg-secondary) !important;
+}
+
+[data-theme="dark"] .text-muted {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .text-secondary {
+    color: var(--text-secondary) !important;
+}
+
+/* Dark Theme - Bootstrap Border Color Overrides */
+[data-theme="dark"] .border-info {
+    border-color: rgba(6, 182, 212, 0.5) !important;
+}
+
+[data-theme="dark"] .border-success {
+    border-color: rgba(16, 185, 129, 0.5) !important;
+}
+
+[data-theme="dark"] .border-warning {
+    border-color: rgba(245, 158, 11, 0.5) !important;
+}
+
+[data-theme="dark"] .border-danger {
+    border-color: rgba(239, 68, 68, 0.5) !important;
+}
+
+[data-theme="dark"] .border-secondary {
+    border-color: rgba(100, 116, 139, 0.5) !important;
+}
+
+/* Dark Theme - Bootstrap Alert Overrides */
+[data-theme="dark"] .alert {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .alert-danger {
+    background-color: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #fca5a5;
+}
+
+[data-theme="dark"] .alert-success {
+    background-color: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: #6ee7b7;
+}
+
+[data-theme="dark"] .alert-warning {
+    background-color: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fcd34d;
+}
+
+[data-theme="dark"] .alert-info {
+    background-color: rgba(6, 182, 212, 0.15);
+    border-color: rgba(6, 182, 212, 0.4);
+    color: #67e8f9;
+}
+
+/* Dark Theme - Theme Toggle Button */
+.theme-toggle-btn {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 1050;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background-color var(--transition-base), transform var(--transition-fast);
+}
+
+.theme-toggle-btn:hover {
+    background-color: var(--bg-secondary);
+    transform: scale(1.05);
+}
+
+.theme-toggle-btn:active {
+    transform: scale(0.95);
+}
+
+.theme-toggle-btn svg {
+    width: 20px;
+    height: 20px;
+    fill: currentColor;
+}
+
+/* Mobile Theme Toggle Button */
+@media (max-width: 768px) {
+    .theme-toggle-btn {
+        width: 48px;
+        height: 48px;
+        top: 0.75rem;
+        right: 0.75rem;
+    }
+    
+    .theme-toggle-btn svg {
+        width: 24px;
+        height: 24px;
+    }
+}
+
+/* ============================================
    Base Styles
    ============================================ */
 html, body {
@@ -305,6 +514,28 @@ textarea, select, input {
    ============================================ */
 .dropdown-menu .dropdown-menu {
     top: -0.5rem !important;
+}
+
+/* Dark Theme - Dropdown Menu Overrides */
+[data-theme="dark"] .dropdown-menu {
+    background-color: var(--bg-primary);
+    border-color: var(--border-color);
+}
+
+[data-theme="dark"] .dropdown-item {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .dropdown-item:hover,
+[data-theme="dark"] .dropdown-item:focus {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+/* Dark Theme - Spinner Overrides */
+[data-theme="dark"] .spinner-border {
+    border-color: var(--border-color);
+    border-right-color: transparent;
 }
 
 /* ============================================

@@ -52,6 +52,10 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {
             include_bytes!("utils.js").to_vec(),
             Some("text/javascript".to_string()),
         )),
+        "theme.js" => Some((
+            include_bytes!("theme.js").to_vec(),
+            Some("text/javascript".to_string()),
+        )),
         _ => None,
     }
 }
