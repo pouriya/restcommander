@@ -1,6 +1,6 @@
 use crate::cmd::errors::CommandError;
 pub use crate::cmd::runner::{CommandInput, CommandOutput, CommandStats};
-pub use crate::cmd::tree::{Command, CommandInfoGetState};
+pub use crate::cmd::tree::Command;
 use crate::cmd::tree::{
     CommandOptionInfoValueSize, CommandOptionInfoValueType, CommandOptionValue,
 };
@@ -21,12 +21,16 @@ pub fn search_for_command(
         if command_path_list.len() > 1 {
             if command.is_directory {
                 let second_element = command_path_list[1].clone();
-                // println!("{:?} - {:?} - {:?}", second_element, command_path_list, command.name);
-                if command.commands.contains_key(second_element.as_str()) {
-                    return search_for_command(
-                        &command_path_list[1..],
-                        command.commands.get(second_element.as_str()).unwrap(),
-                    );
+                if let Some(result_cmd) = command.commands.get(second_element.as_str()) {
+                    match result_cmd {
+                        Ok(cmd) => {
+                            return search_for_command(&command_path_list[1..], cmd);
+                        }
+                        Err(_error_info) => {
+                            // Keep error but continue searching if there are more paths
+                            // This allows errors to be displayed in UI
+                        }
+                    }
                 };
                 return Err(CommandError::FindCommand {
                     command_name: command.name.clone(),
@@ -68,24 +72,40 @@ pub fn get_state(
     env_map: HashMap<String, String>,
 ) -> Result<CommandOutput, CommandError> {
     if let Some(ref info) = command.info {
-        if info.support_state && info.state.is_some() {
-            let get_state = info.state.as_ref().unwrap();
-            match get_state {
-                CommandInfoGetState::Constant(value) => {
-                    let mut output = CommandOutput::new();
-                    output.stdout = value.clone();
-                    output.decoded_stdout = Ok(serde_json::Value::String(value.clone()));
-                    Ok(output)
-                }
-                CommandInfoGetState::Options(options) => {
-                    runner::run_command(&command.file_path, options.clone(), None, true, env_map)
-                }
+        if !info.support_state {
+            return Err(CommandError::NoCommandState {
+                filename: command.file_path.clone(),
+            });
+        }
+        // Call script with --state flag
+        let output = runner::run_command(
+            &command.file_path,
+            vec!["--state".to_string()],
+            None,
+            true, // Parse stderr logs for --state
+            env_map,
+        )?;
+
+        // Parse stdout: if valid JSON return parsed, else if exit code is 0 return as JSON string
+        let decoded_stdout = if output.exit_code == 0 {
+            match serde_json::from_str(&output.stdout) {
+                Ok(value) => Ok(value),
+                Err(_) => Ok(serde_json::Value::String(output.stdout.clone())),
             }
         } else {
-            Err(CommandError::NoCommandState {
-                filename: command.file_path.clone(),
-            })
-        }
+            Err(format!(
+                "script --state exited with code {}",
+                output.exit_code
+            ))
+        };
+
+        Ok(CommandOutput {
+            exit_code: output.exit_code,
+            stdout: output.stdout,
+            stderr: output.stderr,
+            decoded_stdout,
+            stats: output.stats,
+        })
     } else {
         Err(CommandError::NoCommandInfo {
             filename: command.file_path.clone(),
