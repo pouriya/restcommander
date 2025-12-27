@@ -27,12 +27,11 @@ pub enum CommandError {
         command: PathBuf,
         message: io::Error,
     },
-    // #[error("could write {data:?} to command {command:?} stdin: {message}")]
-    // WriteToCommandStdin {
-    //     data: String,
-    //     command: PathBuf,
-    //     message: io::Error,
-    // },
+    #[error("could not write to command {command:?} stdin: {message}")]
+    WriteToCommandStdin {
+        command: PathBuf,
+        message: io::Error,
+    },
     #[error("could not wait for command {command:?} process: {message}")]
     WaitForCommandProcess {
         command: PathBuf,
@@ -80,6 +79,12 @@ pub enum CommandError {
         stderr: String,
         name: String,
     },
+    #[error("Path {path:?} has no file name")]
+    NoFileName { path: PathBuf },
+    #[error("Path {path:?} contains invalid UTF-8")]
+    InvalidPathUtf8 { path: PathBuf },
+    #[error("Could not strip prefix from path {path:?} with prefix {prefix:?}")]
+    StripPrefixFailed { path: PathBuf, prefix: PathBuf },
 }
 
 impl CommandError {
@@ -90,16 +95,20 @@ impl CommandError {
             CommandError::IsNotARegularFile { .. } => 3003,
             CommandError::EncodeInputToJSON { .. } => 3004,
             CommandError::CreateCommandProcess { .. } => 3005,
-            CommandError::WaitForCommandProcess { .. } => 3006,
-            CommandError::ReadCommandStdout { .. } => 3007,
-            CommandError::ReadCommandStderr { .. } => 3008,
-            CommandError::FindCommand { .. } => 3009,
-            CommandError::CommandIsNotDirectory { .. } => 3010,
-            CommandError::CommandIsDirectory { .. } => 3011,
+            CommandError::WriteToCommandStdin { .. } => 3006,
+            CommandError::WaitForCommandProcess { .. } => 3007,
+            CommandError::ReadCommandStdout { .. } => 3008,
+            CommandError::ReadCommandStderr { .. } => 3009,
+            CommandError::FindCommand { .. } => 3010,
+            CommandError::CommandIsNotDirectory { .. } => 3011,
+            CommandError::CommandIsDirectory { .. } => 3012,
             CommandError::InvalidCommandInfo { .. } => 3013,
             CommandError::NoCommandInfo { .. } => 3014,
             CommandError::NoCommandState { .. } => 3015,
             CommandError::CommandHelpFailed { .. } => 3016,
+            CommandError::NoFileName { .. } => 3017,
+            CommandError::InvalidPathUtf8 { .. } => 3018,
+            CommandError::StripPrefixFailed { .. } => 3019,
         }
     }
 }

@@ -3,7 +3,6 @@ use crate::settings::CfgLogging;
 use std::io::Write;
 
 use structopt::clap::crate_name;
-use tracing::debug;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{
     filter::Filtered, fmt::format::JsonFields, layer::SubscriberExt, reload::Handle,
@@ -68,7 +67,11 @@ pub fn setup(config: CfgLogging) -> LoggingState {
 
 pub fn update(config: CfgLogging, state: &mut LoggingState) {
     let (logging_writer, logging_writer_guard) = writer(&config);
-    debug!(level = ?config.level_name, output = ?config.output, "Updating logging options.");
+    tracing::debug!(
+        msg = "Updating logging options",
+        level = ?config.level_name,
+        output = ?config.output,
+    );
     state
         .json_handle
         .modify(|json_layer| {
@@ -77,7 +80,11 @@ pub fn update(config: CfgLogging, state: &mut LoggingState) {
         })
         .unwrap();
     state.worker_guard = logging_writer_guard;
-    debug!(level = ?config.level_name, output = ?config.output, "Updated logging options.");
+    tracing::debug!(
+        msg = "Logging options updated successfully",
+        level = ?config.level_name,
+        output = ?config.output,
+    );
 }
 
 fn writer(config: &CfgLogging) -> (NonBlocking, WorkerGuard) {

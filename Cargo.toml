@@ -36,8 +36,6 @@ http = "0.2"
 base64 = "0.13"
 # Check file mode:
 is_executable = "1.0"
-# Ask password:
-ttyaskpass = "2.0"
 # Hash:
 sha2 = "0.10"
 hex = "0.4"

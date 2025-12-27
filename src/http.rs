@@ -4,8 +4,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time;
 
-use tracing::{debug, info, trace};
-
 use serde_derive::Deserialize;
 use serde_json::json;
 
@@ -38,6 +36,8 @@ pub enum HTTPError {
     API(#[from] HTTPAPIError),
     #[error("{0}")]
     Deserialize(String),
+    #[error("Internal error: {0}")]
+    Internal(String),
 }
 
 impl HTTPError {
@@ -46,6 +46,7 @@ impl HTTPError {
             Self::Authentication(x) => x.http_error_code(),
             Self::API(x) => x.http_error_code(),
             Self::Deserialize(_) => 2000,
+            Self::Internal(_) => 5000,
         }
     }
 
@@ -54,6 +55,7 @@ impl HTTPError {
             Self::Authentication(x) => x.http_status_code(),
             Self::API(x) => x.http_status_code(),
             Self::Deserialize(_) => 400,
+            Self::Internal(_) => 500,
         }
     }
 }
@@ -204,11 +206,22 @@ pub fn setup(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
 ) -> Result<ServerConfig, String> {
-    let server_options = cfg.read().unwrap().config_value.server.clone();
+    let server_options = cfg
+        .read()
+        .map_err(|e| format!("Configuration lock poisoned: {}", e))?
+        .config_value
+        .server
+        .clone();
     let host = server_options.host.clone();
     let port = server_options.port;
 
-    let maybe_captcha = if cfg.read().unwrap().config_value.server.captcha {
+    let maybe_captcha = if cfg
+        .read()
+        .map_err(|e| format!("Configuration lock poisoned: {}", e))?
+        .config_value
+        .server
+        .captcha
+    {
         Some(Arc::new(RwLock::new(captcha::Captcha::new())))
     } else {
         None
@@ -234,12 +247,12 @@ pub fn setup(
         let key_bytes = std::fs::read(server_options.tls_key_file.clone().unwrap())
             .map_err(|e| format!("Could not read key file: {}", e))?;
 
-        debug!(
-            "Prepared HTTPS server on {}:{} with cert file {:?} and key file {:?}",
-            host,
-            port,
-            server_options.tls_cert_file.clone().unwrap(),
-            server_options.tls_key_file.clone().unwrap()
+        tracing::debug!(
+            msg = "Prepared HTTPS server",
+            host = host.as_str(),
+            port = port,
+            cert_file = ?server_options.tls_cert_file.clone().unwrap(),
+            key_file = ?server_options.tls_key_file.clone().unwrap(),
         );
 
         Ok(ServerConfig {
@@ -250,7 +263,11 @@ pub fn setup(
             has_tls: true,
         })
     } else {
-        debug!("Prepared HTTP server on {}:{}", host, port);
+        tracing::debug!(
+            msg = "Prepared HTTP server",
+            host = host.as_str(),
+            port = port,
+        );
 
         Ok(ServerConfig {
             handler_state,
@@ -266,10 +283,10 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
     let state = config.handler_state.clone();
     let address = config.address.clone();
 
-    info!(
+    tracing::info!(
+        msg = "Starting HTTP server",
         address = address.as_str(),
         tls = config.has_tls,
-        "Starting server"
     );
 
     if let (Some(cert), Some(key)) = (config.tls_cert, config.tls_key) {
@@ -357,7 +374,15 @@ fn http_logging_rouille(_request: &Request) {
 }
 
 fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
-    let cfg_value = cfg.read().unwrap().config_value.clone();
+    let cfg_value = match cfg.read() {
+        Ok(guard) => guard.config_value.clone(),
+        Err(e) => {
+            return make_api_response(Err(HTTPError::Internal(format!(
+                "Configuration lock poisoned: {}",
+                e
+            ))));
+        }
+    };
     if cfg_value.www.enabled {
         RouilleResponse::redirect_301(format!(
             "{}static/index.html",
@@ -371,7 +396,16 @@ fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
 
 fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> RouilleResponse {
     // Try external static directory first
-    let www_cfg = cfg.read().unwrap().config_value.www.clone();
+    let www_cfg = match cfg.read() {
+        Ok(guard) => guard.config_value.www.clone(),
+        Err(e) => {
+            return RouilleResponse::text(format!(
+                "Internal error: Configuration lock poisoned: {}",
+                e
+            ))
+            .with_status_code(500);
+        }
+    };
     if www_cfg.enabled && www_cfg.static_directory.is_dir() {
         let file_path = www_cfg.static_directory.join(tail);
         if file_path.exists() && file_path.is_file() {
@@ -404,7 +438,15 @@ fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> Roui
 
 fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> RouilleResponse {
     if let Some(captcha) = maybe_captcha {
-        let (id, _, png_image) = captcha.write().unwrap().generate(true);
+        let (id, _, png_image) = match captcha.write() {
+            Ok(mut guard) => guard.generate(true),
+            Err(e) => {
+                return make_api_response(Err(HTTPError::Internal(format!(
+                    "CAPTCHA lock poisoned: {}",
+                    e
+                ))));
+            }
+        };
         make_api_response_ok_with_result(serde_json::json!({"id": id, "image": png_image}))
     } else {
         make_api_response(Err(HTTPError::Authentication(
@@ -416,19 +458,22 @@ fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> Rouille
 }
 
 fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
-    make_api_response_ok_with_result(serde_json::Value::Object(
-        cfg.read()
-            .unwrap()
-            .config_value
-            .www
-            .configuration
-            .clone()
-            .into_iter()
-            .fold(serde_json::Map::new(), |mut acc, item| {
-                acc.insert(item.0, serde_json::Value::String(item.1));
-                acc
-            }),
-    ))
+    let config_map = match cfg.read() {
+        Ok(guard) => guard.config_value.www.configuration.clone(),
+        Err(e) => {
+            return make_api_response(Err(HTTPError::Internal(format!(
+                "Configuration lock poisoned: {}",
+                e
+            ))));
+        }
+    };
+    make_api_response_ok_with_result(serde_json::Value::Object(config_map.into_iter().fold(
+        serde_json::Map::new(),
+        |mut acc, item| {
+            acc.insert(item.0, serde_json::Value::String(item.1));
+            acc
+        },
+    )))
 }
 
 fn api_auth_test(
@@ -471,13 +516,29 @@ fn api_auth_token_handler(
         Err(error) => make_api_response(Err(HTTPError::Authentication(error))),
         Ok(_) => {
             let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
-            let token_timeout = cfg.read().unwrap().config_value.server.token_timeout;
+            let token_timeout = match cfg.read() {
+                Ok(guard) => guard.config_value.server.token_timeout,
+                Err(e) => {
+                    return make_api_response(Err(HTTPError::Internal(format!(
+                        "Configuration lock poisoned: {}",
+                        e
+                    ))));
+                }
+            };
             let timestamp = time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as usize
                 + token_timeout;
-            tokens.write().unwrap().insert(token.clone(), timestamp);
+            match tokens.write() {
+                Ok(mut guard) => guard.insert(token.clone(), timestamp),
+                Err(e) => {
+                    return make_api_response(Err(HTTPError::Internal(format!(
+                        "Tokens lock poisoned: {}",
+                        e
+                    ))));
+                }
+            };
             make_api_response_with_headers(
                 Ok(serde_json::json!({ "token": token })),
                 Some(vec![(
@@ -501,14 +562,38 @@ fn api_get_commands(
     match check_authentication(request, tokens, cfg) {
         Ok(_) => {
             // Reload commands before returning them
-            if let Err(e) = commands.write().unwrap().reload() {
+            let reload_result = match commands.write() {
+                Ok(mut guard) => guard.reload(),
+                Err(e) => {
+                    return make_api_response(Err(HTTPError::Internal(format!(
+                        "Commands lock poisoned: {}",
+                        e
+                    ))));
+                }
+            };
+            if let Err(e) = reload_result {
                 return make_api_response(Err(HTTPError::API(HTTPAPIError::InitializeCommand {
                     message: format!("Failed to reload commands: {}", e),
                 })));
             }
-            make_api_response_ok_with_result(
-                serde_json::to_value(commands.read().unwrap().deref()).unwrap(),
-            )
+            let command_value = match commands.read() {
+                Ok(guard) => match serde_json::to_value(guard.deref()) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        return make_api_response(Err(HTTPError::Internal(format!(
+                            "Failed to serialize commands: {}",
+                            e
+                        ))));
+                    }
+                },
+                Err(e) => {
+                    return make_api_response(Err(HTTPError::Internal(format!(
+                        "Commands lock poisoned: {}",
+                        e
+                    ))));
+                }
+            };
+            make_api_response_ok_with_result(command_value)
         }
         Err(e) => make_api_response(Err(HTTPError::Authentication(e))),
     }
@@ -543,7 +628,11 @@ fn check_authentication(
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     cfg: &Arc<RwLock<Cfg>>,
 ) -> Result<(), HTTPAuthenticationError> {
-    let cfg_value = cfg.read().unwrap().config_value.clone();
+    let cfg_value = cfg
+        .read()
+        .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
+        .config_value
+        .clone();
     if cfg_value.server.password_sha512.is_empty() {
         return Ok(());
     }
@@ -581,7 +670,13 @@ fn check_ip_address_rouille(
     request: &Request,
     cfg: &Arc<RwLock<Cfg>>,
 ) -> Result<(), HTTPAuthenticationError> {
-    let ip_whitelist = cfg.read().unwrap().config_value.server.ip_whitelist.clone();
+    let ip_whitelist = cfg
+        .read()
+        .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
+        .config_value
+        .server
+        .ip_whitelist
+        .clone();
     if ip_whitelist.is_empty() {
         return Ok(());
     }
@@ -729,7 +824,12 @@ fn authentication_with_basic(
     authorization_value: String,
     form: HashMap<String, String>,
 ) -> Result<(), HTTPAuthenticationError> {
-    let server_cfg = cfg.read().unwrap().config_value.server.clone();
+    let server_cfg = cfg
+        .read()
+        .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
+        .config_value
+        .server
+        .clone();
     if server_cfg.password_sha512.is_empty() && server_cfg.username.is_empty() {
         return Ok(());
     };
@@ -757,10 +857,10 @@ fn authentication_with_basic(
                 [username, password] => {
                     if username == server_cfg.username {
                         let password_sha512 = utils::to_sha512(password);
-                        trace!(
+                        tracing::trace!(
+                            msg = "New client provided authentication credentials",
                             username = username,
                             password_sha512 = password_sha512.as_str(),
-                            "New client provided credentials.",
                         );
                         if server_cfg.password_sha512 == password_sha512 {
                             if maybe_captcha.is_none() {
@@ -772,12 +872,21 @@ fn authentication_with_basic(
                                     .fold(None, |_, key_value| Some(key_value.clone()))
                                     .unwrap()
                                     .clone();
-                                if maybe_captcha.unwrap().write().unwrap().compare_and_update(
-                                    key.to_string(),
-                                    value,
-                                    server_cfg.captcha_case_sensitive,
-                                ) {
-                                    Ok(())
+                                if let Some(captcha) = maybe_captcha {
+                                    match captcha.write() {
+                                        Ok(mut guard) => {
+                                            if guard.compare_and_update(
+                                                key.to_string(),
+                                                value,
+                                                server_cfg.captcha_case_sensitive,
+                                            ) {
+                                                Ok(())
+                                            } else {
+                                                Err(HTTPAuthenticationError::InvalidCaptcha {})
+                                            }
+                                        }
+                                        Err(_) => Err(HTTPAuthenticationError::InvalidCaptcha {}),
+                                    }
                                 } else {
                                     Err(HTTPAuthenticationError::InvalidCaptcha {})
                                 }
@@ -786,9 +895,9 @@ fn authentication_with_basic(
                             };
                         };
                     } else {
-                        debug!(
+                        tracing::debug!(
+                            msg = "Client attempted authentication with unknown username",
                             username = username,
-                            "Client authenticated with unknown username."
                         );
                     };
                     Err(HTTPAuthenticationError::InvalidUsernameOrPassword)
@@ -815,7 +924,12 @@ fn authentication_with_token(
     token: String,
     cfg: Arc<RwLock<Cfg>>,
 ) -> Result<(), HTTPAuthenticationError> {
-    let cfg = cfg.clone().read().unwrap().config_value.clone();
+    let cfg = cfg
+        .clone()
+        .read()
+        .map_err(|_| HTTPAuthenticationError::InvalidToken)?
+        .config_value
+        .clone();
     if cfg.server.password_sha512.is_empty() {
         return Ok(());
     }
@@ -827,7 +941,11 @@ fn authentication_with_token(
             return Ok(());
         }
     }
-    return if let Some(expire_time) = tokens.clone().read().unwrap().get(token.as_str()) {
+    let tokens_clone = tokens.clone();
+    let tokens_guard = tokens_clone
+        .read()
+        .map_err(|_| HTTPAuthenticationError::InvalidToken)?;
+    if let Some(expire_time) = tokens_guard.get(token.as_str()) {
         if expire_time
             > &(time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)
@@ -839,7 +957,7 @@ fn authentication_with_token(
         Err(HTTPAuthenticationError::TokenExpired)
     } else {
         Err(HTTPAuthenticationError::InvalidToken)
-    };
+    }
 }
 
 fn maybe_run_command(
@@ -847,7 +965,12 @@ fn maybe_run_command(
     command_path: String,
     command_input: CommandInput,
 ) -> Result<RouilleResponse, HTTPAPIError> {
-    let root_command = commands.read().unwrap().clone();
+    let root_command = commands
+        .read()
+        .map_err(|e| HTTPAPIError::InitializeCommand {
+            message: format!("Commands lock poisoned: {}", e),
+        })?
+        .clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
         .join(PathBuf::from(command_path))
         .components()
@@ -893,7 +1016,12 @@ fn maybe_get_command_state(
     commands: Arc<RwLock<Command>>,
     command_path: String,
 ) -> Result<RouilleResponse, HTTPAPIError> {
-    let root_command = commands.read().unwrap().clone();
+    let root_command = commands
+        .read()
+        .map_err(|e| HTTPAPIError::InitializeCommand {
+            message: format!("Commands lock poisoned: {}", e),
+        })?
+        .clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
         .join(PathBuf::from(command_path))
         .components()
@@ -948,7 +1076,14 @@ fn make_environment_variables_map_from_options(
 }
 
 fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
-    let cfg_instance = cfg.read().unwrap().config_value.clone();
+    let cfg_instance = match cfg.read() {
+        Ok(guard) => guard.config_value.clone(),
+        Err(_) => {
+            // If lock is poisoned, return empty options
+            // This is a fallback to prevent panics
+            return CommandOptionsValue::new();
+        }
+    };
     let mut options = CommandOptionsValue::from([
         (
             "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
@@ -1048,7 +1183,14 @@ fn try_set_password(
             message: reason.to_string(),
         }
     })?;
-    cfg.write().unwrap().config_value.server.password_sha512 = password_sha512;
+    match cfg.write() {
+        Ok(mut guard) => guard.config_value.server.password_sha512 = password_sha512,
+        Err(e) => {
+            return Err(HTTPAPIError::SaveNewPassword {
+                message: format!("Configuration lock poisoned: {}", e),
+            });
+        }
+    }
     Ok(make_api_response_ok())
 }
 
@@ -1057,7 +1199,12 @@ fn unify_options(options_list: Vec<CommandOptionsValue>) -> CommandOptionsValue 
     for options_list_item in options_list {
         for (option, mut value) in options_list_item {
             if options.contains_key(option.as_str()) {
-                trace!(option = option.as_str(), old = ?options.get(option.as_str()).unwrap(), new = ?value, "Replacing value for option.")
+                tracing::trace!(
+                    msg = "Replacing value for option",
+                    option = option.as_str(),
+                    old = ?options.get(option.as_str()).unwrap(),
+                    new = ?value,
+                )
             };
             if let CommandOptionValue::String(ref value_string) = value {
                 value = serde_json::from_str::<CommandOptionValue>(value_string).unwrap_or(value)

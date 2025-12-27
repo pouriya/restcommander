@@ -14,23 +14,9 @@ mod www;
 fn main() -> Result<(), String> {
     let mut logging_state = logging::setup(settings::CfgLogging::default());
     let cfg = match settings::try_setup() {
-        Ok(cfg) => Arc::new(RwLock::new(cfg)),
-        Err(maybe_error) => {
-            if maybe_error.is_none() {
-                exit(0)
-            } else {
-                eprintln!("{}", maybe_error.unwrap());
-                exit(1)
-            }
-        }
-    };
-    logging::update(
-        cfg.read().unwrap().config_value.clone().logging,
-        &mut logging_state,
-    );
-    let cfg = match settings::try_setup() {
         Ok(cfg) => {
             cfg.trace_log();
+            logging::update(cfg.config_value.clone().logging, &mut logging_state);
             Arc::new(RwLock::new(cfg))
         }
         Err(maybe_error) => {
@@ -42,16 +28,21 @@ fn main() -> Result<(), String> {
             }
         }
     };
-    let cfg_instance = cfg.read().unwrap().config_value.clone();
+    let cfg_instance = cfg
+        .read()
+        .map_err(|e| format!("Configuration lock poisoned: {}", e))?
+        .config_value
+        .clone();
     let root_directory = cfg_instance.commands.root_directory.clone();
+    let api_run_path = if let Some(stripped) = http::API_RUN_BASE_PATH.strip_prefix('/') {
+        PathBuf::from(stripped)
+    } else {
+        PathBuf::from(http::API_RUN_BASE_PATH)
+    };
     let commands = Arc::new(RwLock::new(
         cmd::tree::Command::new(
             &root_directory,
-            &PathBuf::from(cfg_instance.server.http_base_path.clone()).join(
-                PathBuf::from(http::API_RUN_BASE_PATH)
-                    .strip_prefix("/")
-                    .unwrap(),
-            ),
+            &PathBuf::from(cfg_instance.server.http_base_path.clone()).join(api_run_path),
         )
         .map_err(|reason| reason.to_string())?,
     ));

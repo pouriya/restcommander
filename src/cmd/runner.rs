@@ -4,7 +4,6 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::Instant;
 use std::{process, process::Stdio};
-use tracing::{debug, error, info, trace, warn};
 
 use super::errors::CommandError;
 pub use crate::cmd::tree::CommandOptionValue;
@@ -67,15 +66,15 @@ pub fn run_command(
                 }
             })?,
         );
-        debug!(
+        tracing::debug!(
+            msg = "Attempting to run command with options",
             command = ?command,
             options = ?option_list,
-            "Attempt to run command",
         )
     } else {
-        debug!(
+        tracing::debug!(
+            msg = "Attempting to run command",
             command = ?command,
-            "Attempt to run command",
         )
     }
     let start = Instant::now();
@@ -95,21 +94,25 @@ pub fn run_command(
 
     let mut write_to_stdin_duration = 0;
     let start_write_to_stdin = Instant::now();
-    if input_string.is_some() {
+    if let Some(ref input_str) = input_string {
         let mut child_stdin = child.stdin.take().unwrap();
         child_stdin
-            .write_all(input_string.clone().unwrap().as_bytes())
-            .inspect(|_| {
-                trace!(command = ?command, options = ?input_string.clone().unwrap(), "Wrote options to process stdin");
-            })
-            .inspect_err(|error| {
-                warn!(
-                    command = ?command,
-                    error = error.to_string().as_str(),
-                    "Could not write options to process stdin"
-                );
-            }).unwrap_or_default();
-        child_stdin.flush().unwrap_or_default();
+            .write_all(input_str.as_bytes())
+            .map_err(|reason| CommandError::WriteToCommandStdin {
+                command: command.clone(),
+                message: reason,
+            })?;
+        child_stdin
+            .flush()
+            .map_err(|reason| CommandError::WriteToCommandStdin {
+                command: command.clone(),
+                message: reason,
+            })?;
+        tracing::trace!(
+            msg = "Wrote command options to process stdin",
+            command = ?command,
+            options = ?input_str,
+        );
         write_to_stdin_duration = start_write_to_stdin.elapsed().as_micros();
     };
 
@@ -120,7 +123,11 @@ pub fn run_command(
             command: command.clone(),
         })?;
     let command_duration = start.elapsed().as_micros();
-    let child_exit_code = wait_for_child.code().unwrap();
+    let child_exit_code = wait_for_child.code().unwrap_or({
+        // Process was terminated by a signal
+        // Use standard exit codes: 130 for SIGINT, 143 for SIGTERM, 128 for unknown signal
+        128
+    });
 
     let mut child_stdout = String::new();
     child
@@ -154,54 +161,60 @@ pub fn run_command(
         let mut child_log_buffer = String::new();
         for line in child_stderr.lines() {
             if line.starts_with("INFO") {
-                info!(
+                tracing::info!(
+                    msg = line.replacen("INFO", "", 1).trim_start(),
                     command = ?command,
-                    message = line.replacen("INFO", "", 1).trim_start()
                 )
             } else if line.starts_with("ERROR") {
-                error!(
+                tracing::error!(
+                    msg = line.replacen("ERROR", "", 1).trim_start(),
                     command = ?command,
-                    message = line.replacen("ERROR", "", 1).trim_start()
                 )
             } else if line.starts_with("DEBUG") {
-                debug!(
+                tracing::debug!(
+                    msg = line.replacen("DEBUG", "", 1).trim_start(),
                     command = ?command,
-                    message = line.replacen("DEBUG", "", 1).trim_start()
                 )
             } else if line.starts_with("WARNING") || line.starts_with("WARN") {
-                warn!(
-                    command = ?command,
-                    message = line.replacen("WARNING", "", 1)
+                tracing::warn!(
+                    msg = line.replacen("WARNING", "", 1)
                         .replacen("WARN", "", 1)
-                        .trim_start()
+                        .trim_start(),
+                    command = ?command,
                 )
             } else if line.starts_with("TRACE") {
-                trace!(
+                tracing::trace!(
+                    msg = line.replacen("TRACE", "", 1).trim_start(),
                     command = ?command,
-                    message = line.replacen("TRACE", "", 1).trim_start()
                 )
             } else {
                 child_log_buffer += line;
             };
         }
         if !child_log_buffer.is_empty() {
-            error!(
+            tracing::error!(
+                msg = "Unparsed stderr output from command",
                 command = ?command,
-                stderr = ?child_log_buffer
+                stderr = ?child_log_buffer,
             );
         };
         start_logging.elapsed().as_micros()
     } else {
         0
     };
-    trace!(
+    tracing::trace!(
+        msg = "Command execution completed",
+        command = ?command,
         stdin = input_string.clone().unwrap_or_default().as_str(),
         stdout = child_stdout.as_str(),
         stderr = child_stderr.as_str(),
         exit_status = child_exit_code,
-        command = ?command,
     );
-    info!(command = ?command, exit_status = child_exit_code);
+    tracing::info!(
+        msg = "Command finished execution",
+        command = ?command,
+        exit_status = child_exit_code,
+    );
     let decoded_stdout: Result<serde_json::Value, String> =
         match serde_json::from_str(&child_stdout) {
             Ok(value) => Ok(value),

@@ -10,19 +10,14 @@ use std::string::FromUtf8Error;
 use structopt::clap::{crate_authors, crate_description, crate_name, crate_version};
 use structopt::StructOpt;
 
-use tracing::{info, trace, warn};
-
 use config::{Config, ConfigError, Environment, File};
 
 use serde_derive::{Deserialize, Serialize};
 
-use ttyaskpass::AskPass;
 
 use crate::cmd::runner::CommandOptionsValue;
 use thiserror::Error;
 use tracing_subscriber::filter::LevelFilter;
-
-use crate::utils;
 
 const DEFAULT_SERVER_HOST: &str = "127.0.0.1";
 const DEFAULT_SERVER_PORT: u16 = 1995;
@@ -33,7 +28,6 @@ const DEFAULT_SERVER_PASSWORD_FILE: &str = "";
 const DEFAULT_SERVER_TOKEN_TIMEOUT: usize = 604800; // 1 week in seconds
 const DEFAULT_LOGGING_LEVEL_NAME: &str = "info";
 const DEFAULT_LOGGING_OUTPUT: &str = "stderr";
-const DEFAULT_LOGGING_REPORT: &str = "stdout";
 const DEFAULT_WWW_STATIC_DIRECTORY: &str = "";
 
 pub mod defaults {
@@ -133,12 +127,12 @@ pub mod defaults {
         use super::*;
 
         pub fn root_directory_str<'a>() -> &'a str {
+            // This is used for default values, so we use a fallback if current_dir fails
             Box::leak(
                 current_dir()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string()
+                    .ok()
+                    .and_then(|p| p.to_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| ".".to_string())
                     .into_boxed_str(),
             )
         }
@@ -191,13 +185,6 @@ pub mod defaults {
             PathBuf::from(output_str())
         }
 
-        pub fn report_str() -> &'static str {
-            DEFAULT_LOGGING_REPORT
-        }
-
-        pub fn report() -> PathBuf {
-            PathBuf::from(report_str())
-        }
     }
 }
 
@@ -214,8 +201,6 @@ pub enum CMDOpt {
     Config(CMDOptCfg),
     Playground(Box<CfgValue>),
     Sample(CMDSample),
-    Sha512(CMDSha512),
-    Base64(CMDBase64),
 }
 
 #[derive(Debug, Clone, StructOpt)]
@@ -241,14 +226,18 @@ impl Cfg {
         } else {
             PathBuf::from("<COMMANDLINE>")
         };
-        trace!(
+        tracing::trace!(
+            msg = "Configuration details",
             source = ?source,
             server = ?self.config_value.server,
             commands = ?self.config_value.commands,
             logging = ?self.config_value.logging,
             www = ?self.config_value.www,
         );
-        info!(source = ?source, "Loaded configuration.");
+        tracing::info!(
+            msg = "Configuration loaded successfully",
+            source = ?source,
+        );
     }
 }
 
@@ -266,6 +255,11 @@ pub enum CfgError {
     },
     #[error("{0}")]
     Check(String),
+    #[allow(dead_code)]
+    #[error("Path {path:?} contains invalid UTF-8")]
+    InvalidPathUtf8 { path: PathBuf },
+    #[error("Could not get current directory: {message}")]
+    CurrentDir { message: Error },
 }
 
 trait CheckValue {
@@ -390,7 +384,6 @@ pub struct CfgServer {
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    /// You can use `sha512` subcommand to generate sha512 of your passwords.
     #[serde(default = "defaults::server::password_file")]
     #[structopt(
         name = "server-password-file",
@@ -408,7 +401,6 @@ pub struct CfgServer {
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    /// You can use `sha512` subcommand to generate sha512 of your passwords.
     #[serde(default = "defaults::server::password_sha512")]
     #[structopt(
         name = "server-password-sha512",
@@ -542,6 +534,10 @@ pub enum CfgServerCheckError {
     TLSCertFileISNotSet,
     #[error("TLS cert file is set but TLS key file is not set")]
     TLSKeyFileISNotSet,
+    #[error("Path {path:?} contains invalid UTF-8")]
+    InvalidPathUtf8 { path: PathBuf },
+    #[error("Could not get current directory: {message}")]
+    CurrentDir { message: Error },
 }
 
 impl CheckValue for CfgServer {
@@ -573,27 +569,39 @@ impl CheckValue for CfgServer {
                 message: "should contain '/' at the start".to_string(),
             });
         };
+        let password_file_str =
+            self.password_file
+                .to_str()
+                .ok_or_else(|| CfgServerCheckError::InvalidPathUtf8 {
+                    path: self.password_file.clone(),
+                })?;
         match (
             !self.username.is_empty(),
             !self.password_sha512.is_empty(),
-            !self.password_file.to_str().unwrap().is_empty(),
+            !password_file_str.is_empty(),
         ) {
             (true, false, false) => {
                 return Err(CfgServerCheckError::PasswordOrPasswordFileIsNotSet)
             }
             (false, true, _) => {
-                warn!("Configuration contains `password` but `username` field is not set. Using `admin` as default username.");
+                tracing::warn!(
+                    msg = "Configuration contains password but username field is not set, using 'admin' as default username",
+                );
                 self.username = "admin".to_string();
             }
             (false, _, true) => {
-                warn!("Configuration contains `password_file` but `username` field is not set. Using `admin` as default username.");
+                tracing::warn!(
+                    msg = "Configuration contains password_file but username field is not set, using 'admin' as default username",
+                );
                 self.username = "admin".to_string();
             }
             _ => (),
         };
-        if !self.password_file.to_str().unwrap().is_empty() {
+        if !password_file_str.is_empty() {
             if self.password_file.is_relative() {
-                self.password_file = current_dir().unwrap().join(self.password_file.clone())
+                self.password_file = current_dir()
+                    .map_err(|e| CfgServerCheckError::CurrentDir { message: e })?
+                    .join(self.password_file.clone())
             }
             let password = fs::read(self.password_file.clone()).map_err(|reason| {
                 CfgServerCheckError::ReadPasswordFile {
@@ -614,21 +622,23 @@ impl CheckValue for CfgServer {
                 });
             };
             if !self.password_sha512.is_empty() {
-                warn!(
-                    "Both `password` and `password_file` fields are set. Ignoring `password` field"
+                tracing::warn!(
+                    msg = "Both password and password_file fields are set, ignoring password field",
                 );
             };
             self.password_sha512 = password;
         };
-        if self.tls_cert_file.clone().is_some() && self.tls_key_file.is_some() {
-            if !self.tls_cert_file.clone().unwrap().is_file() {
+        if let (Some(ref cert_file), Some(ref key_file)) =
+            (self.tls_cert_file.clone(), self.tls_key_file.clone())
+        {
+            if !cert_file.is_file() {
                 return Err(CfgServerCheckError::TLSCertFileNotFound {
-                    filename: self.tls_cert_file.clone().unwrap(),
+                    filename: cert_file.clone(),
                 });
             };
-            if !self.tls_key_file.clone().unwrap().is_file() {
+            if !key_file.is_file() {
                 return Err(CfgServerCheckError::TLSKeyFileNotFound {
-                    filename: self.tls_key_file.clone().unwrap(),
+                    filename: key_file.clone(),
                 });
             };
         } else if self.tls_cert_file.clone().is_none() && self.tls_key_file.is_some() {
@@ -737,18 +747,6 @@ pub struct CfgLogging {
     )]
     #[serde(default = "defaults::logging::output")]
     pub output: PathBuf,
-    /// Separate logging for reports of scripts.
-    ///
-    /// Possible values: stdout | stderr | off | A file name.
-    /// Each line is a JSON in form of {"ip": ..., "port": ..., "time": ..., "report": ...}
-    #[structopt(
-    name = "logging-report",
-    long,
-    default_value = defaults::logging::report_str(),
-    env = "RESTCOMMANDER_LOGGING_REPORT",
-    )]
-    #[serde(default = "defaults::logging::report")]
-    pub report: PathBuf,
 }
 
 impl Default for CfgLogging {
@@ -756,7 +754,6 @@ impl Default for CfgLogging {
         Self {
             level_name: Default::default(),
             output: defaults::logging::output(),
-            report: defaults::logging::report(),
         }
     }
 }
@@ -809,7 +806,14 @@ impl CheckValue for CfgWWW {
     type Error = CfgWWWCheckError;
     fn check_value(&mut self) -> Result<(), Self::Error> {
         let static_directory = self.static_directory.clone();
-        if static_directory.to_str().unwrap().is_empty() {
+        let static_directory_str =
+            static_directory
+                .to_str()
+                .ok_or_else(|| CfgWWWCheckError::StaticDirectory {
+                    directory: static_directory.clone(),
+                    message: "contains invalid UTF-8".to_string(),
+                })?;
+        if static_directory_str.is_empty() {
             return Ok(());
         };
         if static_directory.exists() {
@@ -872,19 +876,6 @@ impl CfgLoggingLevelName {
     }
 }
 
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(about = "Prints hex-encoded sha512 of input")]
-pub struct CMDSha512 {
-    #[structopt(about = "input to be encoded. If empty, It prompts to ask input.")]
-    input: Option<String>,
-}
-
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(about = "Prints base64-encoded of input")]
-pub struct CMDBase64 {
-    #[structopt(about = "input to be encoded. If empty, It prompts to ask input.")]
-    input: Option<String>,
-}
 
 impl Cfg {}
 
@@ -895,7 +886,9 @@ impl TryFrom<PathBuf> for Cfg {
         Ok(Cfg {
             config_value: CfgValue::try_from(path.clone())?,
             filename: Some(if path.is_relative() {
-                current_dir().unwrap().join(path)
+                current_dir()
+                    .map_err(|e| CfgError::CurrentDir { message: e })?
+                    .join(path)
             } else {
                 path
             }),
@@ -920,29 +913,6 @@ impl TryFrom<CfgValue> for Cfg {
 
 pub fn try_setup() -> Result<Cfg, Option<String>> {
     match CMDOpt::from_args() {
-        CMDOpt::Sha512(CMDSha512 { input: maybe_input })
-        | CMDOpt::Base64(CMDBase64 { input: maybe_input }) => {
-            let input = if let Some(input) = maybe_input {
-                input
-            } else {
-                AskPass::new([0; 10240])
-                    .with_star('*')
-                    .askpass("Enter input text: ")
-                    .map(|x| String::from_utf8(x.into()).unwrap())
-                    .map_err(|reason| Some(format!("Could not read password: {}", reason)))?
-            }
-            .trim()
-            .to_string();
-            if input.is_empty() {
-                return Err(Some("input is empty!".to_string()));
-            };
-            if let CMDOpt::Sha512(_) = CMDOpt::from_args() {
-                println!("{}", utils::to_sha512(input));
-            } else {
-                println!("{}", base64::encode(input));
-            }
-            Err(None)
-        }
         CMDOpt::Sample(sample_name) => {
             maybe_print(sample_name);
             Err(None)

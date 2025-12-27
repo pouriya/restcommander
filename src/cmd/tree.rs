@@ -6,7 +6,6 @@ use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use tracing::{debug, trace, warn};
 
 // Cloneable error representation for storage in HashMap
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -122,10 +121,10 @@ impl Command {
         recursion_count: usize,
     ) -> Result<HashMap<String, Result<Command, CommandErrorInfo>>, CommandError> {
         if recursion_count == 0 {
-            warn!(
+            tracing::warn!(
+                msg = "Skipped sub-directories: maximum depth reached",
                 directory = ?directory,
-                hint = format!("Maximum supported depth for sub-directories is {}", MAX_COMMAND_DIRECTORY_DEPTH).as_str(),
-                "Skipped sub-directories.",
+                max_depth = MAX_COMMAND_DIRECTORY_DEPTH,
             );
             return Ok(HashMap::new());
         };
@@ -146,30 +145,34 @@ impl Command {
                 .path();
             if entry.is_file() {
                 if !is_executable::is_executable(entry.clone()) {
-                    warn!(filename = ?entry, "It is not executable and will be discarded.");
+                    tracing::warn!(
+                        msg = "File is not executable and will be discarded",
+                        filename = ?entry,
+                    );
                     continue;
                 };
                 let (command_name, result_command) =
                     Self::from_filename(root_directory, &entry, &http_base_path.clone())?;
                 match &result_command {
                     Ok(cmd) => {
-                        debug!(
+                        tracing::debug!(
+                            msg = "Detected new command",
                             command = command_name.as_str(),
                             filename = ?entry,
-                            "Detected new command.",
                         );
-                        trace!(
+                        tracing::trace!(
+                            msg = "Command information details",
                             command = command_name.as_str(),
                             filename = ?entry,
                             info = ?cmd.info,
                         );
                     }
                     Err(e) => {
-                        warn!(
+                        tracing::warn!(
+                            msg = "Failed to detect command information",
                             command = command_name.as_str(),
                             filename = ?entry,
                             error = ?e,
-                            "Failed to detect command information.",
                         );
                     }
                 }
@@ -182,20 +185,34 @@ impl Command {
                     http_base_path,
                     recursion_count - 1,
                 )?;
-                let command = Command {
-                    name: entry.file_name().unwrap().to_str().unwrap().to_string(),
-                    file_path: entry.clone(),
-                    http_path: http_base_path
+                let file_name = entry
+                    .file_name()
+                    .ok_or_else(|| CommandError::NoFileName {
+                        path: entry.clone(),
+                    })?
+                    .to_str()
+                    .ok_or_else(|| CommandError::InvalidPathUtf8 {
+                        path: entry.clone(),
+                    })?
+                    .to_string();
+                let http_path =
+                    http_base_path
                         .clone()
-                        .join(entry.strip_prefix(root_directory).unwrap()),
+                        .join(entry.strip_prefix(root_directory).map_err(|_| {
+                            CommandError::StripPrefixFailed {
+                                path: entry.clone(),
+                                prefix: root_directory.clone(),
+                            }
+                        })?);
+                let command = Command {
+                    name: file_name.clone(),
+                    file_path: entry.clone(),
+                    http_path,
                     info: None,
                     is_directory: true,
                     commands: sub_commands,
                 };
-                commands.insert(
-                    entry.file_name().unwrap().to_str().unwrap().to_string(),
-                    Ok(command),
-                );
+                commands.insert(file_name, Ok(command));
             }
         }
         Ok(commands)
@@ -210,13 +227,16 @@ impl Command {
                 http_path: root_directory.to_path_buf(),
             });
         };
+        let name = root_directory
+            .file_name()
+            .unwrap_or(OsStr::new(""))
+            .to_str()
+            .ok_or_else(|| CommandError::InvalidPathUtf8 {
+                path: root_directory.to_path_buf(),
+            })?
+            .to_string();
         let mut command = Self {
-            name: root_directory
-                .file_name()
-                .unwrap_or(OsStr::new(""))
-                .to_str()
-                .unwrap()
-                .to_string(),
+            name,
             file_path: root_directory.to_path_buf(),
             http_path: http_base_path.to_path_buf(),
             info: None,
@@ -237,13 +257,25 @@ impl Command {
                 filename: filename.to_path_buf(),
             });
         };
-        let name = PathBuf::from(filename.file_name().unwrap())
+        let name = filename
+            .file_name()
+            .ok_or_else(|| CommandError::NoFileName {
+                path: filename.to_path_buf(),
+            })?
             .to_str()
-            .unwrap()
+            .ok_or_else(|| CommandError::InvalidPathUtf8 {
+                path: filename.to_path_buf(),
+            })?
             .to_string();
-        let http_path = http_base_path
-            .to_path_buf()
-            .join(filename.strip_prefix(root_directory).unwrap());
+        let http_path =
+            http_base_path
+                .to_path_buf()
+                .join(filename.strip_prefix(root_directory).map_err(|_| {
+                    CommandError::StripPrefixFailed {
+                        path: filename.to_path_buf(),
+                        prefix: root_directory.to_path_buf(),
+                    }
+                })?);
 
         match Command::detect_command_info(&filename.to_path_buf()) {
             Ok(info) => Ok((
@@ -273,9 +305,13 @@ impl Command {
 
         let name = command_filename
             .file_name()
-            .unwrap()
+            .ok_or_else(|| CommandError::NoFileName {
+                path: command_filename.clone(),
+            })?
             .to_str()
-            .unwrap()
+            .ok_or_else(|| CommandError::InvalidPathUtf8 {
+                path: command_filename.clone(),
+            })?
             .to_string();
 
         // Execute script with --help flag (parse_stderr_logs=false since stderr contains JSON)
@@ -386,8 +422,16 @@ impl Command {
             }
         }
 
-        debug!(command_filename = ?command_filename, "Detected command information from --help.");
-        trace!(command_filename = ?command_filename, description = ?description, support_state = ?support_state);
+        tracing::debug!(
+            msg = "Detected command information from --help output",
+            command_filename = ?command_filename,
+        );
+        tracing::trace!(
+            msg = "Command information details",
+            command_filename = ?command_filename,
+            description = ?description,
+            support_state = ?support_state,
+        );
 
         Ok(CommandInfo {
             title,
