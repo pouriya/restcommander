@@ -15,34 +15,15 @@ pub type CommandOptionsValue = HashMap<String, CommandOptionValue>;
 pub struct CommandOutput {
     pub exit_code: i32,
     pub stdout: String,
+    pub stderr: String,
     pub decoded_stdout: Result<serde_json::Value, String>,
     pub stats: CommandStats,
-}
-
-impl CommandOutput {
-    pub fn new() -> Self {
-        Self {
-            exit_code: 0,
-            stdout: "".to_string(),
-            decoded_stdout: Ok(serde_json::Value::String(String::new())),
-            stats: CommandStats::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize)]
 pub struct CommandStats {
     pub duration: CommandStatsDuration,
     pub size: CommandStatsSize,
-}
-
-impl CommandStats {
-    pub fn new() -> Self {
-        Self {
-            duration: CommandStatsDuration::new(),
-            size: CommandStatsSize::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -53,32 +34,11 @@ pub struct CommandStatsDuration {
     pub logging: u64,
 }
 
-impl CommandStatsDuration {
-    pub fn new() -> Self {
-        Self {
-            total: 0,
-            start_process: 0,
-            write_to_stdin: 0,
-            logging: 0,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize)]
 pub struct CommandStatsSize {
     pub stdin: usize,
     pub stdout: usize,
     pub stderr: usize,
-}
-
-impl CommandStatsSize {
-    pub fn new() -> Self {
-        Self {
-            stdin: 0,
-            stdout: 0,
-            stderr: 0,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -94,7 +54,7 @@ pub fn run_command(
     command: &PathBuf,
     option_list: Vec<String>,
     input: Option<&CommandInput>,
-    _capture_stderr: bool,
+    parse_stderr_logs: bool,
     env_map: HashMap<String, String>,
 ) -> Result<CommandOutput, CommandError> {
     let mut input_string = None;
@@ -187,47 +147,53 @@ pub fn run_command(
         })?;
     let stderr_size = child_stderr.len();
     let start_logging = Instant::now();
+    let raw_stderr = child_stderr.clone();
     child_stderr = child_stderr.trim_end().to_string();
-    let mut child_log_buffer = String::new();
-    for line in child_stderr.lines() {
-        if line.starts_with("INFO") {
-            info!(
-                command = ?command,
-                message = line.replacen("INFO", "", 1).trim_start()
-            )
-        } else if line.starts_with("ERROR") {
+
+    let logging_duration = if parse_stderr_logs {
+        let mut child_log_buffer = String::new();
+        for line in child_stderr.lines() {
+            if line.starts_with("INFO") {
+                info!(
+                    command = ?command,
+                    message = line.replacen("INFO", "", 1).trim_start()
+                )
+            } else if line.starts_with("ERROR") {
+                error!(
+                    command = ?command,
+                    message = line.replacen("ERROR", "", 1).trim_start()
+                )
+            } else if line.starts_with("DEBUG") {
+                debug!(
+                    command = ?command,
+                    message = line.replacen("DEBUG", "", 1).trim_start()
+                )
+            } else if line.starts_with("WARNING") || line.starts_with("WARN") {
+                warn!(
+                    command = ?command,
+                    message = line.replacen("WARNING", "", 1)
+                        .replacen("WARN", "", 1)
+                        .trim_start()
+                )
+            } else if line.starts_with("TRACE") {
+                trace!(
+                    command = ?command,
+                    message = line.replacen("TRACE", "", 1).trim_start()
+                )
+            } else {
+                child_log_buffer += line;
+            };
+        }
+        if !child_log_buffer.is_empty() {
             error!(
                 command = ?command,
-                message = line.replacen("ERROR", "", 1).trim_start()
-            )
-        } else if line.starts_with("DEBUG") {
-            debug!(
-                command = ?command,
-                message = line.replacen("DEBUG", "", 1).trim_start()
-            )
-        } else if line.starts_with("WARNING") || line.starts_with("WARN") {
-            warn!(
-                command = ?command,
-                message = line.replacen("WARNING", "", 1)
-                    .replacen("WARN", "", 1)
-                    .trim_start()
-            )
-        } else if line.starts_with("TRACE") {
-            trace!(
-                command = ?command,
-                message = line.replacen("TRACE", "", 1).trim_start()
-            )
-        } else {
-            child_log_buffer += line;
+                stderr = ?child_log_buffer
+            );
         };
-    }
-    if !child_log_buffer.is_empty() {
-        error!(
-            command = ?command,
-            stderr = ?child_log_buffer
-        );
+        start_logging.elapsed().as_micros()
+    } else {
+        0
     };
-    let logging_duration = start_logging.elapsed().as_micros();
     trace!(
         stdin = input_string.clone().unwrap_or_default().as_str(),
         stdout = child_stdout.as_str(),
@@ -244,6 +210,7 @@ pub fn run_command(
     Ok(CommandOutput {
         decoded_stdout,
         stdout: child_stdout,
+        stderr: raw_stderr.trim_end().to_string(),
         exit_code: child_exit_code,
         stats: CommandStats {
             duration: CommandStatsDuration {

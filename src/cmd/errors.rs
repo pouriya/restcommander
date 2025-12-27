@@ -1,5 +1,4 @@
 use crate::cmd::CommandInput;
-use serde_yaml;
 use std::io;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -66,22 +65,41 @@ pub enum CommandError {
     CommandIsNotDirectory { http_path: PathBuf },
     #[error("command {http_path:?} is a directory and is not runnable")]
     CommandIsDirectory { http_path: PathBuf },
-    #[error("could not decode command information for command {filename:?}: {message}")]
-    DecodeCommandInfo {
-        filename: PathBuf,
-        message: serde_yaml::Error,
-    },
     #[error("command information for command {command:?} is invalid: {message}")]
     InvalidCommandInfo { command: PathBuf, message: String },
-    #[error("Command info file {filename:?} is not a regular file")]
-    CommandInfoFileNotIsNotFile { filename: PathBuf },
-    #[error("Could not read command info file {filename:?}: {message}")]
-    ReadCommandInfoFile {
-        filename: PathBuf,
-        message: io::Error,
-    },
     #[error("Could not found command information for command {filename:?}")]
     NoCommandInfo { filename: PathBuf },
     #[error("Could not found command state information for command {filename:?}")]
     NoCommandState { filename: PathBuf },
+    #[error("could not load command {name} from {file_path:?} (http path: {http_path:?}) because script --help exited with code {exit_code}: stdout: {stdout}, stderr: {stderr}")]
+    CommandHelpFailed {
+        file_path: PathBuf,
+        http_path: PathBuf,
+        exit_code: i32,
+        stdout: String,
+        stderr: String,
+        name: String,
+    },
+}
+
+impl CommandError {
+    pub fn error_code(&self) -> i32 {
+        match self {
+            CommandError::ReadDirectory { .. } => 3001,
+            CommandError::ReadDirectoryEntry { .. } => 3002,
+            CommandError::IsNotARegularFile { .. } => 3003,
+            CommandError::EncodeInputToJSON { .. } => 3004,
+            CommandError::CreateCommandProcess { .. } => 3005,
+            CommandError::WaitForCommandProcess { .. } => 3006,
+            CommandError::ReadCommandStdout { .. } => 3007,
+            CommandError::ReadCommandStderr { .. } => 3008,
+            CommandError::FindCommand { .. } => 3009,
+            CommandError::CommandIsNotDirectory { .. } => 3010,
+            CommandError::CommandIsDirectory { .. } => 3011,
+            CommandError::InvalidCommandInfo { .. } => 3013,
+            CommandError::NoCommandInfo { .. } => 3014,
+            CommandError::NoCommandState { .. } => 3015,
+            CommandError::CommandHelpFailed { .. } => 3016,
+        }
+    }
 }
