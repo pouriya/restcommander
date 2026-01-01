@@ -48,6 +48,8 @@ humantime = "2.1"
 # IP checker:
 wildmatch = "2.1"
 
+bcrypt = "0.17.1"
+
 num-traits = "0.2.*"
 
 [profile.release]

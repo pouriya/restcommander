@@ -1,5 +1,5 @@
 import {ApiOpts, Api} from './api.js'
-import {setAttributes} from './utils.js'
+import {setAttributes, tryHash} from './utils.js'
 import {setConfiguration} from './configuration.js'
 import {initTheme, toggleTheme} from './theme.js'
 
@@ -142,6 +142,16 @@ async function loginSubmitEventListener(event) {
     await maybeSetupCaptcha()
 }
 
+function checkHashSupport() {
+    const hashResult = tryHash('test', 'test')
+    if (!hashResult.hash) {
+        const warningElement = document.getElementById('hash-warning')
+        if (warningElement) {
+            warningElement.classList.remove('d-none')
+        }
+    }
+}
+
 async function main() {
     initTheme()
     
@@ -150,6 +160,9 @@ async function main() {
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme)
     }
+    
+    // Check hash support
+    checkHashSupport()
     
     setConfiguration({'login-title': null, 'footer': null})
     document.body.classList.remove('invisible')

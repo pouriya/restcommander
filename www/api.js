@@ -1,4 +1,4 @@
-import {getUrlWithBasePath} from './utils.js'
+import {getUrlWithBasePath, tryHash} from './utils.js'
 
 const ApiOpts = {
     url: await getUrlWithBasePath() + 'api/',
@@ -95,9 +95,13 @@ class Api {
     }
 
     async auth(username, password, captchaId, captchaText, filterFunction) {
+        const hashResult = tryHash(password, 'password')
+        const hashedPassword = hashResult.password
+        const isHashed = hashResult.hash
         const extraHeaders = {
-           'Authorization': 'Basic ' + btoa(username + ':' + password),
-           'Content-Type': 'application/x-www-form-urlencoded'
+           'Authorization': 'Basic ' + btoa(username + ':' + hashedPassword),
+           'Content-Type': 'application/x-www-form-urlencoded',
+           'X-RESTCOMMANDER-PASSWORD-HASHED': isHashed.toString()
         }
         var body = ''
         if (captchaId !== undefined && captchaText !== undefined) {
@@ -118,8 +122,14 @@ class Api {
         return this.fetch(http_path, filterFunction, 'POST', {'X-RESTCOMMANDER-STATISTICS': "true"}, JSON.stringify(options))
     }
 
-    async setPassword(password, filterFunction) {
-        return this.fetch('setPassword', filterFunction, 'POST', {}, JSON.stringify({'password': password}))
+    async setPassword(password, previousPassword, filterFunction) {
+        const hashResult = tryHash(password, 'password')
+        const previousHashResult = tryHash(previousPassword, 'previous_password')
+        return this.fetch('setPassword', filterFunction, 'POST', {}, JSON.stringify({
+            'password': hashResult.password,
+            'hash': hashResult.hash,
+            'previous_password': previousHashResult.previous_password
+        }))
     }
 
     async state(http_path, filterFunction) {
