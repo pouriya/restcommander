@@ -141,9 +141,10 @@ TEMPLATE_DATA_DIR="${TEMPLATE_ROOT_DIR}/var/lib/restcommander"
 mkdir -p "${DATA_DIR}"
 PASSWORD_FILE="${DATA_DIR}/password"
 TEMPLATE_PASSWORD_FILE="${TEMPLATE_DATA_DIR}/password"
-NEW_PASSWORD="$(${EXE} sha512 admin)"
+NEW_PASSWORD=""
 if [ ! -f "${PASSWORD_FILE}" ]
 then
+  NEW_PASSWORD="$(${EXE} sha512 admin)"
   echo ${NEW_PASSWORD} > "${PASSWORD_FILE}"
   echo "Created new password file ${PASSWORD_FILE} containing password 'admin'"
 else

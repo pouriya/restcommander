@@ -336,5 +336,4 @@ pub fn maybe_print(sample_name: CMDSample) {
 
 fn main() {
     maybe_build_src_www();
-    maybe_build_src_samples();
 }
