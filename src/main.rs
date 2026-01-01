@@ -14,7 +14,7 @@ use tracing_subscriber::{filter::LevelFilter, fmt};
 fn main() -> Result<(), String> {
     let cfg = match settings::try_setup() {
         Ok(cfg) => {
-            let level = cfg.config_value.logging_level();
+            let level = cfg.logging_level();
             let show_target = matches!(level, LevelFilter::DEBUG | LevelFilter::TRACE);
             let show_location = level == LevelFilter::TRACE;
             fmt::Subscriber::builder()
@@ -28,22 +28,16 @@ fn main() -> Result<(), String> {
                 .with_thread_names(false)
                 .with_writer(std::io::stderr)
                 .init();
-            cfg.trace_log();
             Arc::new(RwLock::new(cfg))
         }
-        Err(maybe_error) => {
-            if maybe_error.is_none() {
-                exit(0)
-            } else {
-                eprintln!("{}", maybe_error.unwrap());
-                exit(1)
-            }
+        Err(error) => {
+            eprintln!("{}", error);
+            exit(1)
         }
     };
     let cfg_instance = cfg
         .read()
         .map_err(|e| format!("Configuration lock poisoned: {}", e))?
-        .config_value
         .clone();
     let root_directory = cfg_instance.root_directory.clone();
     let api_run_path = if let Some(stripped) = http::API_RUN_BASE_PATH.strip_prefix('/') {

@@ -9,26 +9,6 @@ use clap::Parser;
 use crate::cmd::runner::CommandOptionsValue;
 use tracing_subscriber::filter::LevelFilter;
 
-#[derive(Debug, Clone)]
-pub struct Cfg {
-    pub config_value: CommandLine,
-}
-
-impl Cfg {
-    pub fn trace_log(&self) {
-        let source = PathBuf::from("<COMMANDLINE>");
-        tracing::trace!(
-            msg = "Configuration details",
-            source = ?source,
-            config = ?self.config_value,
-        );
-        tracing::info!(
-            msg = "Configuration loaded successfully",
-            source = ?source,
-        );
-    }
-}
-
 #[derive(Debug, Clone, Parser)]
 #[command(about)]
 pub struct CommandLine {
@@ -246,8 +226,6 @@ fn parse_static_directory(s: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-impl Cfg {}
-
 impl CommandLine {
     pub fn logging_level(&self) -> LevelFilter {
         if self.quiet {
@@ -339,10 +317,8 @@ impl CommandLine {
     }
 }
 
-pub fn try_setup() -> Result<Cfg, Option<String>> {
+pub fn try_setup() -> Result<CommandLine, String> {
     let mut value = CommandLine::parse();
-    value.after_parse().map_err(|e| Some(e))?;
-    Ok(Cfg {
-        config_value: value,
-    })
+    value.after_parse()?;
+    Ok(value)
 }

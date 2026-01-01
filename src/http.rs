@@ -16,7 +16,7 @@ use crate::cmd;
 use crate::cmd::runner::CommandOptionValue;
 use crate::cmd::runner::CommandOptionsValue;
 use crate::cmd::{Command, CommandInput, CommandStats};
-use crate::settings::Cfg;
+use crate::settings::CommandLine;
 use crate::utils;
 use crate::www;
 
@@ -207,13 +207,12 @@ pub struct ServerConfig {
 }
 
 pub fn setup(
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: Arc<RwLock<CommandLine>>,
     commands: Arc<RwLock<Command>>,
 ) -> Result<ServerConfig, String> {
     let config_value = cfg
         .read()
         .map_err(|e| format!("Configuration lock poisoned: {}", e))?
-        .config_value
         .clone();
     let host = config_value.host.clone();
     let port = config_value.port;
@@ -221,7 +220,6 @@ pub fn setup(
     let maybe_captcha = if cfg
         .read()
         .map_err(|e| format!("Configuration lock poisoned: {}", e))?
-        .config_value
         .captcha
     {
         Some(Arc::new(RwLock::new(captcha::Captcha::new())))
@@ -310,7 +308,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
 }
 
 pub struct HandlerState {
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: Arc<RwLock<CommandLine>>,
     commands: Arc<RwLock<Command>>,
     tokens: Arc<RwLock<HashMap<String, usize>>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
@@ -373,9 +371,9 @@ fn http_logging_rouille(_request: &Request) {
     // Logging will be handled per response
 }
 
-fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
+fn redirect_root_to_index_html(cfg: &Arc<RwLock<CommandLine>>) -> RouilleResponse {
     let cfg_value = match cfg.read() {
-        Ok(guard) => guard.config_value.clone(),
+        Ok(guard) => guard.clone(),
         Err(e) => {
             return make_api_response(Err(HTTPError::Internal(format!(
                 "Configuration lock poisoned: {}",
@@ -391,10 +389,14 @@ fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
     }
 }
 
-fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> RouilleResponse {
+fn handle_static(
+    _request: &Request,
+    cfg: &Arc<RwLock<CommandLine>>,
+    tail: &str,
+) -> RouilleResponse {
     // Try external static directory first
     let config_value = match cfg.read() {
-        Ok(guard) => guard.config_value.clone(),
+        Ok(guard) => guard.clone(),
         Err(e) => {
             return RouilleResponse::text(format!(
                 "Internal error: Configuration lock poisoned: {}",
@@ -460,9 +462,9 @@ fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> Rouille
     }
 }
 
-fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
+fn api_configuration(cfg: &Arc<RwLock<CommandLine>>) -> RouilleResponse {
     let config_map = match cfg.read() {
-        Ok(guard) => guard.config_value.www_configuration_map.clone(),
+        Ok(guard) => guard.www_configuration_map.clone(),
         Err(e) => {
             return make_api_response(Err(HTTPError::Internal(format!(
                 "Configuration lock poisoned: {}",
@@ -482,7 +484,7 @@ fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
 fn api_auth_test(
     request: &Request,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
 ) -> RouilleResponse {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => make_api_response_ok(),
@@ -492,7 +494,7 @@ fn api_auth_test(
 
 fn api_auth_token_handler(
     request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
     maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
 ) -> RouilleResponse {
@@ -521,7 +523,7 @@ fn api_auth_token_handler(
         Ok(_) => {
             let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
             let token_timeout = match cfg.read() {
-                Ok(guard) => guard.config_value.token_timeout,
+                Ok(guard) => guard.token_timeout,
                 Err(e) => {
                     return make_api_response(Err(HTTPError::Internal(format!(
                         "Configuration lock poisoned: {}",
@@ -561,7 +563,7 @@ fn api_get_commands(
     request: &Request,
     commands: &Arc<RwLock<Command>>,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
 ) -> RouilleResponse {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => {
@@ -605,7 +607,7 @@ fn api_get_commands(
 
 fn api_set_password(
     request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
 ) -> RouilleResponse {
     match check_authentication(request, tokens, cfg) {
@@ -633,12 +635,11 @@ fn api_set_password(
 fn check_authentication(
     request: &Request,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
 ) -> Result<(), HTTPAuthenticationError> {
     let cfg_value = cfg
         .read()
         .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
-        .config_value
         .clone();
     if cfg_value.password_sha512.is_none() {
         return Ok(());
@@ -678,7 +679,7 @@ fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
 
 fn api_run_command(
     request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
     commands: &Arc<RwLock<Command>>,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     command_path: &str,
@@ -699,7 +700,7 @@ fn api_run_command(
 
 fn api_get_command_state(
     request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
     commands: &Arc<RwLock<Command>>,
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     command_path: &str,
@@ -717,7 +718,7 @@ fn api_get_command_state(
 
 fn extract_command_input(
     request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
+    cfg: &Arc<RwLock<CommandLine>>,
 ) -> Result<CommandInput, HTTPError> {
     let mut input = CommandInput::default();
 
@@ -795,7 +796,7 @@ fn extract_command_input(
 
 fn authentication_with_basic(
     request: &Request,
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: Arc<RwLock<CommandLine>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
     authorization_value: String,
     form: HashMap<String, String>,
@@ -803,7 +804,6 @@ fn authentication_with_basic(
     let config_value = cfg
         .read()
         .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
-        .config_value
         .clone();
     if config_value.password_sha512.is_none() && config_value.username.is_empty() {
         return Ok(());
@@ -918,13 +918,12 @@ fn authentication_with_basic(
 fn authentication_with_token(
     tokens: Arc<RwLock<HashMap<String, usize>>>,
     token: String,
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: Arc<RwLock<CommandLine>>,
 ) -> Result<(), HTTPAuthenticationError> {
     let cfg = cfg
         .clone()
         .read()
         .map_err(|_| HTTPAuthenticationError::InvalidToken)?
-        .config_value
         .clone();
     if cfg.password_sha512.is_none() {
         return Ok(());
@@ -1008,7 +1007,7 @@ fn maybe_run_command(
 }
 
 fn maybe_get_command_state(
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: Arc<RwLock<CommandLine>>,
     commands: Arc<RwLock<Command>>,
     command_path: String,
 ) -> Result<RouilleResponse, HTTPAPIError> {
@@ -1071,9 +1070,9 @@ fn make_environment_variables_map_from_options(
         })
 }
 
-fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
+fn add_configuration_to_options(cfg: Arc<RwLock<CommandLine>>) -> CommandOptionsValue {
     let cfg_instance = match cfg.read() {
-        Ok(guard) => guard.config_value.clone(),
+        Ok(guard) => guard.clone(),
         Err(_) => {
             // If lock is poisoned, return empty options
             // This is a fallback to prevent panics
@@ -1135,7 +1134,7 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
 }
 
 fn try_set_password(
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: Arc<RwLock<CommandLine>>,
     password: SetPassword,
     tokens: Arc<RwLock<HashMap<String, usize>>>,
     token: Option<String>,
@@ -1145,7 +1144,7 @@ fn try_set_password(
     };
 
     // Verify previous password if provided
-    let config_value = cfg.read().unwrap().config_value.clone();
+    let config_value = cfg.read().unwrap().clone();
 
     if let Some(previous_password) = password.previous_password {
         // Hash previous password with SHA256 if needed (uses same hash flag as new password)
@@ -1201,7 +1200,7 @@ fn try_set_password(
         }
     })?;
     match cfg.write() {
-        Ok(mut guard) => guard.config_value.password_sha512 = Some(password_bcrypt),
+        Ok(mut guard) => guard.password_sha512 = Some(password_bcrypt),
         Err(e) => {
             return Err(HTTPAPIError::SaveNewPassword {
                 message: format!("Configuration lock poisoned: {}", e),
