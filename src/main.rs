@@ -5,23 +5,30 @@ use std::sync::{Arc, RwLock};
 mod captcha;
 mod cmd;
 mod http;
-mod logging;
 mod settings;
 mod utils;
 mod www;
 
+use tracing_subscriber::{filter::LevelFilter, fmt};
+
 fn main() -> Result<(), String> {
-    let mut logging_state = logging::setup(settings::LoggingConfig {
-        level_name: Default::default(),
-        output: std::path::PathBuf::from("stderr"),
-    });
     let cfg = match settings::try_setup() {
         Ok(cfg) => {
+            let level = cfg.config_value.logging_level();
+            let show_target = matches!(level, LevelFilter::DEBUG | LevelFilter::TRACE);
+            let show_location = level == LevelFilter::TRACE;
+            fmt::Subscriber::builder()
+                .with_max_level(level)
+                .json()
+                .with_level(true)
+                .with_file(show_location)
+                .with_line_number(show_location)
+                .with_target(show_target)
+                .with_thread_ids(false)
+                .with_thread_names(false)
+                .with_writer(std::io::stderr)
+                .init();
             cfg.trace_log();
-            logging::update(settings::LoggingConfig {
-                level_name: cfg.config_value.level_name.clone(),
-                output: cfg.config_value.output.clone(),
-            }, &mut logging_state);
             Arc::new(RwLock::new(cfg))
         }
         Err(maybe_error) => {

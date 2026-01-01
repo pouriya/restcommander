@@ -69,16 +69,6 @@ fi
 echo "Copied ${EXE_NAME} to ${EXE}"
 # ----------------------------------------------------------------------------------------------------------------------
 echo ""
-echo "Setup ${ROOT_DIR}/etc"
-CONFIG_DIR="${ROOT_DIR}/etc/restcommander"
-TEMPLATE_CONFIG_DIR="${TEMPLATE_ROOT_DIR}/etc/restcommander"
-mkdir -p "${CONFIG_DIR}"
-CONFIG_FILE="${CONFIG_DIR}/config.toml"
-TEMPLATE_CONFIG_FILE="${TEMPLATE_CONFIG_DIR}/config.toml"
-EXAMPLE_CONFIG_FILE="${CONFIG_FILE}.example"
-TEMPLATE_EXAMPLE_CONFIG_FILE="${TEMPLATE_CONFIG_FILE}.example"
-${EXE} sample config > "${EXAMPLE_CONFIG_FILE}"
-echo "Created new configuration example ${EXAMPLE_CONFIG_FILE}"
 CERT_DIR="${CONFIG_DIR}/certs"
 TEMPLATE_CERT_DIR="${TEMPLATE_CONFIG_DIR}/certs"
 mkdir -p "${CONFIG_DIR}/certs"
@@ -91,7 +81,6 @@ then
 else
   echo "Certificate file ${CERT_FILE} already exists"
 fi
-_replace_toml_value_in_file "#tls_cert_file" "tls_cert_file" "\"${TEMPLATE_CERT_FILE}\"" "${EXAMPLE_CONFIG_FILE}"
 KEY_FILE="${CERT_DIR}/key.pem"
 TEMPLATE_KEY_FILE="${TEMPLATE_CERT_DIR}/key.pem"
 if [ ! -f "${KEY_FILE}" ]
@@ -101,7 +90,6 @@ then
 else
   echo "private-key file ${KEY_FILE} already exists"
 fi
-_replace_toml_value_in_file "#tls_key_file" "tls_key_file" "\"${TEMPLATE_KEY_FILE}\"" "${EXAMPLE_CONFIG_FILE}"
 # ----------------------------------------------------------------------------------------------------------------------
 echo ""
 echo "Setup ${ROOT_DIR}/srv"
@@ -141,10 +129,9 @@ TEMPLATE_DATA_DIR="${TEMPLATE_ROOT_DIR}/var/lib/restcommander"
 mkdir -p "${DATA_DIR}"
 PASSWORD_FILE="${DATA_DIR}/password"
 TEMPLATE_PASSWORD_FILE="${TEMPLATE_DATA_DIR}/password"
-NEW_PASSWORD=""
+NEW_PASSWORD="$2a$12$uQmZCGsTkB5zjpEUmFfE7eOX4qxMjtcHwM72wbYbK3WInKYW/2eR2"
 if [ ! -f "${PASSWORD_FILE}" ]
 then
-  NEW_PASSWORD="$(${EXE} sha512 admin)"
   echo ${NEW_PASSWORD} > "${PASSWORD_FILE}"
   echo "Created new password file ${PASSWORD_FILE} containing password 'admin'"
 else

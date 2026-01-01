@@ -240,9 +240,7 @@ pub fn setup(
 
     let address = format!("{}:{}", host, port);
 
-    if config_value.tls_cert_file.clone().is_some()
-        && config_value.tls_key_file.clone().is_some()
-    {
+    if config_value.tls_cert_file.clone().is_some() && config_value.tls_key_file.clone().is_some() {
         // Load TLS certificates as raw bytes (rouille handles PEM parsing)
         let cert_bytes = std::fs::read(config_value.tls_cert_file.clone().unwrap())
             .map_err(|e| format!("Could not read cert file: {}", e))?;
@@ -386,10 +384,7 @@ fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
         }
     };
     if cfg_value.enabled {
-        RouilleResponse::redirect_301(format!(
-            "{}static/index.html",
-            cfg_value.http_base_path
-        ))
+        RouilleResponse::redirect_301(format!("{}static/index.html", cfg_value.http_base_path))
     } else {
         RouilleResponse::text("<html><body>Service Unavailable!</body></html>")
             .with_status_code(403)
@@ -1100,43 +1095,33 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
-            CommandOptionValue::String(cfg_instance.http_base_path),
+            CommandOptionValue::String(cfg_instance.http_base_path.clone()),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_USERNAME".to_string(),
-            CommandOptionValue::String(cfg_instance.username),
+            CommandOptionValue::String(cfg_instance.username.clone()),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_API_TOKEN".to_string(),
-            CommandOptionValue::String(cfg_instance.api_token.unwrap_or_default()),
+            CommandOptionValue::String(cfg_instance.api_token.clone().unwrap_or_default()),
         ),
         (
             "RESTCOMMANDER_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
-            CommandOptionValue::String(
-                cfg_instance
-                    .root_directory
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            ),
+            CommandOptionValue::String(cfg_instance.root_directory.to_str().unwrap().to_string()),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_HTTPS".to_string(),
             CommandOptionValue::Bool(
                 cfg_instance
                     .tls_key_file
+                    .as_ref()
                     .map(|_| true)
                     .unwrap_or(false),
             ),
         ),
         (
             "RESTCOMMANDER_CONFIG_LOGGING_LEVEL_NAME".to_string(),
-            CommandOptionValue::String(
-                cfg_instance
-                    .level_name
-                    .to_level_filter()
-                    .to_string(),
-            ),
+            CommandOptionValue::String(cfg_instance.logging_level().to_string()),
         ),
         (
             "RESTCOMMANDER_CONFIGURATION_FILENAME".to_string(),
@@ -1173,7 +1158,7 @@ fn try_set_password(
         // Verify previous password against current password
         let previous_password_valid = utils::verify_bcrypt(
             &previous_password_sha256,
-                            config_value.password_sha512.as_ref().unwrap(),
+            config_value.password_sha512.as_ref().unwrap(),
         )
         .map_err(|_| HTTPAPIError::InvalidPreviousPassword)?;
 

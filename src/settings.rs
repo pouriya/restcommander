@@ -125,17 +125,17 @@ pub struct CommandLine {
     #[arg(skip)]
     pub configuration: CommandOptionsValue,
 
-    /// Logging level name.
-    ///
-    /// Possible values: off | error | warning | info | debug | trace
-    #[arg(long, default_value = "info", env = "RESTCOMMANDER_LOGGING_LEVEL_NAME")]
-    pub level_name: CfgLoggingLevelName,
+    /// Enable trace level logging (shows target and location).
+    #[arg(long)]
+    pub trace: bool,
 
-    /// Logging output.
-    ///
-    /// Possible values: stdout | stderr | A directory name to save all log to files for each day.
-    #[arg(long, default_value = "stderr", env = "RESTCOMMANDER_LOGGING_OUTPUT")]
-    pub output: PathBuf,
+    /// Enable debug level logging (shows target).
+    #[arg(long)]
+    pub debug: bool,
+
+    /// Disable all logging.
+    #[arg(long)]
+    pub quiet: bool,
 
     /// A directory to serve your own web files under `/static/*` HTTP path.
     ///
@@ -246,56 +246,21 @@ fn parse_static_directory(s: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-
-#[derive(Debug, Clone, PartialEq, Default)]
-pub enum CfgLoggingLevelName {
-    Trace,
-    Debug,
-    #[default]
-    Info,
-    Warning,
-    Error,
-    Off,
-}
-
-impl std::str::FromStr for CfgLoggingLevelName {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str().trim() {
-            "trace" => Ok(Self::Trace),
-            "debug" => Ok(Self::Debug),
-            "info" => Ok(Self::Info),
-            "error" => Ok(Self::Error),
-            "warning" | "warn" => Ok(Self::Warning),
-            "off" => Ok(Self::Off),
-            unknown => Err(format!("Unknown log level name {:?}", unknown)),
-        }
-    }
-}
-
-impl CfgLoggingLevelName {
-    pub fn to_level_filter(&self) -> LevelFilter {
-        match self {
-            Self::Trace => LevelFilter::TRACE,
-            Self::Debug => LevelFilter::DEBUG,
-            Self::Info => LevelFilter::INFO,
-            Self::Error => LevelFilter::ERROR,
-            Self::Warning => LevelFilter::WARN,
-            Self::Off => LevelFilter::OFF,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct LoggingConfig {
-    pub level_name: CfgLoggingLevelName,
-    pub output: PathBuf,
-}
-
 impl Cfg {}
 
 impl CommandLine {
+    pub fn logging_level(&self) -> LevelFilter {
+        if self.quiet {
+            LevelFilter::OFF
+        } else if self.trace {
+            LevelFilter::TRACE
+        } else if self.debug {
+            LevelFilter::DEBUG
+        } else {
+            LevelFilter::INFO
+        }
+    }
+
     pub fn after_parse(&mut self) -> Result<(), String> {
         // Handle password_file reading
         if let Some(password_file) = &self.password_file {

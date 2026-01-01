@@ -11,7 +11,6 @@ application_version = "23.09.03"
 
 [build-dependencies]
 md5 = "0.7"
-capitalize = "0.1"
 
 [dependencies]
 thiserror = "1.*"
@@ -20,8 +19,7 @@ anyhow = "1.*"
 clap = { version = "4.5.53", default-features = false, features = ["std", "error-context", "help", "usage", "derive", "env"] }
 # Logging:
 tracing = "0.1"
-tracing-subscriber = {version = "0.3", default-features = false, features = ["ansi", "json", "registry"]}
-tracing-appender = "0.2"
+tracing-subscriber = {version = "0.3.22", default-features = false, features = ["fmt", "json"]}
 # (S|Des)erialization:
 serde = "1.0"
 serde_derive = "1.0"
