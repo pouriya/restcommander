@@ -235,7 +235,7 @@ function appendSettings(element) {
     logoutLink.appendChild(logoutName)
     logoutLink.onclick = async function() {
         closeSidebar()
-        document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
+        document.cookie = 'restcommander_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
         document.location = 'index.html'
     }
     logoutItem.appendChild(logoutLink)
@@ -282,7 +282,25 @@ function appendSettings(element) {
             formElement,
             {'class': ''}
         )
+        var oldPasswordDivElement = document.createElement('div')
+        setAttributes(oldPasswordDivElement, {'class': 'mb-3'})
+        var oldPasswordInputElement = document.createElement('input')
+        setAttributes(
+            oldPasswordInputElement,
+            {
+                'class': 'form-control',
+                'type': 'password',
+                'id': 'old-password',
+                'name': 'old-password',
+                'placeholder': 'Current Password*',
+                'required': 'required'
+            }
+        )
+        oldPasswordDivElement.appendChild(oldPasswordInputElement)
+        formElement.appendChild(oldPasswordDivElement)
+        
         var passwordDivElement = document.createElement('div')
+        setAttributes(passwordDivElement, {'class': 'mb-3'})
         var passwordInputElement = document.createElement('input')
         setAttributes(
             passwordInputElement,
@@ -291,7 +309,7 @@ function appendSettings(element) {
                 'type': 'password',
                 'id': 'password',
                 'name': 'password',
-                'placeholder': 'Password*',
+                'placeholder': 'New Password*',
                 'required': 'required'
             }
         )
@@ -311,9 +329,10 @@ function appendSettings(element) {
         async function submitHandler(event) {
             event.preventDefault()
             var inputs = new FormData(event.target);
+            const oldPassword = inputs.get('old-password')
             const password = inputs.get('password')
             updateResultBeforeRequest()
-            const setPasswordResult = await new Api(ApiOpts).setPassword(password)
+            const setPasswordResult = await new Api(ApiOpts).setPassword(password, oldPassword)
             if (setPasswordResult.ok === true) {
                 setPasswordResult.result = 'Password Changed Successfully.'
             }

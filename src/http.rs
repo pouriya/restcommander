@@ -81,7 +81,7 @@ pub enum HTTPAuthenticationError {
     InvalidCaptcha,
     #[error("Invalid CAPTCHA form")]
     InvalidCaptchaForm,
-    #[error("Could not found HTTP Cookie header")]
+    #[error("Token not found or expired")]
     TokenNotFound,
     #[error("Token is expired")]
     TokenExpired,
@@ -103,6 +103,10 @@ pub enum HTTPAPIError {
     InitializeCommand { message: String },
     #[error("Password should not be empty")]
     EmptyPassword,
+    #[error("Previous password is required")]
+    PreviousPasswordRequired,
+    #[error("Invalid previous password")]
+    InvalidPreviousPassword,
     #[error("Server configuration does not allow client to change the password")]
     NoPasswordFile,
     #[error("Could not save new password to configured password file ({message})")]
@@ -117,6 +121,8 @@ impl HTTPAPIError {
             Self::CheckInput { .. } => 1003,
             Self::InitializeCommand { .. } => 1004,
             Self::EmptyPassword => 1007,
+            Self::PreviousPasswordRequired => 1009,
+            Self::InvalidPreviousPassword => 1011,
             Self::NoPasswordFile => 1008,
             Self::SaveNewPassword { .. } => 1010,
         }
@@ -128,6 +134,8 @@ impl HTTPAPIError {
             Self::CheckInput { .. } => 400,
             Self::InitializeCommand { .. } => 500,
             Self::EmptyPassword => 400,
+            Self::PreviousPasswordRequired => 400,
+            Self::InvalidPreviousPassword => 401,
             Self::NoPasswordFile => 503,
             Self::SaveNewPassword { .. } => 500,
         }
@@ -175,6 +183,8 @@ impl HTTPAuthenticationError {
 #[derive(Debug, Deserialize)]
 struct SetPassword {
     password: String,
+    hash: bool, // Required field - indicates if password is already SHA256 hashed
+    previous_password: Option<String>, // Previous password (uses same hash flag)
 }
 
 #[inline]
@@ -508,6 +518,7 @@ fn api_auth_token_handler(
     };
 
     match authentication_with_basic(
+        request,
         cfg.clone(),
         maybe_captcha.clone(),
         authorization_value.to_string(),
@@ -544,7 +555,7 @@ fn api_auth_token_handler(
                 Some(vec![(
                     std::borrow::Cow::Borrowed("Set-Cookie"),
                     std::borrow::Cow::Owned(format!(
-                        "token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
+                        "restcommander_token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
                         token, token_timeout
                     )),
                 )]),
@@ -606,6 +617,9 @@ fn api_set_password(
 ) -> RouilleResponse {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => {
+            // Extract token for potential invalidation on wrong previous password
+            let token = extract_token(request).ok();
+            
             let input: SetPassword = match input::json_input(request) {
                 Ok(p) => p,
                 Err(_) => {
@@ -614,7 +628,7 @@ fn api_set_password(
                     )))
                 }
             };
-            match try_set_password(cfg.clone(), input) {
+            match try_set_password(cfg.clone(), input, tokens.clone(), token) {
                 Ok(_) => make_api_response_ok(),
                 Err(e) => make_api_response(Err(HTTPError::API(e))),
             }
@@ -646,8 +660,8 @@ fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
     if let Some(cookie_header) = request.header("Cookie") {
         for cookie in cookie_header.split(';') {
             let cookie = cookie.trim();
-            if cookie.starts_with("token=") {
-                return Ok(cookie.strip_prefix("token=").unwrap_or("").to_string());
+            if cookie.starts_with("restcommander_token=") {
+                return Ok(cookie.strip_prefix("restcommander_token=").unwrap_or("").to_string());
             }
         }
     }
@@ -819,6 +833,7 @@ fn extract_command_input(
 // Utility functions that are still used by handlers are kept below
 
 fn authentication_with_basic(
+    request: &Request,
     cfg: Arc<RwLock<Cfg>>,
     maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
     authorization_value: String,
@@ -856,13 +871,31 @@ fn authentication_with_basic(
             {
                 [username, password] => {
                     if username == server_cfg.username {
-                        let password_sha512 = utils::to_sha512(password);
-                        tracing::trace!(
+                        // Read X-RESTCOMMANDER-PASSWORD-HASHED header (default to "false")
+                        let password_hashed_header = request
+                            .header("X-RESTCOMMANDER-PASSWORD-HASHED")
+                            .unwrap_or("false")
+                            .to_lowercase();
+                        let is_password_hashed = password_hashed_header == "true";
+
+                        // Hash password with SHA256 if needed
+                        let password_sha256 = if is_password_hashed {
+                            password.to_string()
+                        } else {
+                            utils::to_sha256(password)
+                        };
+
+                        tracing::debug!(
                             msg = "New client provided authentication credentials",
                             username = username,
-                            password_sha512 = password_sha512.as_str(),
+                            password_hashed = is_password_hashed,
                         );
-                        if server_cfg.password_sha512 == password_sha512 {
+
+                        // Verify password using bcrypt
+                        let password_valid = utils::verify_bcrypt(&password_sha256, &server_cfg.password_sha512)
+                            .map_err(|_| HTTPAuthenticationError::InvalidUsernameOrPassword)?;
+
+                        if password_valid {
                             if maybe_captcha.is_none() {
                                 return Ok(());
                             };
@@ -1163,28 +1196,72 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
 fn try_set_password(
     cfg: Arc<RwLock<Cfg>>,
     password: SetPassword,
+    tokens: Arc<RwLock<HashMap<String, usize>>>,
+    token: Option<String>,
 ) -> Result<RouilleResponse, HTTPAPIError> {
     if password.password.is_empty() {
         return Err(HTTPAPIError::EmptyPassword);
     };
-    let password_file = cfg
+    
+    // Verify previous password if provided
+    let server_cfg = cfg
         .read()
         .unwrap()
         .config_value
         .server
-        .password_file
         .clone();
+    
+    if let Some(previous_password) = password.previous_password {
+        // Hash previous password with SHA256 if needed (uses same hash flag as new password)
+        let previous_password_sha256 = if password.hash {
+            previous_password
+        } else {
+            utils::to_sha256(&previous_password)
+        };
+        
+        // Verify previous password against current password
+        let previous_password_valid = utils::verify_bcrypt(&previous_password_sha256, &server_cfg.password_sha512)
+            .map_err(|_| HTTPAPIError::InvalidPreviousPassword)?;
+        
+        if !previous_password_valid {
+            // Invalidate token if previous password is wrong
+            if let Some(ref token_str) = token {
+                if let Ok(mut tokens_guard) = tokens.write() {
+                    tokens_guard.remove(token_str);
+                }
+            }
+            return Err(HTTPAPIError::InvalidPreviousPassword);
+        }
+    } else {
+        return Err(HTTPAPIError::PreviousPasswordRequired);
+    }
+    
+    let password_file = server_cfg.password_file.clone();
     if password_file.to_str().unwrap().is_empty() {
         return Err(HTTPAPIError::NoPasswordFile);
     };
-    let password_sha512 = utils::to_sha512(password.password);
-    std::fs::write(password_file, password_sha512.clone()).map_err(|reason| {
+    
+    // Hash password with SHA256 if needed
+    let password_sha256 = if password.hash {
+        password.password
+    } else {
+        utils::to_sha256(&password.password)
+    };
+    
+    // Generate bcrypt hash from SHA256-hashed password
+    let password_bcrypt = utils::hash_bcrypt(&password_sha256, 12).map_err(|reason| {
+        HTTPAPIError::SaveNewPassword {
+            message: format!("Failed to hash password with bcrypt: {}", reason),
+        }
+    })?;
+    
+    std::fs::write(password_file, password_bcrypt.clone()).map_err(|reason| {
         HTTPAPIError::SaveNewPassword {
             message: reason.to_string(),
         }
     })?;
     match cfg.write() {
-        Ok(mut guard) => guard.config_value.server.password_sha512 = password_sha512,
+        Ok(mut guard) => guard.config_value.server.password_sha512 = password_bcrypt,
         Err(e) => {
             return Err(HTTPAPIError::SaveNewPassword {
                 message: format!("Configuration lock poisoned: {}", e),
