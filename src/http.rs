@@ -11,8 +11,6 @@ use rouille::input;
 use rouille::{Request, Response as RouilleResponse};
 use thiserror::Error;
 
-use wildmatch::WildMatch;
-
 use crate::captcha;
 use crate::cmd;
 use crate::cmd::runner::CommandOptionValue;
@@ -89,8 +87,6 @@ pub enum HTTPAuthenticationError {
     InvalidToken,
     #[error("{0}")]
     Captcha(String),
-    #[error("Invalid IP {0}")]
-    InvalidIP(String),
 }
 
 #[derive(Error, Debug, Clone)]
@@ -157,7 +153,6 @@ impl HTTPAuthenticationError {
             Self::TokenExpired => 2011,
             Self::InvalidToken => 2012,
             Self::Captcha(_) => 2012,
-            Self::InvalidIP(_) => 2013,
         }
     }
 
@@ -175,7 +170,6 @@ impl HTTPAuthenticationError {
             Self::TokenExpired => 401,
             Self::InvalidToken => 401,
             Self::Captcha(_) => 406,
-            Self::InvalidIP(_) => 401,
         }
     }
 }
@@ -216,20 +210,18 @@ pub fn setup(
     cfg: Arc<RwLock<Cfg>>,
     commands: Arc<RwLock<Command>>,
 ) -> Result<ServerConfig, String> {
-    let server_options = cfg
+    let config_value = cfg
         .read()
         .map_err(|e| format!("Configuration lock poisoned: {}", e))?
         .config_value
-        .server
         .clone();
-    let host = server_options.host.clone();
-    let port = server_options.port;
+    let host = config_value.host.clone();
+    let port = config_value.port;
 
     let maybe_captcha = if cfg
         .read()
         .map_err(|e| format!("Configuration lock poisoned: {}", e))?
         .config_value
-        .server
         .captcha
     {
         Some(Arc::new(RwLock::new(captcha::Captcha::new())))
@@ -248,21 +240,21 @@ pub fn setup(
 
     let address = format!("{}:{}", host, port);
 
-    if server_options.tls_cert_file.clone().is_some()
-        && server_options.tls_key_file.clone().is_some()
+    if config_value.tls_cert_file.clone().is_some()
+        && config_value.tls_key_file.clone().is_some()
     {
         // Load TLS certificates as raw bytes (rouille handles PEM parsing)
-        let cert_bytes = std::fs::read(server_options.tls_cert_file.clone().unwrap())
+        let cert_bytes = std::fs::read(config_value.tls_cert_file.clone().unwrap())
             .map_err(|e| format!("Could not read cert file: {}", e))?;
-        let key_bytes = std::fs::read(server_options.tls_key_file.clone().unwrap())
+        let key_bytes = std::fs::read(config_value.tls_key_file.clone().unwrap())
             .map_err(|e| format!("Could not read key file: {}", e))?;
 
         tracing::debug!(
             msg = "Prepared HTTPS server",
             host = host.as_str(),
             port = port,
-            cert_file = ?server_options.tls_cert_file.clone().unwrap(),
-            key_file = ?server_options.tls_key_file.clone().unwrap(),
+            cert_file = ?config_value.tls_cert_file.clone().unwrap(),
+            key_file = ?config_value.tls_key_file.clone().unwrap(),
         );
 
         Ok(ServerConfig {
@@ -393,10 +385,10 @@ fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
             ))));
         }
     };
-    if cfg_value.www.enabled {
+    if cfg_value.enabled {
         RouilleResponse::redirect_301(format!(
             "{}static/index.html",
-            cfg_value.server.http_base_path
+            cfg_value.http_base_path
         ))
     } else {
         RouilleResponse::text("<html><body>Service Unavailable!</body></html>")
@@ -406,8 +398,8 @@ fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
 
 fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> RouilleResponse {
     // Try external static directory first
-    let www_cfg = match cfg.read() {
-        Ok(guard) => guard.config_value.www.clone(),
+    let config_value = match cfg.read() {
+        Ok(guard) => guard.config_value.clone(),
         Err(e) => {
             return RouilleResponse::text(format!(
                 "Internal error: Configuration lock poisoned: {}",
@@ -416,8 +408,14 @@ fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> Roui
             .with_status_code(500);
         }
     };
-    if www_cfg.enabled && www_cfg.static_directory.is_dir() {
-        let file_path = www_cfg.static_directory.join(tail);
+    if config_value.enabled
+        && config_value
+            .static_directory
+            .as_ref()
+            .map(|d| d.is_dir())
+            .unwrap_or(false)
+    {
+        let file_path = config_value.static_directory.as_ref().unwrap().join(tail);
         if file_path.exists() && file_path.is_file() {
             if let Ok(data) = std::fs::read(&file_path) {
                 // Simple mime type detection
@@ -469,7 +467,7 @@ fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> Rouille
 
 fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
     let config_map = match cfg.read() {
-        Ok(guard) => guard.config_value.www.configuration.clone(),
+        Ok(guard) => guard.config_value.www_configuration_map.clone(),
         Err(e) => {
             return make_api_response(Err(HTTPError::Internal(format!(
                 "Configuration lock poisoned: {}",
@@ -528,7 +526,7 @@ fn api_auth_token_handler(
         Ok(_) => {
             let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
             let token_timeout = match cfg.read() {
-                Ok(guard) => guard.config_value.server.token_timeout,
+                Ok(guard) => guard.config_value.token_timeout,
                 Err(e) => {
                     return make_api_response(Err(HTTPError::Internal(format!(
                         "Configuration lock poisoned: {}",
@@ -619,7 +617,7 @@ fn api_set_password(
         Ok(_) => {
             // Extract token for potential invalidation on wrong previous password
             let token = extract_token(request).ok();
-            
+
             let input: SetPassword = match input::json_input(request) {
                 Ok(p) => p,
                 Err(_) => {
@@ -647,7 +645,7 @@ fn check_authentication(
         .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
         .config_value
         .clone();
-    if cfg_value.server.password_sha512.is_empty() {
+    if cfg_value.password_sha512.is_none() {
         return Ok(());
     }
 
@@ -661,7 +659,10 @@ fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
         for cookie in cookie_header.split(';') {
             let cookie = cookie.trim();
             if cookie.starts_with("restcommander_token=") {
-                return Ok(cookie.strip_prefix("restcommander_token=").unwrap_or("").to_string());
+                return Ok(cookie
+                    .strip_prefix("restcommander_token=")
+                    .unwrap_or("")
+                    .to_string());
             }
         }
     }
@@ -680,31 +681,6 @@ fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
     Err(HTTPAuthenticationError::TokenNotFound)
 }
 
-fn check_ip_address_rouille(
-    request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
-) -> Result<(), HTTPAuthenticationError> {
-    let ip_whitelist = cfg
-        .read()
-        .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
-        .config_value
-        .server
-        .ip_whitelist
-        .clone();
-    if ip_whitelist.is_empty() {
-        return Ok(());
-    }
-
-    let remote_addr = request.remote_addr();
-    let ip = remote_addr.ip().to_string();
-    for wildcard_ip in ip_whitelist {
-        if WildMatch::new(wildcard_ip.as_str()).matches(ip.as_str()) {
-            return Ok(());
-        }
-    }
-    Err(HTTPAuthenticationError::InvalidIP(ip))
-}
-
 fn api_run_command(
     request: &Request,
     cfg: &Arc<RwLock<Cfg>>,
@@ -712,11 +688,6 @@ fn api_run_command(
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     command_path: &str,
 ) -> RouilleResponse {
-    // Check IP whitelist
-    if let Err(e) = check_ip_address_rouille(request, cfg) {
-        return make_api_response(Err(HTTPError::Authentication(e)));
-    }
-
     // Check authentication
     if let Err(e) = check_authentication(request, tokens, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
@@ -738,11 +709,6 @@ fn api_get_command_state(
     tokens: &Arc<RwLock<HashMap<String, usize>>>,
     command_path: &str,
 ) -> RouilleResponse {
-    // Check IP whitelist
-    if let Err(e) = check_ip_address_rouille(request, cfg) {
-        return make_api_response(Err(HTTPError::Authentication(e)));
-    }
-
     // Check authentication
     if let Err(e) = check_authentication(request, tokens, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
@@ -839,16 +805,15 @@ fn authentication_with_basic(
     authorization_value: String,
     form: HashMap<String, String>,
 ) -> Result<(), HTTPAuthenticationError> {
-    let server_cfg = cfg
+    let config_value = cfg
         .read()
         .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
         .config_value
-        .server
         .clone();
-    if server_cfg.password_sha512.is_empty() && server_cfg.username.is_empty() {
+    if config_value.password_sha512.is_none() && config_value.username.is_empty() {
         return Ok(());
     };
-    if server_cfg.password_sha512.is_empty() || server_cfg.username.is_empty() {
+    if config_value.password_sha512.is_none() || config_value.username.is_empty() {
         return Err(HTTPAuthenticationError::UsernameOrPasswordIsNotSet);
     };
     match authorization_value
@@ -870,7 +835,7 @@ fn authentication_with_basic(
                 .collect::<Vec<&str>>()[..]
             {
                 [username, password] => {
-                    if username == server_cfg.username {
+                    if username == config_value.username {
                         // Read X-RESTCOMMANDER-PASSWORD-HASHED header (default to "false")
                         let password_hashed_header = request
                             .header("X-RESTCOMMANDER-PASSWORD-HASHED")
@@ -892,8 +857,11 @@ fn authentication_with_basic(
                         );
 
                         // Verify password using bcrypt
-                        let password_valid = utils::verify_bcrypt(&password_sha256, &server_cfg.password_sha512)
-                            .map_err(|_| HTTPAuthenticationError::InvalidUsernameOrPassword)?;
+                        let password_valid = utils::verify_bcrypt(
+                            &password_sha256,
+                            config_value.password_sha512.as_ref().unwrap(),
+                        )
+                        .map_err(|_| HTTPAuthenticationError::InvalidUsernameOrPassword)?;
 
                         if password_valid {
                             if maybe_captcha.is_none() {
@@ -911,7 +879,7 @@ fn authentication_with_basic(
                                             if guard.compare_and_update(
                                                 key.to_string(),
                                                 value,
-                                                server_cfg.captcha_case_sensitive,
+                                                config_value.captcha_case_sensitive,
                                             ) {
                                                 Ok(())
                                             } else {
@@ -963,13 +931,13 @@ fn authentication_with_token(
         .map_err(|_| HTTPAuthenticationError::InvalidToken)?
         .config_value
         .clone();
-    if cfg.server.password_sha512.is_empty() {
+    if cfg.password_sha512.is_none() {
         return Ok(());
     }
     if token.is_empty() {
         return Err(HTTPAuthenticationError::TokenNotFound);
     };
-    if let Some(ref api_token) = cfg.server.api_token {
+    if let Some(ref api_token) = cfg.api_token {
         if &token == api_token {
             return Ok(());
         }
@@ -1120,33 +1088,32 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
     let mut options = CommandOptionsValue::from([
         (
             "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
-            CommandOptionValue::String(if cfg_instance.server.host.as_str() == "0.0.0.0" {
+            CommandOptionValue::String(if cfg_instance.host.as_str() == "0.0.0.0" {
                 "127.0.0.1".to_string()
             } else {
-                cfg_instance.server.host.clone()
+                cfg_instance.host.clone()
             }),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_PORT".to_string(),
-            CommandOptionValue::Integer(cfg_instance.server.port as i64),
+            CommandOptionValue::Integer(cfg_instance.port as i64),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
-            CommandOptionValue::String(cfg_instance.server.http_base_path),
+            CommandOptionValue::String(cfg_instance.http_base_path),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_USERNAME".to_string(),
-            CommandOptionValue::String(cfg_instance.server.username),
+            CommandOptionValue::String(cfg_instance.username),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_API_TOKEN".to_string(),
-            CommandOptionValue::String(cfg_instance.server.api_token.unwrap_or_default()),
+            CommandOptionValue::String(cfg_instance.api_token.unwrap_or_default()),
         ),
         (
             "RESTCOMMANDER_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
             CommandOptionValue::String(
                 cfg_instance
-                    .commands
                     .root_directory
                     .to_str()
                     .unwrap()
@@ -1157,7 +1124,6 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
             "RESTCOMMANDER_CONFIG_SERVER_HTTPS".to_string(),
             CommandOptionValue::Bool(
                 cfg_instance
-                    .server
                     .tls_key_file
                     .map(|_| true)
                     .unwrap_or(false),
@@ -1167,7 +1133,6 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
             "RESTCOMMANDER_CONFIG_LOGGING_LEVEL_NAME".to_string(),
             CommandOptionValue::String(
                 cfg_instance
-                    .logging
                     .level_name
                     .to_level_filter()
                     .to_string(),
@@ -1175,19 +1140,10 @@ fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
         ),
         (
             "RESTCOMMANDER_CONFIGURATION_FILENAME".to_string(),
-            CommandOptionValue::String(
-                cfg.read()
-                    .unwrap()
-                    .filename
-                    .as_ref()
-                    .unwrap_or(&PathBuf::new())
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            ),
+            CommandOptionValue::String("<COMMANDLINE>".to_string()),
         ),
     ]);
-    for (key, value) in cfg_instance.commands.configuration {
+    for (key, value) in cfg_instance.configuration {
         options.insert(key, value);
     }
     options
@@ -1202,15 +1158,10 @@ fn try_set_password(
     if password.password.is_empty() {
         return Err(HTTPAPIError::EmptyPassword);
     };
-    
+
     // Verify previous password if provided
-    let server_cfg = cfg
-        .read()
-        .unwrap()
-        .config_value
-        .server
-        .clone();
-    
+    let config_value = cfg.read().unwrap().config_value.clone();
+
     if let Some(previous_password) = password.previous_password {
         // Hash previous password with SHA256 if needed (uses same hash flag as new password)
         let previous_password_sha256 = if password.hash {
@@ -1218,11 +1169,14 @@ fn try_set_password(
         } else {
             utils::to_sha256(&previous_password)
         };
-        
+
         // Verify previous password against current password
-        let previous_password_valid = utils::verify_bcrypt(&previous_password_sha256, &server_cfg.password_sha512)
-            .map_err(|_| HTTPAPIError::InvalidPreviousPassword)?;
-        
+        let previous_password_valid = utils::verify_bcrypt(
+            &previous_password_sha256,
+                            config_value.password_sha512.as_ref().unwrap(),
+        )
+        .map_err(|_| HTTPAPIError::InvalidPreviousPassword)?;
+
         if !previous_password_valid {
             // Invalidate token if previous password is wrong
             if let Some(ref token_str) = token {
@@ -1235,33 +1189,34 @@ fn try_set_password(
     } else {
         return Err(HTTPAPIError::PreviousPasswordRequired);
     }
-    
-    let password_file = server_cfg.password_file.clone();
-    if password_file.to_str().unwrap().is_empty() {
+
+    let password_file = if let Some(pf) = config_value.password_file.clone() {
+        pf
+    } else {
         return Err(HTTPAPIError::NoPasswordFile);
     };
-    
+
     // Hash password with SHA256 if needed
     let password_sha256 = if password.hash {
         password.password
     } else {
         utils::to_sha256(&password.password)
     };
-    
+
     // Generate bcrypt hash from SHA256-hashed password
     let password_bcrypt = utils::hash_bcrypt(&password_sha256, 12).map_err(|reason| {
         HTTPAPIError::SaveNewPassword {
             message: format!("Failed to hash password with bcrypt: {}", reason),
         }
     })?;
-    
+
     std::fs::write(password_file, password_bcrypt.clone()).map_err(|reason| {
         HTTPAPIError::SaveNewPassword {
             message: reason.to_string(),
         }
     })?;
     match cfg.write() {
-        Ok(mut guard) => guard.config_value.server.password_sha512 = password_bcrypt,
+        Ok(mut guard) => guard.config_value.password_sha512 = Some(password_bcrypt),
         Err(e) => {
             return Err(HTTPAPIError::SaveNewPassword {
                 message: format!("Configuration lock poisoned: {}", e),

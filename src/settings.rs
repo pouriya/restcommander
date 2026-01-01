@@ -1,238 +1,26 @@
-use crate::samples::{maybe_print, CMDSample};
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::fs;
-use std::io::Error;
-use std::net::{AddrParseError, IpAddr};
+use std::net::IpAddr;
 use std::path::PathBuf;
-use std::string::FromUtf8Error;
 
-use structopt::clap::{crate_authors, crate_description, crate_name, crate_version};
-use structopt::StructOpt;
-
-use config::{Config, ConfigError, Environment, File};
-
-use serde_derive::{Deserialize, Serialize};
-
+use clap::Parser;
 
 use crate::cmd::runner::CommandOptionsValue;
-use thiserror::Error;
 use tracing_subscriber::filter::LevelFilter;
-
-const DEFAULT_SERVER_HOST: &str = "127.0.0.1";
-const DEFAULT_SERVER_PORT: u16 = 1995;
-const DEFAULT_SERVER_HTTP_BASE_PATH: &str = "/";
-const DEFAULT_SERVER_USERNAME: &str = "";
-const DEFAULT_SERVER_PASSWORD_SHA512: &str = "";
-const DEFAULT_SERVER_PASSWORD_FILE: &str = "";
-const DEFAULT_SERVER_TOKEN_TIMEOUT: usize = 604800; // 1 week in seconds
-const DEFAULT_LOGGING_LEVEL_NAME: &str = "info";
-const DEFAULT_LOGGING_OUTPUT: &str = "stderr";
-const DEFAULT_WWW_STATIC_DIRECTORY: &str = "";
-
-pub mod defaults {
-    use super::*;
-    use std::str::FromStr;
-
-    pub mod server {
-        use super::*;
-
-        pub fn host_str<'a>() -> &'a str {
-            DEFAULT_SERVER_HOST
-        }
-
-        pub fn host() -> String {
-            host_str().to_string()
-        }
-
-        pub fn port_str<'a>() -> &'a str {
-            Box::leak(DEFAULT_SERVER_PORT.to_string().into_boxed_str())
-        }
-
-        pub fn port() -> u16 {
-            u16::from_str(port_str()).unwrap()
-        }
-
-        pub fn http_base_path_str<'a>() -> &'a str {
-            DEFAULT_SERVER_HTTP_BASE_PATH
-        }
-
-        pub fn http_base_path() -> String {
-            http_base_path_str().to_string()
-        }
-
-        pub fn username_str<'a>() -> &'a str {
-            DEFAULT_SERVER_USERNAME
-        }
-
-        pub fn username() -> String {
-            username_str().to_string()
-        }
-
-        pub fn password_file_str<'a>() -> &'a str {
-            DEFAULT_SERVER_PASSWORD_FILE
-        }
-
-        pub fn password_file() -> PathBuf {
-            PathBuf::from(password_file_str())
-        }
-
-        pub fn password_sha512_str<'a>() -> &'a str {
-            DEFAULT_SERVER_PASSWORD_SHA512
-        }
-
-        pub fn password_sha512() -> String {
-            password_sha512_str().to_string()
-        }
-
-        pub fn tls_cert_file() -> Option<PathBuf> {
-            None
-        }
-
-        pub fn tls_key_file() -> Option<PathBuf> {
-            None
-        }
-
-        pub fn captcha() -> bool {
-            true
-        }
-
-        pub fn captcha_case_sensitive() -> bool {
-            false
-        }
-
-        pub fn ip_whitelist() -> Vec<String> {
-            Vec::new()
-        }
-
-        pub fn api_token() -> Option<String> {
-            None
-        }
-
-        pub fn token_timeout_str<'a>() -> &'a str {
-            // 1 week
-            Box::leak(DEFAULT_SERVER_TOKEN_TIMEOUT.to_string().into_boxed_str())
-        }
-
-        pub fn token_timeout() -> usize {
-            usize::from_str(token_timeout_str()).unwrap()
-        }
-
-        pub fn print_banner() -> bool {
-            true
-        }
-    }
-
-    pub mod commands {
-        use super::*;
-
-        pub fn root_directory_str<'a>() -> &'a str {
-            // This is used for default values, so we use a fallback if current_dir fails
-            Box::leak(
-                current_dir()
-                    .ok()
-                    .and_then(|p| p.to_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| ".".to_string())
-                    .into_boxed_str(),
-            )
-        }
-
-        pub fn root_directory() -> PathBuf {
-            PathBuf::from(root_directory_str())
-        }
-
-        pub fn configuration() -> CommandOptionsValue {
-            HashMap::default()
-        }
-    }
-
-    pub mod www {
-        use super::*;
-
-        pub fn static_directory_str<'a>() -> &'a str {
-            DEFAULT_WWW_STATIC_DIRECTORY
-        }
-
-        pub fn static_directory() -> PathBuf {
-            PathBuf::from(static_directory_str())
-        }
-
-        pub fn enabled() -> bool {
-            true
-        }
-
-        pub fn configuration() -> HashMap<String, String> {
-            HashMap::new()
-        }
-    }
-
-    pub mod logging {
-        use super::*;
-
-        pub fn level_name_str<'a>() -> &'a str {
-            DEFAULT_LOGGING_LEVEL_NAME
-        }
-
-        pub fn level_name() -> CfgLoggingLevelName {
-            CfgLoggingLevelName::from_str(level_name_str()).unwrap()
-        }
-
-        pub fn output_str() -> &'static str {
-            DEFAULT_LOGGING_OUTPUT
-        }
-
-        pub fn output() -> PathBuf {
-            PathBuf::from(output_str())
-        }
-
-    }
-}
-
-#[derive(Debug, Clone, StructOpt)]
-#[
-    structopt(
-        name = crate_name!(),
-        about = crate_description!(),
-        version = crate_version!(),
-        author = crate_authors!()
-    )
-]
-pub enum CMDOpt {
-    Config(CMDOptCfg),
-    Playground(Box<CfgValue>),
-    Sample(CMDSample),
-}
-
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(about = "Starts from a .toml configuration file.")]
-pub struct CMDOptCfg {
-    #[structopt(
-        parse(from_os_str),
-        about = "A .toml configuration file. To generate a new one, use `sample config` subcommand."
-    )]
-    config_file: PathBuf,
-}
 
 #[derive(Debug, Clone)]
 pub struct Cfg {
-    pub config_value: CfgValue,
-    pub filename: Option<PathBuf>,
+    pub config_value: CommandLine,
 }
 
 impl Cfg {
     pub fn trace_log(&self) {
-        let source = if let Some(ref filename) = self.filename {
-            filename.clone()
-        } else {
-            PathBuf::from("<COMMANDLINE>")
-        };
+        let source = PathBuf::from("<COMMANDLINE>");
         tracing::trace!(
             msg = "Configuration details",
             source = ?source,
-            server = ?self.config_value.server,
-            commands = ?self.config_value.commands,
-            logging = ?self.config_value.logging,
-            www = ?self.config_value.www,
+            config = ?self.config_value,
         );
         tracing::info!(
             msg = "Configuration loaded successfully",
@@ -241,125 +29,19 @@ impl Cfg {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum CfgError {
-    #[error("Could not read configuration file {filename:?}: {message:?}")]
-    ReadFile {
-        filename: PathBuf,
-        message: ConfigError,
-    },
-    #[error("Could not deserialize configuration file {filename:?}: {message:?}")]
-    Deserialize {
-        filename: PathBuf,
-        message: ConfigError,
-    },
-    #[error("{0}")]
-    Check(String),
-    #[allow(dead_code)]
-    #[error("Path {path:?} contains invalid UTF-8")]
-    InvalidPathUtf8 { path: PathBuf },
-    #[error("Could not get current directory: {message}")]
-    CurrentDir { message: Error },
-}
-
-trait CheckValue {
-    type Error;
-    fn check_value(&mut self) -> Result<(), Self::Error>;
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, StructOpt)]
-#[structopt(about = "Runs a server from command-line configuration values.")]
-pub struct CfgValue {
-    #[serde(default)]
-    #[structopt(flatten)]
-    pub server: CfgServer,
-    #[serde(default)]
-    #[structopt(flatten)]
-    pub commands: CfgCommands,
-    #[serde(default)]
-    #[structopt(flatten)]
-    pub logging: CfgLogging,
-    #[serde(default)]
-    #[structopt(flatten)]
-    pub www: CfgWWW,
-}
-
-impl TryFrom<PathBuf> for CfgValue {
-    type Error = CfgError;
-
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        let mut config_value = Config::builder()
-            .add_source(File::from(path.clone()).required(true))
-            .add_source(Environment::with_prefix(crate_name!()))
-            .build()
-            .map_err(|reason| CfgError::ReadFile {
-                filename: path.clone(),
-                message: reason,
-            })?
-            .try_deserialize::<CfgValue>()
-            .map_err(|reason| CfgError::Deserialize {
-                filename: path.clone(),
-                message: reason,
-            })?;
-        config_value
-            .check_value()
-            .map_err(|reason| CfgError::Check(reason.to_string()))?;
-        Ok(config_value)
-    }
-}
-
-impl CheckValue for CfgValue {
-    type Error = CfgError;
-    fn check_value(&mut self) -> Result<(), Self::Error> {
-        self.server
-            .check_value()
-            .map_err(|reason| CfgError::Check(reason.to_string()))?;
-        self.commands
-            .check_value()
-            .map_err(|reason| CfgError::Check(reason.to_string()))?;
-        // self.logging.check_value()
-        //     .map_err(
-        //         |reason| {
-        //             CfgError::Check(reason.to_string())
-        //         }
-        //     )?;
-        self.www
-            .check_value()
-            .map_err(|reason| CfgError::Check(reason.to_string()))?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, StructOpt)]
-pub struct CfgServer {
+#[derive(Debug, Clone, Parser)]
+#[command(about)]
+pub struct CommandLine {
     /// HTTP server listen address.
-    #[serde(default = "defaults::server::host")]
-    #[structopt(
-        name = "server-host",
-        long,
-        default_value = defaults::server::host_str(),
-        env = "RESTCOMMANDER_SERVER_HOST",
-    )]
+    #[arg(long, default_value = "127.0.0.1", env = "RESTCOMMANDER_SERVER_HOST", value_parser = parse_ip_addr)]
     pub host: String,
 
     /// HTTP server listen port number.
-    #[serde(default = "defaults::server::port")]
-    #[structopt(
-        name = "server-port",
-        long,
-        default_value = defaults::server::port_str(),
-        env = "RESTCOMMANDER_SERVER_PORT",
-    )]
+    #[arg(long, default_value = "1995", env = "RESTCOMMANDER_SERVER_PORT")]
     pub port: u16,
 
     /// HTTP server base path. Currently not used!
-    #[serde(default = "defaults::server::http_base_path")]
-    #[structopt(
-        name = "server-http-base-path",
-        long,
-        default_value =  defaults::server::http_base_path_str(),
-        env = "RESTCOMMANDER_SERVER_HTTP_BASE_PATH",
-    )]
+    #[arg(long, default_value = "/", env = "RESTCOMMANDER_SERVER_HTTP_BASE_PATH", value_parser = parse_http_base_path)]
     pub http_base_path: String,
 
     /// HTTP server basic authentication username.
@@ -368,13 +50,7 @@ pub struct CfgServer {
     /// If the value is empty and no password is configured, then no authentication
     /// is needed for anything. If the value is empty and password is configured, the
     /// username will be `admin`.
-    #[serde(default = "defaults::server::username")]
-    #[structopt(
-        name = "server-username",
-        long,
-        default_value = defaults::server::username_str(),
-        env = "RESTCOMMANDER_SERVER_USERNAME",
-    )]
+    #[arg(long, default_value = "", env = "RESTCOMMANDER_SERVER_USERNAME")]
     pub username: String,
 
     /// A file containing sha512 of your user password.
@@ -384,14 +60,8 @@ pub struct CfgServer {
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    #[serde(default = "defaults::server::password_file")]
-    #[structopt(
-        name = "server-password-file",
-        long,
-        default_value = defaults::server::password_file_str(),
-        env = "RESTCOMMANDER_SERVER_PASSWORD_FILE"
-    )]
-    pub password_file: PathBuf,
+    #[arg(long, env = "RESTCOMMANDER_SERVER_PASSWORD_FILE", value_parser = parse_password_file)]
+    pub password_file: Option<PathBuf>,
 
     /// sha512 of you user password.
     ///
@@ -401,442 +71,183 @@ pub struct CfgServer {
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    #[serde(default = "defaults::server::password_sha512")]
-    #[structopt(
-        name = "server-password-sha512",
-        long,
-        default_value = defaults::server::password_sha512_str(),
-        env = "RESTCOMMANDER_SERVER_PASSWORD_SHA512"
-    )]
-    pub password_sha512: String,
+    #[arg(long, env = "RESTCOMMANDER_SERVER_PASSWORD_SHA512")]
+    pub password_sha512: Option<String>,
 
     /// HTTP server TLS certificate file.
     ///
     /// If you configure this along with server `tls_key_file` option, RestCommander
     /// serves everything over HTTPS.
-    /// You can get a test certificate via `sample self-signed-cert` subcommand.
-    #[serde(default = "defaults::server::tls_cert_file")]
-    #[structopt(
-        name = "server-tls-cert-file",
-        long,
-        parse(from_os_str),
-        env = "RESTCOMMANDER_SERVER_TLS_CERT_FILE"
-    )]
+    #[arg(long, env = "RESTCOMMANDER_SERVER_TLS_CERT_FILE", value_parser = parse_tls_file)]
     pub tls_cert_file: Option<PathBuf>,
 
     /// HTTP server TLS private-key file.
     ///
     /// If you configure this along with server `tls_cert_file` option, RestCommander
     /// serves everything over HTTPS.
-    /// You can get a test private-key via `sample self-signed-key` subcommand.
-    #[serde(default = "defaults::server::tls_key_file")]
-    #[structopt(
-        name = "server-tls-key-file",
-        long,
-        parse(from_os_str),
-        env = "RESTCOMMANDER_SERVER_TLS_KEY_FILE"
-    )]
+    #[arg(long, env = "RESTCOMMANDER_SERVER_TLS_KEY_FILE", value_parser = parse_tls_file)]
     pub tls_key_file: Option<PathBuf>,
 
     /// Enable/Disable CAPTCHA.
-    #[serde(default = "defaults::server::captcha")]
-    #[structopt(name = "server-captcha", long, env = "RESTCOMMANDER_SERVER_CAPTCHA")]
+    #[arg(long, env = "RESTCOMMANDER_SERVER_CAPTCHA")]
     pub captcha: bool,
 
     /// Make CAPTCHA case-sensitive
-    #[serde(default = "defaults::server::captcha_case_sensitive")]
-    #[structopt(
-        name = "server-captcha-case-sensitive",
-        long,
-        env = "RESTCOMMANDER_SERVER_CAPTCHA_CASE_SENSITIVE"
-    )]
+    #[arg(long, env = "RESTCOMMANDER_SERVER_CAPTCHA_CASE_SENSITIVE")]
     pub captcha_case_sensitive: bool,
-
-    /// List of IP addresses that can interact with REST-API. Wildcard characters like *
-    /// are allowed.
-    ///
-    /// No value means everyone can interact with REST-API.
-    /// RestCommander currently does not support HTTP IP headers, So this IP address
-    /// is the connected client IP address and not the IP address that upstream webserver
-    /// forwards in the request header.
-    #[serde(default = "defaults::server::ip_whitelist")]
-    #[structopt(
-        name = "server-ip-whitelist",
-        long,
-        env = "RESTCOMMANDER_SERVER_IP_WHITELIST"
-    )]
-    pub ip_whitelist: Vec<String>,
 
     /// hardcoded HTTP bearer token that does not expire.
     ///
     /// You can use this value in your application(s) then you do not have to pass
     /// CAPTCHA each time the previous token has expired to get a new one.
-    #[serde(default = "defaults::server::api_token")]
-    #[structopt(
-        name = "server-api-token",
-        long,
-        env = "RESTCOMMANDER_SERVER_API_TOKEN"
-    )]
+    #[arg(long, env = "RESTCOMMANDER_SERVER_API_TOKEN")]
     pub api_token: Option<String>,
 
     /// Timeout for dynamically generated HTTP bearer tokens in seconds.
     ///
     /// The default value is 1 week.
-    #[serde(default = "defaults::server::token_timeout")]
-    #[structopt(
-        name = "server-token-timeout",
+    #[arg(
         long,
-        default_value = defaults::server::token_timeout_str(),
-        env = "RESTCOMMANDER_SERVER_TOKEN_TIMEOUT",
+        default_value = "604800",
+        env = "RESTCOMMANDER_SERVER_TOKEN_TIMEOUT"
     )]
     pub token_timeout: usize,
 
-    /// Print RestCommander ASCII banner
-    #[serde(default = "defaults::server::print_banner")]
-    #[structopt(
-        name = "server-print-banner",
-        long,
-        env = "RESTCOMMANDER_SERVER_PRINT_BANNER"
-    )]
-    pub print_banner: bool,
-}
-
-#[derive(Debug, Error)]
-pub enum CfgServerCheckError {
-    #[error("Could not parse hostname {host:?}: {message:?}")]
-    Host {
-        host: String,
-        message: AddrParseError,
-    },
-    #[error("Invalid HTTP base-path {http_base_path:?}: {message:?}")]
-    HTTPBasePATH {
-        http_base_path: String,
-        message: String,
-    },
-    #[error(
-        "Configuration contains `username` but `password` or `password_file` field is not set"
-    )]
-    PasswordOrPasswordFileIsNotSet,
-    #[error("Could not read password file {filename:?}: {message:?}")]
-    ReadPasswordFile { filename: PathBuf, message: Error },
-    #[error("Could not decode password file {filename:?} content to UTF-8: {message:?}")]
-    DecodePasswordFileContent {
-        filename: PathBuf,
-        message: FromUtf8Error,
-    },
-    #[error("Password file {filename:?} is empty!")]
-    PasswordFileEmpty { filename: PathBuf },
-    #[error("TLS cert file {filename:?} is not found")]
-    TLSCertFileNotFound { filename: PathBuf },
-    #[error("TLS key file {filename:?} is not found")]
-    TLSKeyFileNotFound { filename: PathBuf },
-    #[error("TLS key file is set but TLS cert file is not set")]
-    TLSCertFileISNotSet,
-    #[error("TLS cert file is set but TLS key file is not set")]
-    TLSKeyFileISNotSet,
-    #[error("Path {path:?} contains invalid UTF-8")]
-    InvalidPathUtf8 { path: PathBuf },
-    #[error("Could not get current directory: {message}")]
-    CurrentDir { message: Error },
-}
-
-impl CheckValue for CfgServer {
-    type Error = CfgServerCheckError;
-    fn check_value(&mut self) -> Result<(), Self::Error> {
-        self.host
-            .clone()
-            .parse::<IpAddr>()
-            .map_err(|reason| CfgServerCheckError::Host {
-                host: self.host.clone(),
-                message: reason,
-            })?;
-        // Validate http_base_path is a valid URI path
-        if !self.http_base_path.starts_with("/") {
-            return Err(CfgServerCheckError::HTTPBasePATH {
-                http_base_path: self.http_base_path.clone(),
-                message: "HTTP base path must start with '/'".to_string(),
-            });
-        };
-        if !self.http_base_path.clone().ends_with("/") {
-            return Err(CfgServerCheckError::HTTPBasePATH {
-                http_base_path: self.http_base_path.clone(),
-                message: "should contain '/' at the end".to_string(),
-            });
-        };
-        if !self.http_base_path.clone().starts_with("/") {
-            return Err(CfgServerCheckError::HTTPBasePATH {
-                http_base_path: self.http_base_path.clone(),
-                message: "should contain '/' at the start".to_string(),
-            });
-        };
-        let password_file_str =
-            self.password_file
-                .to_str()
-                .ok_or_else(|| CfgServerCheckError::InvalidPathUtf8 {
-                    path: self.password_file.clone(),
-                })?;
-        match (
-            !self.username.is_empty(),
-            !self.password_sha512.is_empty(),
-            !password_file_str.is_empty(),
-        ) {
-            (true, false, false) => {
-                return Err(CfgServerCheckError::PasswordOrPasswordFileIsNotSet)
-            }
-            (false, true, _) => {
-                tracing::warn!(
-                    msg = "Configuration contains password but username field is not set, using 'admin' as default username",
-                );
-                self.username = "admin".to_string();
-            }
-            (false, _, true) => {
-                tracing::warn!(
-                    msg = "Configuration contains password_file but username field is not set, using 'admin' as default username",
-                );
-                self.username = "admin".to_string();
-            }
-            _ => (),
-        };
-        if !password_file_str.is_empty() {
-            if self.password_file.is_relative() {
-                self.password_file = current_dir()
-                    .map_err(|e| CfgServerCheckError::CurrentDir { message: e })?
-                    .join(self.password_file.clone())
-            }
-            let password = fs::read(self.password_file.clone()).map_err(|reason| {
-                CfgServerCheckError::ReadPasswordFile {
-                    filename: self.password_file.clone(),
-                    message: reason,
-                }
-            })?;
-            let password = String::from_utf8(password)
-                .map_err(|reason| CfgServerCheckError::DecodePasswordFileContent {
-                    filename: self.password_file.clone(),
-                    message: reason,
-                })?
-                .trim()
-                .to_string();
-            if password.is_empty() {
-                return Err(CfgServerCheckError::PasswordFileEmpty {
-                    filename: self.password_file.clone(),
-                });
-            };
-            if !self.password_sha512.is_empty() {
-                tracing::warn!(
-                    msg = "Both password and password_file fields are set, ignoring password field",
-                );
-            };
-            self.password_sha512 = password;
-        };
-        if let (Some(ref cert_file), Some(ref key_file)) =
-            (self.tls_cert_file.clone(), self.tls_key_file.clone())
-        {
-            if !cert_file.is_file() {
-                return Err(CfgServerCheckError::TLSCertFileNotFound {
-                    filename: cert_file.clone(),
-                });
-            };
-            if !key_file.is_file() {
-                return Err(CfgServerCheckError::TLSKeyFileNotFound {
-                    filename: key_file.clone(),
-                });
-            };
-        } else if self.tls_cert_file.clone().is_none() && self.tls_key_file.is_some() {
-            return Err(CfgServerCheckError::TLSCertFileISNotSet);
-        } else if self.tls_key_file.is_none() && self.tls_cert_file.clone().is_some() {
-            return Err(CfgServerCheckError::TLSKeyFileISNotSet);
-        };
-        Ok(())
-    }
-}
-
-impl Default for CfgServer {
-    fn default() -> Self {
-        Self {
-            host: defaults::server::host(),
-            port: defaults::server::port(),
-            http_base_path: defaults::server::http_base_path(),
-            username: defaults::server::username(),
-            password_file: defaults::server::password_file(),
-            password_sha512: defaults::server::password_sha512(),
-            tls_cert_file: defaults::server::tls_cert_file(),
-            tls_key_file: defaults::server::tls_key_file(),
-            captcha: defaults::server::captcha(),
-            captcha_case_sensitive: defaults::server::captcha_case_sensitive(),
-            ip_whitelist: defaults::server::ip_whitelist(),
-            api_token: defaults::server::api_token(),
-            token_timeout: defaults::server::token_timeout(),
-            print_banner: defaults::server::print_banner(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, StructOpt)]
-pub struct CfgCommands {
     /// Root directory to load command files and directories and their information files.
-    ///
-    /// The default value is your current working directory.
-    #[serde(default = "defaults::commands::root_directory")]
-    #[structopt(
-        name = "commands-root-directory",
-        long,
-        parse(from_os_str),
-        default_value=defaults::commands::root_directory_str(),
-        env="RESTCOMMANDER_COMMANDS_ROOT_DIRECTORY",
-    )]
+    #[arg(long, env = "RESTCOMMANDER_COMMANDS_ROOT_DIRECTORY", value_parser = parse_commands_root_directory)]
     pub root_directory: PathBuf,
 
+    /// Configuration key/values for commands in KEY=VALUE format (can be specified multiple times).
+    #[arg(short = 'C', long, value_name = "KEY=VALUE", value_parser = parse_command_key_value)]
+    pub commands_configuration: Vec<(String, crate::cmd::tree::CommandOptionValue)>,
+
     /// Your scripts will receive below configuration key/values directly from env or stdin.
-    #[serde(default = "defaults::commands::configuration")]
-    #[structopt(skip)]
+    #[arg(skip)]
     pub configuration: CommandOptionsValue,
-}
 
-impl Default for CfgCommands {
-    fn default() -> Self {
-        Self {
-            root_directory: defaults::commands::root_directory(),
-            configuration: defaults::commands::configuration(),
-        }
-    }
-}
-
-impl CheckValue for CfgCommands {
-    type Error = CfgCommandsCheckError;
-
-    fn check_value(&mut self) -> Result<(), Self::Error> {
-        if self.root_directory.as_os_str().is_empty() {
-            self.root_directory = CfgCommands::default().root_directory;
-        }
-        if !self.root_directory.is_dir() {
-            return Err(CfgCommandsCheckError::BadRootDir(
-                self.root_directory.clone(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum CfgCommandsCheckError {
-    #[error("Commands root directory {0:?} is not a directory or could not be found")]
-    BadRootDir(PathBuf),
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, StructOpt)]
-pub struct CfgLogging {
     /// Logging level name.
     ///
     /// Possible values: off | error | warning | info | debug | trace
-    #[serde(default = "defaults::logging::level_name")]
-    #[structopt(
-        name = "logging-level-name",
-        long,
-        default_value = defaults::logging::level_name_str(),
-        env = "RESTCOMMANDER_LOGGING_LEVEL_NAME",
-    )]
+    #[arg(long, default_value = "info", env = "RESTCOMMANDER_LOGGING_LEVEL_NAME")]
     pub level_name: CfgLoggingLevelName,
+
     /// Logging output.
     ///
     /// Possible values: stdout | stderr | A directory name to save all log to files for each day.
-    #[structopt(
-    name = "logging-output",
-    long,
-    default_value = defaults::logging::output_str(),
-    env = "RESTCOMMANDER_LOGGING_OUTPUT",
-    )]
-    #[serde(default = "defaults::logging::output")]
+    #[arg(long, default_value = "stderr", env = "RESTCOMMANDER_LOGGING_OUTPUT")]
     pub output: PathBuf,
-}
 
-impl Default for CfgLogging {
-    fn default() -> Self {
-        Self {
-            level_name: Default::default(),
-            output: defaults::logging::output(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, StructOpt)]
-pub struct CfgWWW {
     /// A directory to serve your own web files under `/static/*` HTTP path.
     ///
     /// Also you can override RestCommander virtual files inside this folder.
     /// RestCommander virtual files are: index.html, index.js, login.html,
     /// login.js, commands.html, commands.js, restcommander-background-image.jpg,
     /// favicon.ico, bootstrap.bundle.min.js, bootstrap.min.css, api.js, utils.js.
-    #[serde(default = "defaults::www::static_directory")]
-    #[structopt(
-        name = "www-static-directory",
-        long,
-        default_value = defaults::www::static_directory_str(),
-        env = "RESTCOMMANDER_WWW_STATIC_DIRECTORY",
-    )]
-    pub static_directory: PathBuf,
+    #[arg(long, env = "RESTCOMMANDER_WWW_STATIC_DIRECTORY", value_parser = parse_static_directory)]
+    pub static_directory: Option<PathBuf>,
 
     /// Enable/Disable the web dashboard.
-    #[serde(default = "defaults::www::enabled")]
-    #[structopt(name = "www-enabled", long, env = "RESTCOMMANDER_WWW_ENABLED")]
+    #[arg(long, env = "RESTCOMMANDER_WWW_ENABLED")]
     pub enabled: bool,
 
+    /// Configuration key/values for www in KEY=VALUE format (can be specified multiple times).
+    #[arg(short = 'W', long, value_name = "KEY=VALUE", value_parser = parse_key_value)]
+    pub www_configuration: Vec<(String, String)>,
+
     /// You can access below configuration key/values from REST-API `/public/configuration` endpoint.
-    #[serde(default = "defaults::www::configuration")]
-    #[structopt(skip)]
-    pub configuration: HashMap<String, String>,
+    #[arg(skip)]
+    pub www_configuration_map: HashMap<String, String>,
 }
 
-#[derive(Debug, Error)]
-enum CfgWWWCheckError {
-    #[error("Static directory {directory:?} {message}")]
-    StaticDirectory { directory: PathBuf, message: String },
+fn parse_ip_addr(s: &str) -> Result<String, String> {
+    s.parse::<IpAddr>()
+        .map_err(|e| format!("Could not parse hostname {:?}: {}", s, e))?;
+    Ok(s.to_string())
 }
 
-impl Default for CfgWWW {
-    fn default() -> Self {
-        Self {
-            static_directory: defaults::www::static_directory(),
-            enabled: defaults::www::enabled(),
-            configuration: defaults::www::configuration(),
-        }
+fn parse_http_base_path(s: &str) -> Result<String, String> {
+    if !s.starts_with("/") {
+        return Err(format!(
+            "Invalid HTTP base-path {:?}: HTTP base path must start with '/'",
+            s
+        ));
+    }
+    if !s.ends_with("/") {
+        return Err(format!(
+            "Invalid HTTP base-path {:?}: should contain '/' at the end",
+            s
+        ));
+    }
+    Ok(s.to_string())
+}
+
+fn parse_password_file(s: &str) -> Result<PathBuf, String> {
+    let mut path = PathBuf::from(s);
+    if path.is_relative() {
+        path = current_dir()
+            .map_err(|e| format!("Could not get current directory: {}", e))?
+            .join(path);
+    }
+    // Note: We don't check if file exists here because it might be created later
+    Ok(path)
+}
+
+fn parse_tls_file(s: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(s);
+    if !path.is_file() {
+        return Err(format!("TLS file {:?} is not found", path));
+    }
+    Ok(path)
+}
+
+fn parse_command_key_value(
+    s: &str,
+) -> Result<(String, crate::cmd::tree::CommandOptionValue), String> {
+    if let Some(equal_pos) = s.find('=') {
+        let key = s[..equal_pos].to_string();
+        let value_str = s[equal_pos + 1..].to_string();
+        let value: crate::cmd::tree::CommandOptionValue = serde_json::from_str(&value_str)
+            .map_err(|e| format!("Invalid JSON value for key {}: {}", key, e))?;
+        Ok((key, value))
+    } else {
+        Err(format!("Invalid KEY=VALUE format: {}", s))
     }
 }
 
-impl CheckValue for CfgWWW {
-    type Error = CfgWWWCheckError;
-    fn check_value(&mut self) -> Result<(), Self::Error> {
-        let static_directory = self.static_directory.clone();
-        let static_directory_str =
-            static_directory
-                .to_str()
-                .ok_or_else(|| CfgWWWCheckError::StaticDirectory {
-                    directory: static_directory.clone(),
-                    message: "contains invalid UTF-8".to_string(),
-                })?;
-        if static_directory_str.is_empty() {
-            return Ok(());
-        };
-        if static_directory.exists() {
-            if static_directory.is_dir() {
-                Ok(())
-            } else {
-                Err(CfgWWWCheckError::StaticDirectory {
-                    directory: static_directory,
-                    message: "is not a directory".to_string(),
-                })
-            }
-        } else {
-            Err(CfgWWWCheckError::StaticDirectory {
-                directory: static_directory,
-                message: "does not exists".to_string(),
-            })
-        }
+fn parse_key_value(s: &str) -> Result<(String, String), String> {
+    if let Some(equal_pos) = s.find('=') {
+        let key = s[..equal_pos].to_string();
+        let value = s[equal_pos + 1..].to_string();
+        Ok((key, value))
+    } else {
+        Err(format!("Invalid KEY=VALUE format: {}", s))
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
+fn parse_commands_root_directory(s: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(s);
+    if !path.is_dir() {
+        return Err(format!(
+            "Commands root directory {:?} is not a directory or could not be found",
+            path
+        ));
+    }
+    Ok(path)
+}
+
+fn parse_static_directory(s: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(s);
+    if !path.exists() {
+        return Err(format!("Static directory {:?} does not exists", path));
+    }
+    if !path.is_dir() {
+        return Err(format!("Static directory {:?} is not a directory", path));
+    }
+    Ok(path)
+}
+
+
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum CfgLoggingLevelName {
     Trace,
     Debug,
@@ -876,50 +287,97 @@ impl CfgLoggingLevelName {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct LoggingConfig {
+    pub level_name: CfgLoggingLevelName,
+    pub output: PathBuf,
+}
 
 impl Cfg {}
 
-impl TryFrom<PathBuf> for Cfg {
-    type Error = CfgError;
+impl CommandLine {
+    pub fn after_parse(&mut self) -> Result<(), String> {
+        // Handle password_file reading
+        if let Some(password_file) = &self.password_file {
+            let password = fs::read(password_file)
+                .map_err(|e| format!("Could not read password file {:?}: {}", password_file, e))?;
+            let password = String::from_utf8(password)
+                .map_err(|e| {
+                    format!(
+                        "Could not decode password file {:?} content to UTF-8: {}",
+                        password_file, e
+                    )
+                })?
+                .trim()
+                .to_string();
+            if password.is_empty() {
+                return Err(format!("Password file {:?} is empty!", password_file));
+            }
+            if self.password_sha512.is_some() {
+                tracing::warn!(
+                    msg = "Both password and password_file fields are set, ignoring password field",
+                );
+            }
+            self.password_sha512 = Some(password);
+        }
 
-    fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        Ok(Cfg {
-            config_value: CfgValue::try_from(path.clone())?,
-            filename: Some(if path.is_relative() {
-                current_dir()
-                    .map_err(|e| CfgError::CurrentDir { message: e })?
-                    .join(path)
-            } else {
-                path
-            }),
-        })
-    }
-}
+        // Handle username/password validation
+        match (
+            !self.username.is_empty(),
+            self.password_sha512.is_some(),
+            self.password_file.is_some(),
+        ) {
+            (true, false, false) => {
+                return Err("Configuration contains `username` but `password` or `password_file` field is not set".to_string())
+            }
+            (false, true, _) => {
+                tracing::warn!(
+                    msg = "Configuration contains password but username field is not set, using 'admin' as default username",
+                );
+                self.username = "admin".to_string();
+            }
+            (false, _, true) => {
+                tracing::warn!(
+                    msg = "Configuration contains password_file but username field is not set, using 'admin' as default username",
+                );
+                self.username = "admin".to_string();
+            }
+            _ => (),
+        }
 
-impl TryFrom<CfgValue> for Cfg {
-    type Error = String;
+        // Handle TLS file validation
+        match (self.tls_cert_file.is_some(), self.tls_key_file.is_some()) {
+            (true, false) => {
+                return Err("TLS cert file is set but TLS key file is not set".to_string())
+            }
+            (false, true) => {
+                return Err("TLS key file is set but TLS cert file is not set".to_string())
+            }
+            _ => (),
+        }
 
-    fn try_from(value: CfgValue) -> Result<Self, Self::Error> {
-        let mut value = value.clone();
-        value
-            .check_value()
-            .map_err(|reason| CfgError::Check(reason.to_string()).to_string())?;
-        Ok(Cfg {
-            config_value: value,
-            filename: None,
-        })
+        // Convert parsed command key-value pairs into HashMap
+        let mut config = HashMap::new();
+        for (key, value) in &self.commands_configuration {
+            config.insert(key.clone(), value.clone());
+        }
+        self.configuration = config;
+
+        // Convert parsed www key-value pairs into HashMap
+        let mut www_config = HashMap::new();
+        for (key, value) in &self.www_configuration {
+            www_config.insert(key.clone(), value.clone());
+        }
+        self.www_configuration_map = www_config;
+
+        Ok(())
     }
 }
 
 pub fn try_setup() -> Result<Cfg, Option<String>> {
-    match CMDOpt::from_args() {
-        CMDOpt::Sample(sample_name) => {
-            maybe_print(sample_name);
-            Err(None)
-        }
-        CMDOpt::Playground(options) => Ok(Cfg::try_from(*options).map_err(Some)?),
-        CMDOpt::Config(config_file) => Ok(
-            Cfg::try_from(config_file.config_file).map_err(|reason| Some(reason.to_string()))?
-        ),
-    }
+    let mut value = CommandLine::parse();
+    value.after_parse().map_err(|e| Some(e))?;
+    Ok(Cfg {
+        config_value: value,
+    })
 }

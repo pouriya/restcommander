@@ -1,8 +1,7 @@
-use crate::settings::CfgLogging;
+use crate::settings::LoggingConfig;
 
 use std::io::Write;
 
-use structopt::clap::crate_name;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::{
     filter::Filtered, fmt::format::JsonFields, layer::SubscriberExt, reload::Handle,
@@ -41,7 +40,7 @@ impl Write for StdNull {
     }
 }
 
-pub fn setup(config: CfgLogging) -> LoggingState {
+pub fn setup(config: LoggingConfig) -> LoggingState {
     let (logging_writer, logging_writer_guard) = writer(&config);
     let logging_json_layer = tracing_subscriber::fmt::layer()
         .json()
@@ -65,7 +64,7 @@ pub fn setup(config: CfgLogging) -> LoggingState {
     }
 }
 
-pub fn update(config: CfgLogging, state: &mut LoggingState) {
+pub fn update(config: LoggingConfig, state: &mut LoggingState) {
     let (logging_writer, logging_writer_guard) = writer(&config);
     tracing::debug!(
         msg = "Updating logging options",
@@ -87,14 +86,14 @@ pub fn update(config: CfgLogging, state: &mut LoggingState) {
     );
 }
 
-fn writer(config: &CfgLogging) -> (NonBlocking, WorkerGuard) {
+fn writer(config: &LoggingConfig) -> (NonBlocking, WorkerGuard) {
     match config.output.to_str() {
         Some("stdout") => tracing_appender::non_blocking(std::io::stdout()),
         Some("stderr") => tracing_appender::non_blocking(std::io::stderr()),
         Some("off") => tracing_appender::non_blocking(StdNull),
         _ => tracing_appender::non_blocking(tracing_appender::rolling::daily(
             config.output.clone(),
-            crate_name!().to_owned() + ".log",
+            env!("CARGO_PKG_NAME").to_owned() + ".log",
         )),
     }
 }
