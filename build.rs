@@ -1,6 +1,4 @@
-use capitalize::Capitalize;
 use md5::compute;
-use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
@@ -9,7 +7,6 @@ use std::path::PathBuf;
 const BOOTSTRAP_JS_FILENAME: &str = "bootstrap.bundle.min.js";
 const BOOTSTRAP_CSS_FILENAME: &str = "bootstrap.min.css";
 const BOOTSTRAP_VERSION_FILENAME: &str = "bootstrap-version.txt";
-const SAMPLE_DESCRIPTIONS_FILENAME: &str = "sample-description.cfg";
 
 macro_rules! log {
     ($text:expr) => {
@@ -200,135 +197,6 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {"#
 "#
             .as_bytes(),
         )
-        .unwrap();
-    mod_rs_file.flush().unwrap();
-    log!("Regenerated {:?}", mod_rs_filename);
-}
-
-fn maybe_build_src_samples() {
-    let excluded_file_list = ["README.md", SAMPLE_DESCRIPTIONS_FILENAME]
-        .map(PathBuf::from)
-        .to_vec();
-    if !check_md5(
-        PathBuf::from("samples"),
-        PathBuf::from("src").join("samples"),
-        excluded_file_list.clone(),
-    ) {
-        // No file is changed
-        return;
-    }
-    let mod_rs_filename = PathBuf::from("src").join("samples").join("mod.rs");
-    let mut mod_rs_file = fs::File::create(mod_rs_filename.clone()).unwrap();
-    log!("Attempt to regenerate {:?}", mod_rs_filename);
-    mod_rs_file
-        .write_all(
-            r#"// Auto-generated via `build.rs`
-
-use structopt::StructOpt;
-
-#[derive(Debug, Clone, StructOpt)]
-#[structopt(about = "Script and configuration samples")]
-pub enum CMDSample {"#
-                .as_bytes(),
-        )
-        .unwrap();
-    if !fs::read_dir("samples")
-        .unwrap()
-        .fold(false, |has_file, filename| {
-            let filename = PathBuf::from(filename.unwrap().path().file_name().unwrap());
-            has_file || !excluded_file_list.contains(&filename)
-        })
-    {
-        log!("There is no file in `samples` directory");
-        // Close function body:
-        mod_rs_file
-            .write_all(
-                r#"}
-
-pub fn maybe_print(_sample_name: CMDSample) {
-    let sample_data = "There is no sample to print".to_string();
-    println!("{}", sample_data);
-}
-"#
-                .as_bytes(),
-            )
-            .unwrap();
-        log!("Generated {:?} successfully", mod_rs_file);
-        return;
-    }
-    let mut descriptions = HashMap::new();
-    if PathBuf::from("samples")
-        .join(SAMPLE_DESCRIPTIONS_FILENAME)
-        .exists()
-    {
-        // Load file descriptions from `SAMPLE_DESCRIPTIONS_FILENAME`
-        // Its data is in form of <FILENAME> = <DESCRIPTION>
-        for line in fs::read_to_string(PathBuf::from("samples").join(SAMPLE_DESCRIPTIONS_FILENAME))
-            .unwrap()
-            .lines()
-        {
-            let line_part_list = line
-                .splitn(2, '=')
-                .map(|x| x.to_string())
-                .collect::<Vec<_>>();
-            let (filename, description) = (
-                PathBuf::from(line_part_list[0].trim()),
-                line_part_list[1].trim().to_string(),
-            );
-            descriptions.insert(filename, description);
-        }
-    }
-    let (enum_body, function_body) = fs::read_dir("samples").unwrap().fold(
-        (String::new(), String::new()),
-        |(enum_body, function_body), file| {
-            let file = file.unwrap().path();
-            let file_name = PathBuf::from(file.file_name().unwrap());
-            if excluded_file_list.contains(&file_name) {
-                return (enum_body, function_body);
-            }
-            let file_stem = file_name.file_stem().unwrap().to_str().unwrap().to_string();
-            let sample_name = file_stem
-                .split('-')
-                .fold(String::new(), |sample_name, word| {
-                    format!("{}{}", sample_name, word.capitalize())
-                });
-            let variant = if descriptions.contains_key(&file_name) {
-                format!(
-                    "\n    #[structopt(about = \"{}\")]\n    {},",
-                    descriptions.get(&file_name).unwrap(),
-                    sample_name
-                )
-            } else {
-                format!("\n    #[structopt(skip)]\n    {},", sample_name)
-            };
-            let (from, to) = (
-                PathBuf::from("samples").join(file_name.clone()),
-                PathBuf::from("src").join("samples").join(file_name.clone()),
-            );
-            fs::copy(from.clone(), to.clone()).unwrap();
-            log!("{:?} -> {:?}", from, to);
-            (
-                format!("{}{}", enum_body, variant),
-                format!(
-                    "{}\n        CMDSample::{} => include_str!({:?}).to_string(),",
-                    function_body, sample_name, file_name
-                ),
-            )
-        },
-    );
-    mod_rs_file.write_all(enum_body.as_bytes()).unwrap();
-    mod_rs_file.write_all("\n}\n".as_bytes()).unwrap();
-    mod_rs_file
-        .write_all(
-            r#"
-pub fn maybe_print(sample_name: CMDSample) {
-    let sample_data = match sample_name {"#
-                .as_bytes(),
-        )
-        .unwrap();
-    mod_rs_file.write_all(function_body.as_bytes()).unwrap();
-    mod_rs_file
-        .write_all("\n    };\n    println!(\"{}\", sample_data);\n}\n".as_bytes())
         .unwrap();
     mod_rs_file.flush().unwrap();
     log!("Regenerated {:?}", mod_rs_filename);
