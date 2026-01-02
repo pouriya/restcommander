@@ -1,22 +1,28 @@
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time;
 
+use rustls::{ServerConfig as RustlsServerConfig, ServerConnection};
+use rustls_pemfile::{certs, pkcs8_private_keys};
+
+use http::{HeaderName, HeaderValue, Request as HttpRequest, Response as HttpResponse, StatusCode};
+use httparse::{Request as HttpParseRequest, Status};
 use serde_derive::Deserialize;
 use serde_json::json;
-
-use rouille::input;
-use rouille::{Request, Response as RouilleResponse};
 use thiserror::Error;
+
+use tracing::level_enabled;
 
 use crate::captcha;
 use crate::cmd;
 use crate::cmd::runner::CommandOptionValue;
 use crate::cmd::runner::CommandOptionsValue;
 use crate::cmd::{Command, CommandInput, CommandStats};
-use crate::settings::Cfg;
+use crate::settings::CommandLine;
 use crate::utils;
 use crate::www;
 
@@ -24,6 +30,94 @@ use crate::www;
 // use structopt::clap::crate_name;
 
 pub static API_RUN_BASE_PATH: &str = "/api/run";
+
+// Request wrapper to maintain API compatibility
+pub struct RequestWrapper {
+    request: HttpRequest<Vec<u8>>,
+    remote_addr: SocketAddr,
+}
+
+impl RequestWrapper {
+    pub fn new(request: HttpRequest<Vec<u8>>, remote_addr: SocketAddr) -> Self {
+        Self {
+            request,
+            remote_addr,
+        }
+    }
+
+    pub fn url(&self) -> &str {
+        self.request.uri().path()
+    }
+
+    pub fn method(&self) -> &str {
+        self.request.method().as_str()
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.request
+            .headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+    }
+
+    pub fn headers(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.request
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| value.to_str().ok().map(|v| (name.as_str(), v)))
+    }
+
+    pub fn remote_addr(&self) -> SocketAddr {
+        self.remote_addr
+    }
+
+    pub fn raw_query_string(&self) -> &str {
+        self.request.uri().query().unwrap_or("")
+    }
+
+    pub fn body(&self) -> &[u8] {
+        self.request.body()
+    }
+}
+
+// Response helper functions
+pub type HttpResponseType = HttpResponse<Vec<u8>>;
+
+pub fn response_text(body: impl Into<String>) -> HttpResponseType {
+    let body_str = body.into();
+    HttpResponse::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .header("Connection", "close")
+        .body(body_str.into_bytes())
+        .unwrap()
+}
+
+pub fn response_from_data(mime_type: &str, data: Vec<u8>) -> HttpResponseType {
+    HttpResponse::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", mime_type)
+        .header("Connection", "close")
+        .body(data)
+        .unwrap()
+}
+
+pub fn response_redirect_301(location: String) -> HttpResponseType {
+    HttpResponse::builder()
+        .status(StatusCode::MOVED_PERMANENTLY)
+        .header("Location", location)
+        .header("Connection", "close")
+        .body(Vec::new())
+        .unwrap()
+}
+
+fn response_with_status_code(response: HttpResponseType, code: u16) -> HttpResponseType {
+    let status = StatusCode::from_u16(code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let (parts, body) = response.into_parts();
+    let mut new_response = HttpResponse::from_parts(parts, body);
+    *new_response.status_mut() = status;
+    new_response
+}
 
 #[derive(Error, Debug, Clone)]
 pub enum HTTPError {
@@ -199,7 +293,7 @@ fn exit_code_to_status_code(exit_code: i32) -> u16 {
 }
 
 pub struct ServerConfig {
-    pub handler_state: Arc<HandlerState>,
+    pub handler_state: HandlerState,
     pub address: String,
     pub tls_cert: Option<Vec<u8>>,
     pub tls_key: Option<Vec<u8>>,
@@ -207,41 +301,41 @@ pub struct ServerConfig {
 }
 
 pub fn setup(
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: Arc<RwLock<CommandLine>>,
     commands: Arc<RwLock<Command>>,
 ) -> Result<ServerConfig, String> {
     let config_value = cfg
         .read()
         .map_err(|e| format!("Configuration lock poisoned: {}", e))?
-        .config_value
         .clone();
     let host = config_value.host.clone();
     let port = config_value.port;
 
-    let maybe_captcha = if cfg
+    // Convert commands from RwLock
+    let commands_value = commands
         .read()
-        .map_err(|e| format!("Configuration lock poisoned: {}", e))?
-        .config_value
-        .captcha
-    {
-        Some(Arc::new(RwLock::new(captcha::Captcha::new())))
+        .map_err(|e| format!("Commands lock poisoned: {}", e))?
+        .clone();
+
+    let maybe_captcha = if config_value.captcha {
+        Some(captcha::Captcha::new())
     } else {
         None
     };
-    let tokens = Arc::new(RwLock::new(HashMap::new()));
+    let tokens = HashMap::new();
 
-    // Create shared state for handlers
-    let handler_state = Arc::new(HandlerState {
-        cfg: cfg.clone(),
-        commands: commands.clone(),
-        tokens: tokens.clone(),
-        maybe_captcha: maybe_captcha.clone(),
-    });
+    // Create state for handlers
+    let handler_state = HandlerState {
+        cfg: config_value.clone(),
+        commands: commands_value,
+        tokens,
+        maybe_captcha,
+    };
 
     let address = format!("{}:{}", host, port);
 
     if config_value.tls_cert_file.clone().is_some() && config_value.tls_key_file.clone().is_some() {
-        // Load TLS certificates as raw bytes (rouille handles PEM parsing)
+        // Load TLS certificates as raw bytes
         let cert_bytes = std::fs::read(config_value.tls_cert_file.clone().unwrap())
             .map_err(|e| format!("Could not read cert file: {}", e))?;
         let key_bytes = std::fs::read(config_value.tls_key_file.clone().unwrap())
@@ -280,7 +374,7 @@ pub fn setup(
 }
 
 pub fn start_server(config: ServerConfig) -> Result<(), String> {
-    let state = config.handler_state.clone();
+    let mut state = config.handler_state;
     let address = config.address.clone();
 
     tracing::info!(
@@ -289,36 +383,552 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
         tls = config.has_tls,
     );
 
-    if let (Some(cert), Some(key)) = (config.tls_cert, config.tls_key) {
-        // rouille::Server::new_ssl takes cert and key as Vec<u8>
-        let _server = rouille::Server::new_ssl(
-            address,
-            move |request| handle_request(request, state.clone()),
-            cert,
-            key,
-        )
-        .map_err(|e| format!("Failed to start HTTPS server: {}", e))?;
-        // Server blocks here - call run() to start
-        _server.run();
+    let listener =
+        TcpListener::bind(&address).map_err(|e| format!("Failed to bind to {}: {}", address, e))?;
+
+    if let (Some(cert_bytes), Some(key_bytes)) = (config.tls_cert, config.tls_key) {
+        // HTTPS server
+        // Load certificates and keys
+        let mut cert_reader = std::io::Cursor::new(cert_bytes);
+        let certs = certs(&mut cert_reader)
+            .map_err(|e| format!("Failed to parse certificate: {}", e))?
+            .into_iter()
+            .map(rustls::Certificate)
+            .collect::<Vec<_>>();
+
+        let mut key_reader = std::io::Cursor::new(key_bytes);
+        let mut keys = pkcs8_private_keys(&mut key_reader)
+            .map_err(|e| format!("Failed to parse private key: {}", e))?;
+
+        if keys.is_empty() {
+            return Err("No private keys found in key file".to_string());
+        }
+
+        let key = rustls::PrivateKey(keys.remove(0));
+
+        // Create TLS server config
+        let tls_config = RustlsServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .map_err(|e| format!("Failed to create TLS config: {}", e))?;
+
+        let tls_config = Arc::new(tls_config);
+
+        // HTTPS server loop
+        for stream_result in listener.incoming() {
+            match stream_result {
+                Ok(mut stream) => {
+                    let peer_addr = match stream.peer_addr() {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            tracing::warn!(msg = "Failed to get peer address", error = %e);
+                            continue;
+                        }
+                    };
+
+                    // Create TLS connection - log error and continue if it fails
+                    let mut tls_conn = match ServerConnection::new(tls_config.clone()) {
+                        Ok(conn) => conn,
+                        Err(e) => {
+                            tracing::warn!(
+                                msg = "Failed to create TLS connection",
+                                peer_addr = %peer_addr,
+                                error = %e
+                            );
+                            continue;
+                        }
+                    };
+
+                    // Complete TLS handshake - log error and continue if it fails
+                    if let Err(e) = tls_conn.complete_io(&mut stream) {
+                        tracing::warn!(
+                            msg = "TLS handshake failed",
+                            peer_addr = %peer_addr,
+                            error = %e
+                        );
+                        continue;
+                    }
+
+                    // Create TLS stream for reading/writing
+                    let mut tls_stream = rustls::Stream::new(&mut tls_conn, &mut stream);
+
+                    // Read request through TLS
+                    match parse_http_request_tls(&mut tls_stream, peer_addr) {
+                        Ok(request) => {
+                            let response = handle_request(&request, &mut state);
+
+                            // Log request and response together
+                            log_http_request_response(&request, &response);
+
+                            if let Err(e) = write_http_response_tls(&mut tls_stream, response) {
+                                tracing::warn!(
+                                    msg = "Failed to write response",
+                                    peer_addr = %peer_addr,
+                                    error = %e
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                msg = "Failed to parse request",
+                                peer_addr = %peer_addr,
+                                error = %e
+                            );
+                            let error_response =
+                                response_with_status_code(response_text("Bad Request"), 400);
+                            if let Err(write_err) =
+                                write_http_response_tls(&mut tls_stream, error_response)
+                            {
+                                tracing::warn!(
+                                    msg = "Failed to write error response",
+                                    peer_addr = %peer_addr,
+                                    error = %write_err
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(msg = "Failed to accept connection", error = %e);
+                }
+            }
+        }
     } else {
-        rouille::start_server(address, move |request| {
-            handle_request(request, state.clone())
-        });
+        // HTTP server
+        for stream_result in listener.incoming() {
+            match stream_result {
+                Ok(mut stream) => {
+                    let peer_addr = match stream.peer_addr() {
+                        Ok(addr) => addr,
+                        Err(e) => {
+                            tracing::warn!(msg = "Failed to get peer address", error = %e);
+                            continue;
+                        }
+                    };
+
+                    match parse_http_request(&mut stream, peer_addr) {
+                        Ok(request) => {
+                            let response = handle_request(&request, &mut state);
+
+                            // Log request and response together
+                            log_http_request_response(&request, &response);
+
+                            if let Err(e) = write_http_response(&mut stream, response) {
+                                tracing::warn!(
+                                    msg = "Failed to write response",
+                                    peer_addr = %peer_addr,
+                                    error = %e
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                msg = "Failed to parse request",
+                                peer_addr = %peer_addr,
+                                error = %e
+                            );
+                            let error_response =
+                                response_with_status_code(response_text("Bad Request"), 400);
+                            if let Err(write_err) = write_http_response(&mut stream, error_response)
+                            {
+                                tracing::warn!(
+                                    msg = "Failed to write error response",
+                                    peer_addr = %peer_addr,
+                                    error = %write_err
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(msg = "Failed to accept connection", error = %e);
+                }
+            }
+        }
     }
 
     Ok(())
 }
 
-pub struct HandlerState {
-    cfg: Arc<RwLock<Cfg>>,
-    commands: Arc<RwLock<Command>>,
-    tokens: Arc<RwLock<HashMap<String, usize>>>,
-    maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
+fn parse_http_request(
+    stream: &mut TcpStream,
+    remote_addr: SocketAddr,
+) -> Result<RequestWrapper, String> {
+    // Read up to 8KB for headers
+    let mut buffer = vec![0u8; 8192];
+    let mut total_read = 0;
+
+    loop {
+        let n = stream
+            .read(&mut buffer[total_read..])
+            .map_err(|e| format!("Failed to read from stream: {}", e))?;
+        if n == 0 {
+            return Err("Connection closed".to_string());
+        }
+        total_read += n;
+
+        // Try to parse headers
+        let mut headers = [httparse::EMPTY_HEADER; 64];
+        let mut req = HttpParseRequest::new(&mut headers);
+        match req.parse(&buffer[..total_read]) {
+            Ok(Status::Complete(_header_len)) => {
+                // Headers parsed successfully
+                let method = req.method.ok_or("Missing HTTP method")?;
+                let path = req.path.ok_or("Missing HTTP path")?;
+
+                // Parse URI to extract path and query
+                let uri_str = format!("http://localhost{}", path);
+                let uri = uri_str
+                    .parse::<http::Uri>()
+                    .map_err(|e| format!("Invalid URI: {}", e))?;
+
+                // Build headers map
+                let mut header_map = http::HeaderMap::new();
+                for header in req.headers {
+                    let name = HeaderName::from_bytes(header.name.as_bytes())
+                        .map_err(|e| format!("Invalid header name: {}", e))?;
+                    let value = HeaderValue::from_bytes(header.value)
+                        .map_err(|e| format!("Invalid header value: {}", e))?;
+                    header_map.insert(name, value);
+                }
+
+                // Read body if Content-Length is present
+                let body = if let Some(content_length_str) = header_map.get("content-length") {
+                    let content_length_str = content_length_str
+                        .to_str()
+                        .map_err(|e| format!("Invalid Content-Length header (not UTF-8): {}", e))?;
+                    let content_length: usize = content_length_str.parse().map_err(|e| {
+                        format!("Invalid Content-Length header (not a number): {}", e)
+                    })?;
+
+                    if content_length > 65535 {
+                        return Err("Content-Length too large (max 65535)".to_string());
+                    }
+
+                    // Read remaining body
+                    let mut body = vec![0u8; content_length];
+                    let mut body_read = 0;
+                    while body_read < content_length {
+                        let n = stream
+                            .read(&mut body[body_read..])
+                            .map_err(|e| format!("Failed to read body: {}", e))?;
+                        if n == 0 {
+                            return Err("Connection closed while reading body".to_string());
+                        }
+                        body_read += n;
+                    }
+                    body
+                } else {
+                    Vec::new()
+                };
+
+                // Build http::Request
+                let mut request_builder = HttpRequest::builder().method(method).uri(uri);
+
+                // Copy headers
+                *request_builder.headers_mut().unwrap() = header_map;
+
+                let request = request_builder
+                    .body(body)
+                    .map_err(|e| format!("Failed to build request: {}", e))?;
+
+                return Ok(RequestWrapper::new(request, remote_addr));
+            }
+            Ok(Status::Partial) => {
+                // Need more data, but check if we've exceeded buffer size
+                if total_read >= buffer.len() {
+                    return Err("Request headers too large".to_string());
+                }
+                // Continue reading
+            }
+            Err(e) => {
+                return Err(format!("Failed to parse HTTP request: {}", e));
+            }
+        }
+    }
 }
 
-fn handle_request(request: &Request, state: Arc<HandlerState>) -> RouilleResponse {
-    http_logging_rouille(request);
+// TLS versions of parse and write functions
+fn parse_http_request_tls(
+    stream: &mut rustls::Stream<'_, ServerConnection, TcpStream>,
+    remote_addr: SocketAddr,
+) -> Result<RequestWrapper, String> {
+    // Same logic as parse_http_request but using TLS stream
+    // Read up to 8KB for headers
+    let mut buffer = vec![0u8; 8192];
+    let mut total_read = 0;
 
+    loop {
+        let n = stream
+            .read(&mut buffer[total_read..])
+            .map_err(|e| format!("Failed to read from TLS stream: {}", e))?;
+        if n == 0 {
+            return Err("Connection closed".to_string());
+        }
+        total_read += n;
+
+        // Try to parse headers
+        let mut headers = [httparse::EMPTY_HEADER; 64];
+        let mut req = HttpParseRequest::new(&mut headers);
+        match req.parse(&buffer[..total_read]) {
+            Ok(Status::Complete(_)) => {
+                // Headers parsed successfully
+                let method = req.method.ok_or("Missing HTTP method")?;
+                let path = req.path.ok_or("Missing HTTP path")?;
+
+                // Parse URI to extract path and query
+                let uri_str = format!("http://localhost{}", path);
+                let uri = uri_str
+                    .parse::<http::Uri>()
+                    .map_err(|e| format!("Invalid URI: {}", e))?;
+
+                // Build headers map
+                let mut header_map = http::HeaderMap::new();
+                for header in req.headers {
+                    let name = HeaderName::from_bytes(header.name.as_bytes())
+                        .map_err(|e| format!("Invalid header name: {}", e))?;
+                    let value = HeaderValue::from_bytes(header.value)
+                        .map_err(|e| format!("Invalid header value: {}", e))?;
+                    header_map.insert(name, value);
+                }
+
+                // Read body if Content-Length is present
+                let body = if let Some(content_length_str) = header_map.get("content-length") {
+                    let content_length_str = content_length_str
+                        .to_str()
+                        .map_err(|e| format!("Invalid Content-Length header (not UTF-8): {}", e))?;
+                    let content_length: usize = content_length_str.parse().map_err(|e| {
+                        format!("Invalid Content-Length header (not a number): {}", e)
+                    })?;
+
+                    if content_length > 65535 {
+                        return Err("Content-Length too large (max 65535)".to_string());
+                    }
+
+                    // Read remaining body
+                    let mut body = vec![0u8; content_length];
+                    let mut body_read = 0;
+                    while body_read < content_length {
+                        let n = stream
+                            .read(&mut body[body_read..])
+                            .map_err(|e| format!("Failed to read body: {}", e))?;
+                        if n == 0 {
+                            return Err("Connection closed while reading body".to_string());
+                        }
+                        body_read += n;
+                    }
+                    body
+                } else {
+                    Vec::new()
+                };
+
+                // Build http::Request
+                let mut request_builder = HttpRequest::builder().method(method).uri(uri);
+
+                // Copy headers
+                *request_builder.headers_mut().unwrap() = header_map;
+
+                let request = request_builder
+                    .body(body)
+                    .map_err(|e| format!("Failed to build request: {}", e))?;
+
+                return Ok(RequestWrapper::new(request, remote_addr));
+            }
+            Ok(Status::Partial) => {
+                // Need more data, but check if we've exceeded buffer size
+                if total_read >= buffer.len() {
+                    return Err("Request headers too large".to_string());
+                }
+                // Continue reading
+            }
+            Err(e) => {
+                return Err(format!("Failed to parse HTTP request: {}", e));
+            }
+        }
+    }
+}
+
+fn write_http_response_tls(
+    stream: &mut rustls::Stream<'_, ServerConnection, TcpStream>,
+    response: HttpResponseType,
+) -> Result<(), String> {
+    // Same logic as write_http_response but using TLS stream
+    // Write status line
+    let status_line = format!(
+        "HTTP/1.1 {} {}\r\n",
+        response.status().as_u16(),
+        response.status().canonical_reason().unwrap_or("Unknown")
+    );
+    stream
+        .write_all(status_line.as_bytes())
+        .map_err(|e| format!("Failed to write status line: {}", e))?;
+
+    // Write headers
+    for (name, value) in response.headers() {
+        let header_line = format!("{}: {}\r\n", name, value.to_str().unwrap_or(""));
+        stream
+            .write_all(header_line.as_bytes())
+            .map_err(|e| format!("Failed to write header: {}", e))?;
+    }
+
+    // Ensure Connection: close header is present
+    if !response.headers().contains_key("connection") {
+        stream
+            .write_all(b"Connection: close\r\n")
+            .map_err(|e| format!("Failed to write Connection header: {}", e))?;
+    }
+
+    // Write empty line to separate headers from body
+    stream
+        .write_all(b"\r\n")
+        .map_err(|e| format!("Failed to write header separator: {}", e))?;
+
+    // Write body
+    stream
+        .write_all(response.body())
+        .map_err(|e| format!("Failed to write body: {}", e))?;
+
+    stream
+        .flush()
+        .map_err(|e| format!("Failed to flush stream: {}", e))?;
+
+    Ok(())
+}
+
+fn write_http_response(stream: &mut TcpStream, response: HttpResponseType) -> Result<(), String> {
+    // Write status line
+    let status_line = format!(
+        "HTTP/1.1 {} {}\r\n",
+        response.status().as_u16(),
+        response.status().canonical_reason().unwrap_or("Unknown")
+    );
+    stream
+        .write_all(status_line.as_bytes())
+        .map_err(|e| format!("Failed to write status line: {}", e))?;
+
+    // Write headers
+    for (name, value) in response.headers() {
+        let header_line = format!("{}: {}\r\n", name, value.to_str().unwrap_or(""));
+        stream
+            .write_all(header_line.as_bytes())
+            .map_err(|e| format!("Failed to write header: {}", e))?;
+    }
+
+    // Ensure Connection: close header is present
+    if !response.headers().contains_key("connection") {
+        stream
+            .write_all(b"Connection: close\r\n")
+            .map_err(|e| format!("Failed to write Connection header: {}", e))?;
+    }
+
+    // Write empty line to separate headers from body
+    stream
+        .write_all(b"\r\n")
+        .map_err(|e| format!("Failed to write header separator: {}", e))?;
+
+    // Write body
+    stream
+        .write_all(response.body())
+        .map_err(|e| format!("Failed to write body: {}", e))?;
+
+    stream
+        .flush()
+        .map_err(|e| format!("Failed to flush stream: {}", e))?;
+
+    Ok(())
+}
+
+fn log_http_request_response(request: &RequestWrapper, response: &HttpResponseType) {
+    let method = request.method();
+    let path = request.url();
+    let status_code = response.status().as_u16();
+
+    if level_enabled!(tracing::Level::TRACE) {
+        // Trace level: log everything (headers, body) for both request and response
+        let mut req_headers_str = String::new();
+        for (name, value) in request.headers() {
+            req_headers_str.push_str(&format!("{}: {}\r\n", name, value));
+        }
+
+        let req_body_str = if request.body().is_empty() {
+            "<empty>".to_string()
+        } else {
+            match std::str::from_utf8(request.body()) {
+                Ok(s) => s.to_string(),
+                Err(_) => format!("<binary {} bytes>", request.body().len()),
+            }
+        };
+
+        let mut resp_headers_str = String::new();
+        for (name, value) in response.headers() {
+            resp_headers_str.push_str(&format!("{}: {}\r\n", name, value.to_str().unwrap_or("")));
+        }
+
+        let resp_body_str = if response.body().is_empty() {
+            "<empty>".to_string()
+        } else {
+            match std::str::from_utf8(response.body()) {
+                Ok(s) => s.to_string(),
+                Err(_) => format!("<binary {} bytes>", response.body().len()),
+            }
+        };
+
+        tracing::trace!(
+            msg = "HTTP request/response",
+            method = method,
+            path = path,
+            status_code = status_code,
+            remote_addr = %request.remote_addr(),
+            request_headers = req_headers_str,
+            request_body = req_body_str,
+            response_headers = resp_headers_str,
+            response_body = resp_body_str,
+        );
+    } else if level_enabled!(tracing::Level::DEBUG) {
+        // Debug level: log path, content-length, response length, status code
+        let req_content_length = request
+            .header("content-length")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        let resp_content_length = response
+            .headers()
+            .get("content-length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        let response_length = response.body().len();
+
+        tracing::debug!(
+            msg = "HTTP request/response",
+            method = method,
+            path = path,
+            status_code = status_code,
+            remote_addr = %request.remote_addr(),
+            request_content_length = req_content_length,
+            response_content_length = resp_content_length,
+            response_length = response_length,
+        );
+    } else {
+        // Info/Warn/Error level: log path and status code
+        tracing::info!(
+            msg = "HTTP request/response",
+            method = method,
+            path = path,
+            status_code = status_code,
+            remote_addr = %request.remote_addr(),
+        );
+    }
+}
+
+pub struct HandlerState {
+    cfg: CommandLine,
+    commands: Command,
+    tokens: HashMap<String, usize>,
+    maybe_captcha: Option<captcha::Captcha>,
+}
+
+fn handle_request(request: &RequestWrapper, state: &mut HandlerState) -> HttpResponseType {
     let url = request.url();
     let method = request.method();
 
@@ -333,84 +943,71 @@ fn handle_request(request: &Request, state: Arc<HandlerState>) -> RouilleRespons
         return handle_static(request, &state.cfg, tail);
     }
 
-    // Handle API routes
-    rouille::router!(request,
-        (GET) (/api/public/captcha) => {
-            api_captcha(&state.maybe_captcha)
-        },
-        (GET) (/api/public/configuration) => {
-            api_configuration(&state.cfg)
-        },
-        (GET) (/api/auth/test) => {
-            api_auth_test(request, &state.tokens, &state.cfg)
-        },
-        (POST) (/api/auth/token) => {
-            api_auth_token_handler(request, &state.cfg, &state.maybe_captcha, &state.tokens)
-        },
-        (GET) (/api/commands) => {
-            api_get_commands(request, &state.commands, &state.tokens, &state.cfg)
-        },
-        (POST) (/api/setPassword) => {
-            api_set_password(request, &state.cfg, &state.tokens)
-        },
+    // Manual routing
+    match (method, url) {
+        ("GET", "/api/public/captcha") => api_captcha(&mut state.maybe_captcha),
+        ("GET", "/api/public/configuration") => api_configuration(&state.cfg),
+        ("GET", "/api/auth/test") => api_auth_test(request, &state.tokens, &state.cfg),
+        ("POST", "/api/auth/token") => api_auth_token_handler(
+            request,
+            &mut state.cfg,
+            &mut state.maybe_captcha,
+            &mut state.tokens,
+        ),
+        ("GET", "/api/commands") => {
+            api_get_commands(request, &mut state.commands, &mut state.tokens, &state.cfg)
+        }
+        ("POST", "/api/setPassword") => {
+            api_set_password(request, &mut state.cfg, &mut state.tokens)
+        }
         _ => {
             // Handle dynamic routes for /api/run/* and /api/state/*
             if method == "POST" && url.starts_with("/api/run/") {
                 let tail = url.strip_prefix("/api/run/").unwrap_or("");
-                return api_run_command(request, &state.cfg, &state.commands, &state.tokens, tail);
+                return api_run_command(
+                    request,
+                    &state.cfg,
+                    &mut state.commands,
+                    &mut state.tokens,
+                    tail,
+                );
             }
             if method == "GET" && url.starts_with("/api/state/") {
                 let tail = url.strip_prefix("/api/state/").unwrap_or("");
-                return api_get_command_state(request, &state.cfg, &state.commands, &state.tokens, tail);
+                return api_get_command_state(
+                    request,
+                    &state.cfg,
+                    &mut state.commands,
+                    &mut state.tokens,
+                    tail,
+                );
             }
-            RouilleResponse::text("Not Found").with_status_code(404)
+            response_with_status_code(response_text("Not Found"), 404)
         }
-    )
-}
-
-// Helper functions for rouille handlers
-fn http_logging_rouille(_request: &Request) {
-    // Logging will be handled per response
-}
-
-fn redirect_root_to_index_html(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
-    let cfg_value = match cfg.read() {
-        Ok(guard) => guard.config_value.clone(),
-        Err(e) => {
-            return make_api_response(Err(HTTPError::Internal(format!(
-                "Configuration lock poisoned: {}",
-                e
-            ))));
-        }
-    };
-    if cfg_value.enabled {
-        RouilleResponse::redirect_301(format!("{}static/index.html", cfg_value.http_base_path))
-    } else {
-        RouilleResponse::text("<html><body>Service Unavailable!</body></html>")
-            .with_status_code(403)
     }
 }
 
-fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> RouilleResponse {
+fn redirect_root_to_index_html(cfg: &CommandLine) -> HttpResponseType {
+    if cfg.enabled {
+        response_redirect_301(format!("{}static/index.html", cfg.http_base_path))
+    } else {
+        response_with_status_code(
+            response_text("<html><body>Service Unavailable!</body></html>"),
+            403,
+        )
+    }
+}
+
+fn handle_static(_request: &RequestWrapper, cfg: &CommandLine, tail: &str) -> HttpResponseType {
     // Try external static directory first
-    let config_value = match cfg.read() {
-        Ok(guard) => guard.config_value.clone(),
-        Err(e) => {
-            return RouilleResponse::text(format!(
-                "Internal error: Configuration lock poisoned: {}",
-                e
-            ))
-            .with_status_code(500);
-        }
-    };
-    if config_value.enabled
-        && config_value
+    if cfg.enabled
+        && cfg
             .static_directory
             .as_ref()
             .map(|d| d.is_dir())
             .unwrap_or(false)
     {
-        let file_path = config_value.static_directory.as_ref().unwrap().join(tail);
+        let file_path = cfg.static_directory.as_ref().unwrap().join(tail);
         if file_path.exists() && file_path.is_file() {
             if let Ok(data) = std::fs::read(&file_path) {
                 // Simple mime type detection
@@ -425,7 +1022,7 @@ fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> Roui
                     Some("ttf") => "font/ttf",
                     _ => "application/octet-stream",
                 };
-                return RouilleResponse::from_data(mime_type, data);
+                return response_from_data(mime_type, data);
             }
         }
     }
@@ -433,23 +1030,15 @@ fn handle_static(_request: &Request, cfg: &Arc<RwLock<Cfg>>, tail: &str) -> Roui
     // Fall back to internal static files
     if let Some((bytes, maybe_mime_type)) = www::handle_static(tail.to_string()) {
         let mime_type = maybe_mime_type.unwrap_or_else(|| "application/octet-stream".to_string());
-        RouilleResponse::from_data(mime_type, bytes)
+        response_from_data(&mime_type, bytes)
     } else {
-        RouilleResponse::text("Not Found").with_status_code(404)
+        response_with_status_code(response_text("Not Found"), 404)
     }
 }
 
-fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> RouilleResponse {
+fn api_captcha(maybe_captcha: &mut Option<captcha::Captcha>) -> HttpResponseType {
     if let Some(captcha) = maybe_captcha {
-        let (id, _, png_image) = match captcha.write() {
-            Ok(mut guard) => guard.generate(true),
-            Err(e) => {
-                return make_api_response(Err(HTTPError::Internal(format!(
-                    "CAPTCHA lock poisoned: {}",
-                    e
-                ))));
-            }
-        };
+        let (id, _, png_image) = captcha.generate(true);
         make_api_response_ok_with_result(serde_json::json!({"id": id, "image": png_image}))
     } else {
         make_api_response(Err(HTTPError::Authentication(
@@ -460,16 +1049,8 @@ fn api_captcha(maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>) -> Rouille
     }
 }
 
-fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
-    let config_map = match cfg.read() {
-        Ok(guard) => guard.config_value.www_configuration_map.clone(),
-        Err(e) => {
-            return make_api_response(Err(HTTPError::Internal(format!(
-                "Configuration lock poisoned: {}",
-                e
-            ))));
-        }
-    };
+fn api_configuration(cfg: &CommandLine) -> HttpResponseType {
+    let config_map = cfg.www_configuration_map.clone();
     make_api_response_ok_with_result(serde_json::Value::Object(config_map.into_iter().fold(
         serde_json::Map::new(),
         |mut acc, item| {
@@ -480,10 +1061,10 @@ fn api_configuration(cfg: &Arc<RwLock<Cfg>>) -> RouilleResponse {
 }
 
 fn api_auth_test(
-    request: &Request,
-    tokens: &Arc<RwLock<HashMap<String, usize>>>,
-    cfg: &Arc<RwLock<Cfg>>,
-) -> RouilleResponse {
+    request: &RequestWrapper,
+    tokens: &HashMap<String, usize>,
+    cfg: &CommandLine,
+) -> HttpResponseType {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => make_api_response_ok(),
         Err(e) => make_api_response(Err(HTTPError::Authentication(e))),
@@ -491,19 +1072,16 @@ fn api_auth_test(
 }
 
 fn api_auth_token_handler(
-    request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
-    maybe_captcha: &Option<Arc<RwLock<captcha::Captcha>>>,
-    tokens: &Arc<RwLock<HashMap<String, usize>>>,
-) -> RouilleResponse {
+    request: &RequestWrapper,
+    cfg: &mut CommandLine,
+    maybe_captcha: &mut Option<captcha::Captcha>,
+    tokens: &mut HashMap<String, usize>,
+) -> HttpResponseType {
     let authorization_value = request.header("Authorization").unwrap_or("");
     // Parse form data manually from POST body
     let form: HashMap<String, String> = if request.method() == "POST" {
-        match input::post::raw_urlencoded_post_input(request) {
-            Ok(data) => {
-                // raw_urlencoded_post_input returns Vec<(String, String)>
-                data.into_iter().collect()
-            }
+        match serde_urlencoded::from_bytes::<Vec<(String, String)>>(request.body()) {
+            Ok(data) => data.into_iter().collect(),
             Err(_) => HashMap::new(),
         }
     } else {
@@ -512,37 +1090,21 @@ fn api_auth_token_handler(
 
     match authentication_with_basic(
         request,
-        cfg.clone(),
-        maybe_captcha.clone(),
+        cfg,
+        maybe_captcha,
         authorization_value.to_string(),
         form,
     ) {
         Err(error) => make_api_response(Err(HTTPError::Authentication(error))),
         Ok(_) => {
             let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
-            let token_timeout = match cfg.read() {
-                Ok(guard) => guard.config_value.token_timeout,
-                Err(e) => {
-                    return make_api_response(Err(HTTPError::Internal(format!(
-                        "Configuration lock poisoned: {}",
-                        e
-                    ))));
-                }
-            };
+            let token_timeout = cfg.token_timeout;
             let timestamp = time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as usize
                 + token_timeout;
-            match tokens.write() {
-                Ok(mut guard) => guard.insert(token.clone(), timestamp),
-                Err(e) => {
-                    return make_api_response(Err(HTTPError::Internal(format!(
-                        "Tokens lock poisoned: {}",
-                        e
-                    ))));
-                }
-            };
+            tokens.insert(token.clone(), timestamp);
             make_api_response_with_headers(
                 Ok(serde_json::json!({ "token": token })),
                 Some(vec![(
@@ -558,45 +1120,38 @@ fn api_auth_token_handler(
 }
 
 fn api_get_commands(
-    request: &Request,
-    commands: &Arc<RwLock<Command>>,
-    tokens: &Arc<RwLock<HashMap<String, usize>>>,
-    cfg: &Arc<RwLock<Cfg>>,
-) -> RouilleResponse {
+    request: &RequestWrapper,
+    commands: &mut Command,
+    tokens: &mut HashMap<String, usize>,
+    cfg: &CommandLine,
+) -> HttpResponseType {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => {
             // Reload commands before returning them
-            let reload_result = match commands.write() {
-                Ok(mut guard) => guard.reload(),
-                Err(e) => {
-                    return make_api_response(Err(HTTPError::Internal(format!(
-                        "Commands lock poisoned: {}",
-                        e
-                    ))));
-                }
-            };
+            let reload_result = commands.reload();
             if let Err(e) = reload_result {
                 return make_api_response(Err(HTTPError::API(HTTPAPIError::InitializeCommand {
                     message: format!("Failed to reload commands: {}", e),
                 })));
             }
-            let command_value = match commands.read() {
-                Ok(guard) => match serde_json::to_value(guard.deref()) {
-                    Ok(value) => value,
-                    Err(e) => {
-                        return make_api_response(Err(HTTPError::Internal(format!(
-                            "Failed to serialize commands: {}",
-                            e
-                        ))));
-                    }
-                },
+            let mut command_value = match serde_json::to_value(commands.deref()) {
+                Ok(value) => value,
                 Err(e) => {
                     return make_api_response(Err(HTTPError::Internal(format!(
-                        "Commands lock poisoned: {}",
+                        "Failed to serialize commands: {}",
                         e
                     ))));
                 }
             };
+
+            // Ensure 'commands' field is always present (frontend expects it)
+            // The Command struct skips empty commands maps, but frontend needs it
+            if let Some(obj) = command_value.as_object_mut() {
+                if !obj.contains_key("commands") {
+                    obj.insert("commands".to_string(), serde_json::json!({}));
+                }
+            }
+
             make_api_response_ok_with_result(command_value)
         }
         Err(e) => make_api_response(Err(HTTPError::Authentication(e))),
@@ -604,16 +1159,16 @@ fn api_get_commands(
 }
 
 fn api_set_password(
-    request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
-    tokens: &Arc<RwLock<HashMap<String, usize>>>,
-) -> RouilleResponse {
+    request: &RequestWrapper,
+    cfg: &mut CommandLine,
+    tokens: &mut HashMap<String, usize>,
+) -> HttpResponseType {
     match check_authentication(request, tokens, cfg) {
         Ok(_) => {
             // Extract token for potential invalidation on wrong previous password
             let token = extract_token(request).ok();
 
-            let input: SetPassword = match input::json_input(request) {
+            let input: SetPassword = match serde_json::from_slice::<SetPassword>(request.body()) {
                 Ok(p) => p,
                 Err(_) => {
                     return make_api_response(Err(HTTPError::Deserialize(
@@ -621,7 +1176,7 @@ fn api_set_password(
                     )))
                 }
             };
-            match try_set_password(cfg.clone(), input, tokens.clone(), token) {
+            match try_set_password(cfg, input, tokens, token) {
                 Ok(_) => make_api_response_ok(),
                 Err(e) => make_api_response(Err(HTTPError::API(e))),
             }
@@ -631,24 +1186,19 @@ fn api_set_password(
 }
 
 fn check_authentication(
-    request: &Request,
-    tokens: &Arc<RwLock<HashMap<String, usize>>>,
-    cfg: &Arc<RwLock<Cfg>>,
+    request: &RequestWrapper,
+    tokens: &HashMap<String, usize>,
+    cfg: &CommandLine,
 ) -> Result<(), HTTPAuthenticationError> {
-    let cfg_value = cfg
-        .read()
-        .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
-        .config_value
-        .clone();
-    if cfg_value.password_sha512.is_none() {
+    if cfg.password_sha512.is_none() {
         return Ok(());
     }
 
     let token = extract_token(request)?;
-    authentication_with_token(tokens.clone(), token, cfg.clone())
+    authentication_with_token(tokens, token, cfg)
 }
 
-fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
+fn extract_token(request: &RequestWrapper) -> Result<String, HTTPAuthenticationError> {
     // Try cookie first
     if let Some(cookie_header) = request.header("Cookie") {
         for cookie in cookie_header.split(';') {
@@ -677,19 +1227,19 @@ fn extract_token(request: &Request) -> Result<String, HTTPAuthenticationError> {
 }
 
 fn api_run_command(
-    request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
-    commands: &Arc<RwLock<Command>>,
-    tokens: &Arc<RwLock<HashMap<String, usize>>>,
+    request: &RequestWrapper,
+    cfg: &CommandLine,
+    commands: &mut Command,
+    tokens: &mut HashMap<String, usize>,
     command_path: &str,
-) -> RouilleResponse {
+) -> HttpResponseType {
     // Check authentication
     if let Err(e) = check_authentication(request, tokens, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
     }
 
     match extract_command_input(request, cfg) {
-        Ok(input) => match maybe_run_command(commands.clone(), command_path.to_string(), input) {
+        Ok(input) => match maybe_run_command(commands, command_path.to_string(), input) {
             Ok(response) => response,
             Err(e) => make_api_response(Err(HTTPError::API(e))),
         },
@@ -698,26 +1248,26 @@ fn api_run_command(
 }
 
 fn api_get_command_state(
-    request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
-    commands: &Arc<RwLock<Command>>,
-    tokens: &Arc<RwLock<HashMap<String, usize>>>,
+    request: &RequestWrapper,
+    cfg: &CommandLine,
+    commands: &mut Command,
+    tokens: &mut HashMap<String, usize>,
     command_path: &str,
-) -> RouilleResponse {
+) -> HttpResponseType {
     // Check authentication
     if let Err(e) = check_authentication(request, tokens, cfg) {
         return make_api_response(Err(HTTPError::Authentication(e)));
     }
 
-    match maybe_get_command_state(cfg.clone(), commands.clone(), command_path.to_string()) {
+    match maybe_get_command_state(cfg, commands, command_path.to_string()) {
         Ok(response) => response,
         Err(e) => make_api_response(Err(HTTPError::API(e))),
     }
 }
 
 fn extract_command_input(
-    request: &Request,
-    cfg: &Arc<RwLock<Cfg>>,
+    request: &RequestWrapper,
+    cfg: &CommandLine,
 ) -> Result<CommandInput, HTTPError> {
     let mut input = CommandInput::default();
 
@@ -759,11 +1309,9 @@ fn extract_command_input(
     // Extract from body (JSON or form)
     let content_type = request.header("Content-Type").unwrap_or("");
     let body_options = if content_type.contains("application/json") {
-        input::json_input::<CommandOptionsValue>(request).unwrap_or_default()
+        serde_json::from_slice::<CommandOptionsValue>(request.body()).unwrap_or_default()
     } else if content_type.contains("application/x-www-form-urlencoded") {
-        // For form data, we need to parse it manually or use post module
-        // For now, return empty - can be enhanced later
-        CommandOptionsValue::new()
+        serde_urlencoded::from_bytes::<CommandOptionsValue>(request.body()).unwrap_or_default()
     } else {
         CommandOptionsValue::new()
     };
@@ -784,7 +1332,7 @@ fn extract_command_input(
         options,
         query_options,
         body_options,
-        add_configuration_to_options(cfg.clone()),
+        add_configuration_to_options(cfg),
     ]);
 
     Ok(input)
@@ -794,21 +1342,16 @@ fn extract_command_input(
 // Utility functions that are still used by handlers are kept below
 
 fn authentication_with_basic(
-    request: &Request,
-    cfg: Arc<RwLock<Cfg>>,
-    maybe_captcha: Option<Arc<RwLock<captcha::Captcha>>>,
+    request: &RequestWrapper,
+    cfg: &CommandLine,
+    maybe_captcha: &mut Option<captcha::Captcha>,
     authorization_value: String,
     form: HashMap<String, String>,
 ) -> Result<(), HTTPAuthenticationError> {
-    let config_value = cfg
-        .read()
-        .map_err(|_| HTTPAuthenticationError::InvalidToken)? // Use InvalidToken as a generic auth error
-        .config_value
-        .clone();
-    if config_value.password_sha512.is_none() && config_value.username.is_empty() {
+    if cfg.password_sha512.is_none() && cfg.username.is_empty() {
         return Ok(());
     };
-    if config_value.password_sha512.is_none() || config_value.username.is_empty() {
+    if cfg.password_sha512.is_none() || cfg.username.is_empty() {
         return Err(HTTPAuthenticationError::UsernameOrPasswordIsNotSet);
     };
     match authorization_value
@@ -830,7 +1373,7 @@ fn authentication_with_basic(
                 .collect::<Vec<&str>>()[..]
             {
                 [username, password] => {
-                    if username == config_value.username {
+                    if username == cfg.username {
                         // Read X-RESTCOMMANDER-PASSWORD-HASHED header (default to "false")
                         let password_hashed_header = request
                             .header("X-RESTCOMMANDER-PASSWORD-HASHED")
@@ -854,7 +1397,7 @@ fn authentication_with_basic(
                         // Verify password using bcrypt
                         let password_valid = utils::verify_bcrypt(
                             &password_sha256,
-                            config_value.password_sha512.as_ref().unwrap(),
+                            cfg.password_sha512.as_ref().unwrap(),
                         )
                         .map_err(|_| HTTPAuthenticationError::InvalidUsernameOrPassword)?;
 
@@ -869,19 +1412,14 @@ fn authentication_with_basic(
                                     .unwrap()
                                     .clone();
                                 if let Some(captcha) = maybe_captcha {
-                                    match captcha.write() {
-                                        Ok(mut guard) => {
-                                            if guard.compare_and_update(
-                                                key.to_string(),
-                                                value,
-                                                config_value.captcha_case_sensitive,
-                                            ) {
-                                                Ok(())
-                                            } else {
-                                                Err(HTTPAuthenticationError::InvalidCaptcha {})
-                                            }
-                                        }
-                                        Err(_) => Err(HTTPAuthenticationError::InvalidCaptcha {}),
+                                    if captcha.compare_and_update(
+                                        key.to_string(),
+                                        value,
+                                        cfg.captcha_case_sensitive,
+                                    ) {
+                                        Ok(())
+                                    } else {
+                                        Err(HTTPAuthenticationError::InvalidCaptcha {})
                                     }
                                 } else {
                                     Err(HTTPAuthenticationError::InvalidCaptcha {})
@@ -916,16 +1454,10 @@ fn authentication_with_basic(
 }
 
 fn authentication_with_token(
-    tokens: Arc<RwLock<HashMap<String, usize>>>,
+    tokens: &HashMap<String, usize>,
     token: String,
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: &CommandLine,
 ) -> Result<(), HTTPAuthenticationError> {
-    let cfg = cfg
-        .clone()
-        .read()
-        .map_err(|_| HTTPAuthenticationError::InvalidToken)?
-        .config_value
-        .clone();
     if cfg.password_sha512.is_none() {
         return Ok(());
     }
@@ -937,11 +1469,7 @@ fn authentication_with_token(
             return Ok(());
         }
     }
-    let tokens_clone = tokens.clone();
-    let tokens_guard = tokens_clone
-        .read()
-        .map_err(|_| HTTPAuthenticationError::InvalidToken)?;
-    if let Some(expire_time) = tokens_guard.get(token.as_str()) {
+    if let Some(expire_time) = tokens.get(token.as_str()) {
         if expire_time
             > &(time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)
@@ -957,16 +1485,11 @@ fn authentication_with_token(
 }
 
 fn maybe_run_command(
-    commands: Arc<RwLock<Command>>,
+    commands: &mut Command,
     command_path: String,
     command_input: CommandInput,
-) -> Result<RouilleResponse, HTTPAPIError> {
-    let root_command = commands
-        .read()
-        .map_err(|e| HTTPAPIError::InitializeCommand {
-            message: format!("Commands lock poisoned: {}", e),
-        })?
-        .clone();
+) -> Result<HttpResponseType, HTTPAPIError> {
+    let root_command = commands.clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
         .join(PathBuf::from(command_path))
         .components()
@@ -1008,16 +1531,11 @@ fn maybe_run_command(
 }
 
 fn maybe_get_command_state(
-    cfg: Arc<RwLock<Cfg>>,
-    commands: Arc<RwLock<Command>>,
+    cfg: &CommandLine,
+    commands: &mut Command,
     command_path: String,
-) -> Result<RouilleResponse, HTTPAPIError> {
-    let root_command = commands
-        .read()
-        .map_err(|e| HTTPAPIError::InitializeCommand {
-            message: format!("Commands lock poisoned: {}", e),
-        })?
-        .clone();
+) -> Result<HttpResponseType, HTTPAPIError> {
+    let root_command = commands.clone();
     let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
         .join(PathBuf::from(command_path))
         .components()
@@ -1030,7 +1548,7 @@ fn maybe_get_command_state(
     })?;
     let command_output = cmd::get_state(
         &command,
-        make_environment_variables_map_from_options(add_configuration_to_options(cfg.clone())),
+        make_environment_variables_map_from_options(add_configuration_to_options(cfg)),
     )
     .map_err(|reason| HTTPAPIError::InitializeCommand {
         message: reason.to_string(),
@@ -1071,81 +1589,66 @@ fn make_environment_variables_map_from_options(
         })
 }
 
-fn add_configuration_to_options(cfg: Arc<RwLock<Cfg>>) -> CommandOptionsValue {
-    let cfg_instance = match cfg.read() {
-        Ok(guard) => guard.config_value.clone(),
-        Err(_) => {
-            // If lock is poisoned, return empty options
-            // This is a fallback to prevent panics
-            return CommandOptionsValue::new();
-        }
-    };
+fn add_configuration_to_options(cfg: &CommandLine) -> CommandOptionsValue {
     let mut options = CommandOptionsValue::from([
         (
             "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
-            CommandOptionValue::String(if cfg_instance.host.as_str() == "0.0.0.0" {
+            CommandOptionValue::String(if cfg.host.as_str() == "0.0.0.0" {
                 "127.0.0.1".to_string()
             } else {
-                cfg_instance.host.clone()
+                cfg.host.clone()
             }),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_PORT".to_string(),
-            CommandOptionValue::Integer(cfg_instance.port as i64),
+            CommandOptionValue::Integer(cfg.port as i64),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
-            CommandOptionValue::String(cfg_instance.http_base_path.clone()),
+            CommandOptionValue::String(cfg.http_base_path.clone()),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_USERNAME".to_string(),
-            CommandOptionValue::String(cfg_instance.username.clone()),
+            CommandOptionValue::String(cfg.username.clone()),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_API_TOKEN".to_string(),
-            CommandOptionValue::String(cfg_instance.api_token.clone().unwrap_or_default()),
+            CommandOptionValue::String(cfg.api_token.clone().unwrap_or_default()),
         ),
         (
             "RESTCOMMANDER_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
-            CommandOptionValue::String(cfg_instance.root_directory.to_str().unwrap().to_string()),
+            CommandOptionValue::String(cfg.root_directory.to_str().unwrap().to_string()),
         ),
         (
             "RESTCOMMANDER_CONFIG_SERVER_HTTPS".to_string(),
-            CommandOptionValue::Bool(
-                cfg_instance
-                    .tls_key_file
-                    .as_ref()
-                    .map(|_| true)
-                    .unwrap_or(false),
-            ),
+            CommandOptionValue::Bool(cfg.tls_key_file.as_ref().map(|_| true).unwrap_or(false)),
         ),
         (
             "RESTCOMMANDER_CONFIG_LOGGING_LEVEL_NAME".to_string(),
-            CommandOptionValue::String(cfg_instance.logging_level().to_string()),
+            CommandOptionValue::String(cfg.logging_level().to_string()),
         ),
         (
             "RESTCOMMANDER_CONFIGURATION_FILENAME".to_string(),
             CommandOptionValue::String("<COMMANDLINE>".to_string()),
         ),
     ]);
-    for (key, value) in cfg_instance.configuration {
-        options.insert(key, value);
+    for (key, value) in &cfg.configuration {
+        options.insert(key.clone(), value.clone());
     }
     options
 }
 
 fn try_set_password(
-    cfg: Arc<RwLock<Cfg>>,
+    cfg: &mut CommandLine,
     password: SetPassword,
-    tokens: Arc<RwLock<HashMap<String, usize>>>,
+    tokens: &mut HashMap<String, usize>,
     token: Option<String>,
-) -> Result<RouilleResponse, HTTPAPIError> {
+) -> Result<HttpResponseType, HTTPAPIError> {
     if password.password.is_empty() {
         return Err(HTTPAPIError::EmptyPassword);
     };
 
     // Verify previous password if provided
-    let config_value = cfg.read().unwrap().config_value.clone();
 
     if let Some(previous_password) = password.previous_password {
         // Hash previous password with SHA256 if needed (uses same hash flag as new password)
@@ -1158,16 +1661,14 @@ fn try_set_password(
         // Verify previous password against current password
         let previous_password_valid = utils::verify_bcrypt(
             &previous_password_sha256,
-            config_value.password_sha512.as_ref().unwrap(),
+            cfg.password_sha512.as_ref().unwrap(),
         )
         .map_err(|_| HTTPAPIError::InvalidPreviousPassword)?;
 
         if !previous_password_valid {
             // Invalidate token if previous password is wrong
             if let Some(ref token_str) = token {
-                if let Ok(mut tokens_guard) = tokens.write() {
-                    tokens_guard.remove(token_str);
-                }
+                tokens.remove(token_str);
             }
             return Err(HTTPAPIError::InvalidPreviousPassword);
         }
@@ -1175,7 +1676,7 @@ fn try_set_password(
         return Err(HTTPAPIError::PreviousPasswordRequired);
     }
 
-    let password_file = if let Some(pf) = config_value.password_file.clone() {
+    let password_file = if let Some(pf) = cfg.password_file.clone() {
         pf
     } else {
         return Err(HTTPAPIError::NoPasswordFile);
@@ -1200,14 +1701,7 @@ fn try_set_password(
             message: reason.to_string(),
         }
     })?;
-    match cfg.write() {
-        Ok(mut guard) => guard.config_value.password_sha512 = Some(password_bcrypt),
-        Err(e) => {
-            return Err(HTTPAPIError::SaveNewPassword {
-                message: format!("Configuration lock poisoned: {}", e),
-            });
-        }
-    }
+    cfg.password_sha512 = Some(password_bcrypt);
     Ok(make_api_response_ok())
 }
 
@@ -1232,15 +1726,15 @@ fn unify_options(options_list: Vec<CommandOptionsValue>) -> CommandOptionsValue 
     options
 }
 
-fn make_api_response_ok() -> RouilleResponse {
+fn make_api_response_ok() -> HttpResponseType {
     make_api_response_with_header_and_stats(Ok(serde_json::Value::Null), None, None, None)
 }
 
-fn make_api_response_ok_with_result(result: serde_json::Value) -> RouilleResponse {
+fn make_api_response_ok_with_result(result: serde_json::Value) -> HttpResponseType {
     make_api_response_with_header_and_stats(Ok(result), None, None, None)
 }
 
-fn make_api_response(result: Result<serde_json::Value, HTTPError>) -> RouilleResponse {
+fn make_api_response(result: Result<serde_json::Value, HTTPError>) -> HttpResponseType {
     make_api_response_with_header_and_stats(result, None, None, None)
 }
 
@@ -1252,7 +1746,7 @@ fn make_api_response_with_headers(
             std::borrow::Cow<'static, str>,
         )>,
     >,
-) -> RouilleResponse {
+) -> HttpResponseType {
     make_api_response_with_header_and_stats(result, maybe_headers, None, None)
 }
 
@@ -1266,7 +1760,7 @@ fn make_api_response_with_header_and_stats(
     >,
     maybe_statistics: Option<CommandStats>,
     maybe_status_code: Option<u16>,
-) -> RouilleResponse {
+) -> HttpResponseType {
     let mut body = json!(
         {
             "ok": if let Some(ref status_code) = maybe_status_code {
@@ -1304,15 +1798,25 @@ fn make_api_response_with_header_and_stats(
             serde_json::Value::Number(serde_json::Number::from(error.http_error_code())),
         );
     };
-    let mut response =
-        RouilleResponse::text(serde_json::to_string(&body).unwrap()).with_status_code(status_code);
-    response.headers.push((
-        std::borrow::Cow::Borrowed("Content-Type"),
-        std::borrow::Cow::Borrowed("application/json; charset=utf-8"),
-    ));
+    let mut response = response_with_status_code(
+        response_text(serde_json::to_string(&body).unwrap()),
+        status_code,
+    );
+
+    // Set Content-Type header
+    response.headers_mut().insert(
+        HeaderName::from_static("content-type"),
+        HeaderValue::from_static("application/json; charset=utf-8"),
+    );
+
+    // Add custom headers
     if let Some(headers) = maybe_headers {
         for (name, value) in headers {
-            response.headers.push((name, value));
+            let header_name = HeaderName::from_bytes(name.as_bytes())
+                .unwrap_or_else(|_| HeaderName::from_static("x-custom-header"));
+            let header_value =
+                HeaderValue::from_str(&value).unwrap_or_else(|_| HeaderValue::from_static(""));
+            response.headers_mut().append(header_name, header_value);
         }
     };
     response
