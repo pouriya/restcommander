@@ -20,6 +20,8 @@ fn main() -> Result<(), String> {
             fmt::Subscriber::builder()
                 .with_max_level(level)
                 .json()
+                .flatten_event(true)
+                .log_internal_errors(true)
                 .with_level(true)
                 .with_file(show_location)
                 .with_line_number(show_location)
