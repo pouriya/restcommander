@@ -93,6 +93,20 @@ pub struct CommandLine {
     )]
     pub token_timeout: usize,
 
+    /// Read timeout for client connections in seconds.
+    ///
+    /// If a client doesn't send data within this period, the connection will be dropped.
+    /// The default value is 30 seconds.
+    #[arg(long, default_value = "30", env = "RESTCOMMANDER_SERVER_READ_TIMEOUT")]
+    pub read_timeout_secs: u64,
+
+    /// Write timeout for client connections in seconds.
+    ///
+    /// If data cannot be written to a client within this period, the connection will be dropped.
+    /// The default value is 30 seconds.
+    #[arg(long, default_value = "30", env = "RESTCOMMANDER_SERVER_WRITE_TIMEOUT")]
+    pub write_timeout_secs: u64,
+
     /// Root directory to load command files and directories and their information files.
     #[arg(long, env = "RESTCOMMANDER_COMMANDS_ROOT_DIRECTORY", value_parser = parse_commands_root_directory)]
     pub root_directory: PathBuf,

@@ -3,7 +3,7 @@ use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time;
 
 use rustls::{ServerConfig as RustlsServerConfig, ServerConnection};
@@ -375,18 +375,13 @@ pub struct ServerConfig {
     pub has_tls: bool,
 }
 
-pub fn setup(
-    cfg: Arc<RwLock<CommandLine>>,
-    commands: Arc<RwLock<Command>>,
-) -> Result<ServerConfig, ServerError> {
-    let config_value = cfg.read()?.clone();
-    let host = config_value.host.clone();
-    let port = config_value.port;
+pub fn setup(cfg: CommandLine, commands: Command) -> Result<ServerConfig, ServerError> {
+    let host = cfg.host.clone();
+    let port = cfg.port;
 
     // Convert commands from RwLock
-    let commands_value = commands.read().map_err(|e| ServerError::CommandsLockPoisoned(e.to_string()))?.clone();
 
-    let maybe_captcha = if config_value.captcha {
+    let maybe_captcha = if cfg.captcha {
         Some(captcha::Captcha::new())
     } else {
         None
@@ -395,25 +390,27 @@ pub fn setup(
 
     // Create state for handlers
     let handler_state = HandlerState {
-        cfg: config_value.clone(),
-        commands: commands_value,
+        cfg,
+        commands,
         tokens,
         maybe_captcha,
     };
 
     let address = format!("{}:{}", host, port);
 
-    if config_value.tls_cert_file.clone().is_some() && config_value.tls_key_file.clone().is_some() {
+    if handler_state.cfg.tls_cert_file.clone().is_some()
+        && handler_state.cfg.tls_key_file.clone().is_some()
+    {
         // Load TLS certificates as raw bytes
-        let cert_bytes = std::fs::read(config_value.tls_cert_file.clone().unwrap())?;
-        let key_bytes = std::fs::read(config_value.tls_key_file.clone().unwrap())?;
+        let cert_bytes = std::fs::read(handler_state.cfg.tls_cert_file.clone().unwrap())?;
+        let key_bytes = std::fs::read(handler_state.cfg.tls_key_file.clone().unwrap())?;
 
         tracing::debug!(
             msg = "Prepared HTTPS server",
             host = host.as_str(),
             port = port,
-            cert_file = ?config_value.tls_cert_file.clone().unwrap(),
-            key_file = ?config_value.tls_key_file.clone().unwrap(),
+            cert_file = ?handler_state.cfg.tls_cert_file.clone().unwrap(),
+            key_file = ?handler_state.cfg.tls_key_file.clone().unwrap(),
         );
 
         Ok(ServerConfig {
@@ -770,11 +767,7 @@ fn parse_http_request<R: Read>(
                     }
 
                     // Check if body data is already in the buffer
-                    let body_already_read = if total_read > header_len {
-                        total_read - header_len
-                    } else {
-                        0
-                    };
+                    let body_already_read = total_read.saturating_sub(header_len);
 
                     let mut body = vec![0u8; content_length];
                     let mut body_read = 0;
@@ -832,7 +825,10 @@ fn parse_http_request<R: Read>(
     }
 }
 
-fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> Result<(), ServerError> {
+fn write_http_response<W: Write>(
+    stream: &mut W,
+    response: HttpResponseType,
+) -> Result<(), ServerError> {
     // Write status line
     let status_line = format!(
         "HTTP/1.1 {} {}\r\n",
@@ -1275,10 +1271,8 @@ fn extract_token(request: &RequestWrapper) -> Result<String, HTTPAuthenticationE
     // Try Authorization header
     if let Some(auth_header) = request.header("Authorization") {
         let parts: Vec<&str> = auth_header.splitn(2, ' ').collect();
-        if parts.len() >= 2 {
-            if parts[0] == "Bearer" {
-                return Ok(parts[1].to_string());
-            }
+        if parts.len() >= 2 && parts[0] == "Bearer" {
+            return Ok(parts[1].to_string());
         }
         return Err(HTTPAuthenticationError::InvalidBasicAuthentication {
             header_value: auth_header.to_string(),
