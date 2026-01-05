@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::ops::Deref;
 use std::path::PathBuf;
@@ -416,6 +416,9 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
         let tls_config = Arc::new(tls_config);
 
         // HTTPS server loop
+        let read_timeout = std::time::Duration::from_secs(state.cfg.read_timeout_secs);
+        let write_timeout = std::time::Duration::from_secs(state.cfg.write_timeout_secs);
+
         for stream_result in listener.incoming() {
             match stream_result {
                 Ok(mut stream) => {
@@ -426,6 +429,24 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             continue;
                         }
                     };
+
+                    // Set read and write timeouts before TLS handshake
+                    if let Err(e) = stream.set_read_timeout(Some(read_timeout)) {
+                        tracing::warn!(
+                            msg = "Failed to set read timeout",
+                            peer_addr = %peer_addr,
+                            error = %e
+                        );
+                        continue;
+                    }
+                    if let Err(e) = stream.set_write_timeout(Some(write_timeout)) {
+                        tracing::warn!(
+                            msg = "Failed to set write timeout",
+                            peer_addr = %peer_addr,
+                            error = %e
+                        );
+                        continue;
+                    }
 
                     // Create TLS connection - log error and continue if it fails
                     let mut tls_conn = match ServerConnection::new(tls_config.clone()) {
@@ -462,29 +483,57 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             log_http_request_response(&request, &response);
 
                             if let Err(e) = write_http_response(&mut tls_stream, response) {
-                                tracing::warn!(
-                                    msg = "Failed to write response",
-                                    peer_addr = %peer_addr,
-                                    error = %e
-                                );
+                                if e.contains("timeout") || e.contains("TimedOut") {
+                                    tracing::warn!(
+                                        msg = "Client write timeout - dropping connection",
+                                        peer_addr = %peer_addr,
+                                        error = %e
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        msg = "Failed to write response",
+                                        peer_addr = %peer_addr,
+                                        error = %e
+                                    );
+                                }
                             }
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                msg = "Failed to parse request",
-                                peer_addr = %peer_addr,
-                                error = %e
-                            );
-                            let error_response =
-                                response_with_status_code(response_text("Bad Request"), 400);
-                            if let Err(write_err) =
-                                write_http_response(&mut tls_stream, error_response)
-                            {
+                            if e.contains("timeout") || e.contains("TimedOut") {
                                 tracing::warn!(
-                                    msg = "Failed to write error response",
+                                    msg = "Client read timeout - dropping connection",
                                     peer_addr = %peer_addr,
-                                    error = %write_err
+                                    error = %e
                                 );
+                                // Connection will be dropped when stream goes out of scope
+                                continue;
+                            } else {
+                                tracing::warn!(
+                                    msg = "Failed to parse request",
+                                    peer_addr = %peer_addr,
+                                    error = %e
+                                );
+                                let error_response =
+                                    response_with_status_code(response_text("Bad Request"), 400);
+                                if let Err(write_err) =
+                                    write_http_response(&mut tls_stream, error_response)
+                                {
+                                    if write_err.contains("timeout")
+                                        || write_err.contains("TimedOut")
+                                    {
+                                        tracing::warn!(
+                                            msg = "Client write timeout - dropping connection",
+                                            peer_addr = %peer_addr,
+                                            error = %write_err
+                                        );
+                                    } else {
+                                        tracing::warn!(
+                                            msg = "Failed to write error response",
+                                            peer_addr = %peer_addr,
+                                            error = %write_err
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
@@ -496,6 +545,9 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
         }
     } else {
         // HTTP server
+        let read_timeout = std::time::Duration::from_secs(state.cfg.read_timeout_secs);
+        let write_timeout = std::time::Duration::from_secs(state.cfg.write_timeout_secs);
+
         for stream_result in listener.incoming() {
             match stream_result {
                 Ok(mut stream) => {
@@ -507,6 +559,24 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                         }
                     };
 
+                    // Set read and write timeouts
+                    if let Err(e) = stream.set_read_timeout(Some(read_timeout)) {
+                        tracing::warn!(
+                            msg = "Failed to set read timeout",
+                            peer_addr = %peer_addr,
+                            error = %e
+                        );
+                        continue;
+                    }
+                    if let Err(e) = stream.set_write_timeout(Some(write_timeout)) {
+                        tracing::warn!(
+                            msg = "Failed to set write timeout",
+                            peer_addr = %peer_addr,
+                            error = %e
+                        );
+                        continue;
+                    }
+
                     match parse_http_request(&mut stream, peer_addr) {
                         Ok(request) => {
                             let response = handle_request(&request, &mut state);
@@ -515,28 +585,57 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             log_http_request_response(&request, &response);
 
                             if let Err(e) = write_http_response(&mut stream, response) {
-                                tracing::warn!(
-                                    msg = "Failed to write response",
-                                    peer_addr = %peer_addr,
-                                    error = %e
-                                );
+                                if e.contains("timeout") || e.contains("TimedOut") {
+                                    tracing::warn!(
+                                        msg = "Client write timeout - dropping connection",
+                                        peer_addr = %peer_addr,
+                                        error = %e
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        msg = "Failed to write response",
+                                        peer_addr = %peer_addr,
+                                        error = %e
+                                    );
+                                }
                             }
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                msg = "Failed to parse request",
-                                peer_addr = %peer_addr,
-                                error = %e
-                            );
-                            let error_response =
-                                response_with_status_code(response_text("Bad Request"), 400);
-                            if let Err(write_err) = write_http_response(&mut stream, error_response)
-                            {
+                            if e.contains("timeout") || e.contains("TimedOut") {
                                 tracing::warn!(
-                                    msg = "Failed to write error response",
+                                    msg = "Client read timeout - dropping connection",
                                     peer_addr = %peer_addr,
-                                    error = %write_err
+                                    error = %e
                                 );
+                                // Connection will be dropped when stream goes out of scope
+                                continue;
+                            } else {
+                                tracing::warn!(
+                                    msg = "Failed to parse request",
+                                    peer_addr = %peer_addr,
+                                    error = %e
+                                );
+                                let error_response =
+                                    response_with_status_code(response_text("Bad Request"), 400);
+                                if let Err(write_err) =
+                                    write_http_response(&mut stream, error_response)
+                                {
+                                    if write_err.contains("timeout")
+                                        || write_err.contains("TimedOut")
+                                    {
+                                        tracing::warn!(
+                                            msg = "Client write timeout - dropping connection",
+                                            peer_addr = %peer_addr,
+                                            error = %write_err
+                                        );
+                                    } else {
+                                        tracing::warn!(
+                                            msg = "Failed to write error response",
+                                            peer_addr = %peer_addr,
+                                            error = %write_err
+                                        );
+                                    }
+                                }
                             }
                         }
                     }
@@ -564,9 +663,13 @@ fn parse_http_request<R: Read>(
         if total_read >= buffer.len() {
             return Err("Request headers too large".to_string());
         }
-        let n = stream
-            .read(&mut buffer[total_read..])
-            .map_err(|e| format!("Failed to read from stream: {}", e))?;
+        let n = stream.read(&mut buffer[total_read..]).map_err(|e| {
+            if e.kind() == ErrorKind::TimedOut {
+                format!("Read timeout from {}", remote_addr)
+            } else {
+                format!("Failed to read from stream: {}", e)
+            }
+        })?;
         if n == 0 {
             return Err("Connection closed".to_string());
         }
@@ -632,9 +735,13 @@ fn parse_http_request<R: Read>(
 
                     // Read remaining body bytes from stream
                     while body_read < content_length {
-                        let n = stream
-                            .read(&mut body[body_read..])
-                            .map_err(|e| format!("Failed to read body: {}", e))?;
+                        let n = stream.read(&mut body[body_read..]).map_err(|e| {
+                            if e.kind() == ErrorKind::TimedOut {
+                                format!("Read timeout while reading body from {}", remote_addr)
+                            } else {
+                                format!("Failed to read body: {}", e)
+                            }
+                        })?;
                         if n == 0 {
                             return Err("Connection closed while reading body".to_string());
                         }
@@ -678,38 +785,62 @@ fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> 
         response.status().as_u16(),
         response.status().canonical_reason().unwrap_or("Unknown")
     );
-    stream
-        .write_all(status_line.as_bytes())
-        .map_err(|e| format!("Failed to write status line: {}", e))?;
+    stream.write_all(status_line.as_bytes()).map_err(|e| {
+        if e.kind() == ErrorKind::TimedOut {
+            "Write timeout while writing status line".to_string()
+        } else {
+            format!("Failed to write status line: {}", e)
+        }
+    })?;
 
     // Write headers
     for (name, value) in response.headers() {
         let header_line = format!("{}: {}\r\n", name, value.to_str().unwrap_or(""));
-        stream
-            .write_all(header_line.as_bytes())
-            .map_err(|e| format!("Failed to write header: {}", e))?;
+        stream.write_all(header_line.as_bytes()).map_err(|e| {
+            if e.kind() == ErrorKind::TimedOut {
+                "Write timeout while writing headers".to_string()
+            } else {
+                format!("Failed to write header: {}", e)
+            }
+        })?;
     }
 
     // Ensure Connection: close header is present
     if !response.headers().contains_key("connection") {
-        stream
-            .write_all(b"Connection: close\r\n")
-            .map_err(|e| format!("Failed to write Connection header: {}", e))?;
+        stream.write_all(b"Connection: close\r\n").map_err(|e| {
+            if e.kind() == ErrorKind::TimedOut {
+                "Write timeout while writing Connection header".to_string()
+            } else {
+                format!("Failed to write Connection header: {}", e)
+            }
+        })?;
     }
 
     // Write empty line to separate headers from body
-    stream
-        .write_all(b"\r\n")
-        .map_err(|e| format!("Failed to write header separator: {}", e))?;
+    stream.write_all(b"\r\n").map_err(|e| {
+        if e.kind() == ErrorKind::TimedOut {
+            "Write timeout while writing header separator".to_string()
+        } else {
+            format!("Failed to write header separator: {}", e)
+        }
+    })?;
 
     // Write body
-    stream
-        .write_all(response.body())
-        .map_err(|e| format!("Failed to write body: {}", e))?;
+    stream.write_all(response.body()).map_err(|e| {
+        if e.kind() == ErrorKind::TimedOut {
+            "Write timeout while writing body".to_string()
+        } else {
+            format!("Failed to write body: {}", e)
+        }
+    })?;
 
-    stream
-        .flush()
-        .map_err(|e| format!("Failed to flush stream: {}", e))?;
+    stream.flush().map_err(|e| {
+        if e.kind() == ErrorKind::TimedOut {
+            "Write timeout while flushing".to_string()
+        } else {
+            format!("Failed to flush stream: {}", e)
+        }
+    })?;
 
     Ok(())
 }
