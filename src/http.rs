@@ -560,6 +560,10 @@ fn parse_http_request(
     let mut total_read = 0;
 
     loop {
+        // Ensure we don't exceed buffer bounds
+        if total_read >= buffer.len() {
+            return Err("Request headers too large".to_string());
+        }
         let n = stream
             .read(&mut buffer[total_read..])
             .map_err(|e| format!("Failed to read from stream: {}", e))?;
@@ -572,7 +576,7 @@ fn parse_http_request(
         let mut headers = [httparse::EMPTY_HEADER; 64];
         let mut req = HttpParseRequest::new(&mut headers);
         match req.parse(&buffer[..total_read]) {
-            Ok(Status::Complete(_header_len)) => {
+            Ok(Status::Complete(header_len)) => {
                 // Headers parsed successfully
                 let method = req.method.ok_or("Missing HTTP method")?;
                 let path = req.path.ok_or("Missing HTTP path")?;
@@ -606,9 +610,26 @@ fn parse_http_request(
                         return Err("Content-Length too large (max 65535)".to_string());
                     }
 
-                    // Read remaining body
+                    // Check if body data is already in the buffer
+                    let body_already_read = if total_read > header_len {
+                        total_read - header_len
+                    } else {
+                        0
+                    };
+
                     let mut body = vec![0u8; content_length];
                     let mut body_read = 0;
+
+                    // Copy body data that was already read into the buffer
+                    if body_already_read > 0 {
+                        let body_in_buffer = body_already_read.min(content_length);
+                        if header_len + body_in_buffer <= buffer.len() {
+                            body[..body_in_buffer].copy_from_slice(&buffer[header_len..header_len + body_in_buffer]);
+                            body_read = body_in_buffer;
+                        }
+                    }
+
+                    // Read remaining body bytes from stream
                     while body_read < content_length {
                         let n = stream
                             .read(&mut body[body_read..])
@@ -660,6 +681,10 @@ fn parse_http_request_tls(
     let mut total_read = 0;
 
     loop {
+        // Ensure we don't exceed buffer bounds
+        if total_read >= buffer.len() {
+            return Err("Request headers too large".to_string());
+        }
         let n = stream
             .read(&mut buffer[total_read..])
             .map_err(|e| format!("Failed to read from TLS stream: {}", e))?;
@@ -672,7 +697,7 @@ fn parse_http_request_tls(
         let mut headers = [httparse::EMPTY_HEADER; 64];
         let mut req = HttpParseRequest::new(&mut headers);
         match req.parse(&buffer[..total_read]) {
-            Ok(Status::Complete(_)) => {
+            Ok(Status::Complete(header_len)) => {
                 // Headers parsed successfully
                 let method = req.method.ok_or("Missing HTTP method")?;
                 let path = req.path.ok_or("Missing HTTP path")?;
@@ -706,9 +731,26 @@ fn parse_http_request_tls(
                         return Err("Content-Length too large (max 65535)".to_string());
                     }
 
-                    // Read remaining body
+                    // Check if body data is already in the buffer
+                    let body_already_read = if total_read > header_len {
+                        total_read - header_len
+                    } else {
+                        0
+                    };
+
                     let mut body = vec![0u8; content_length];
                     let mut body_read = 0;
+
+                    // Copy body data that was already read into the buffer
+                    if body_already_read > 0 {
+                        let body_in_buffer = body_already_read.min(content_length);
+                        if header_len + body_in_buffer <= buffer.len() {
+                            body[..body_in_buffer].copy_from_slice(&buffer[header_len..header_len + body_in_buffer]);
+                            body_read = body_in_buffer;
+                        }
+                    }
+
+                    // Read remaining body bytes from stream
                     while body_read < content_length {
                         let n = stream
                             .read(&mut body[body_read..])
@@ -1215,8 +1257,10 @@ fn extract_token(request: &RequestWrapper) -> Result<String, HTTPAuthenticationE
     // Try Authorization header
     if let Some(auth_header) = request.header("Authorization") {
         let parts: Vec<&str> = auth_header.splitn(2, ' ').collect();
-        if parts.len() == 2 && parts[0] == "Bearer" {
-            return Ok(parts[1].to_string());
+        if parts.len() >= 2 {
+            if parts[0] == "Bearer" {
+                return Ok(parts[1].to_string());
+            }
         }
         return Err(HTTPAuthenticationError::InvalidBasicAuthentication {
             header_value: auth_header.to_string(),
@@ -1280,6 +1324,7 @@ fn extract_command_input(
             continue;
         }
         if header_name_upper.starts_with("X-") && header_name.len() > 2 {
+            // Safe: we checked header_name.len() > 2, so [2..] is valid
             let key = header_name[2..].to_string();
             let value_str = header_value;
             let value = serde_json::from_str::<CommandOptionValue>(value_str)
