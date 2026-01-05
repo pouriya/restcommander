@@ -119,6 +119,81 @@ fn response_with_status_code(response: HttpResponseType, code: u16) -> HttpRespo
     new_response
 }
 
+#[derive(Error, Debug)]
+pub enum ServerError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error("Read timeout from {remote_addr}")]
+    ReadTimeout { remote_addr: SocketAddr },
+    #[error("Write timeout")]
+    WriteTimeout,
+    #[error("Connection closed")]
+    ConnectionClosed,
+    #[error("Connection closed while reading body")]
+    ConnectionClosedWhileReadingBody,
+    #[error("Request headers too large")]
+    RequestHeadersTooLarge,
+    #[error("Content-Length too large (max 65535)")]
+    ContentLengthTooLarge,
+    #[error("Failed to parse HTTP request: {0}")]
+    HttpParse(#[from] httparse::Error),
+    #[error("Invalid URI: {0}")]
+    InvalidUri(#[from] http::uri::InvalidUri),
+    #[error("Invalid header name: {0}")]
+    InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+    #[error("Invalid header value: {0}")]
+    InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+    #[error("Invalid Content-Length header (not UTF-8): {0}")]
+    InvalidContentLengthUtf8(#[from] http::header::ToStrError),
+    #[error("Invalid Content-Length header (not a number): {0}")]
+    InvalidContentLengthNumber(#[from] std::num::ParseIntError),
+    #[error("Failed to build request: {0}")]
+    FailedToBuildRequest(#[from] http::Error),
+    #[error("Configuration lock poisoned: {0}")]
+    ConfigurationLockPoisoned(String),
+    #[error("Commands lock poisoned: {0}")]
+    CommandsLockPoisoned(String),
+    #[error("Failed to bind to {address}: {source}")]
+    FailedToBind {
+        address: String,
+        source: std::io::Error,
+    },
+    #[error("Failed to parse certificate: {source}")]
+    FailedToParseCertificate { source: std::io::Error },
+    #[error("Failed to parse private key: {source}")]
+    FailedToParsePrivateKey { source: std::io::Error },
+    #[error("No private keys found in key file")]
+    NoPrivateKeysFound,
+    #[error("Failed to create TLS config: {0}")]
+    FailedToCreateTlsConfig(#[from] rustls::Error),
+    #[error("Missing HTTP method")]
+    MissingHttpMethod,
+    #[error("Missing HTTP path")]
+    MissingHttpPath,
+}
+
+impl ServerError {
+    pub fn is_timeout(&self) -> bool {
+        match self {
+            Self::ReadTimeout { .. } | Self::WriteTimeout => true,
+            Self::Io(e) => e.kind() == ErrorKind::TimedOut,
+            _ => false,
+        }
+    }
+}
+
+impl<T> From<std::sync::PoisonError<T>> for ServerError {
+    fn from(err: std::sync::PoisonError<T>) -> Self {
+        Self::ConfigurationLockPoisoned(err.to_string())
+    }
+}
+
+impl From<ServerError> for String {
+    fn from(err: ServerError) -> Self {
+        err.to_string()
+    }
+}
+
 #[derive(Error, Debug, Clone)]
 pub enum HTTPError {
     #[error(transparent)]
@@ -303,19 +378,13 @@ pub struct ServerConfig {
 pub fn setup(
     cfg: Arc<RwLock<CommandLine>>,
     commands: Arc<RwLock<Command>>,
-) -> Result<ServerConfig, String> {
-    let config_value = cfg
-        .read()
-        .map_err(|e| format!("Configuration lock poisoned: {}", e))?
-        .clone();
+) -> Result<ServerConfig, ServerError> {
+    let config_value = cfg.read()?.clone();
     let host = config_value.host.clone();
     let port = config_value.port;
 
     // Convert commands from RwLock
-    let commands_value = commands
-        .read()
-        .map_err(|e| format!("Commands lock poisoned: {}", e))?
-        .clone();
+    let commands_value = commands.read().map_err(|e| ServerError::CommandsLockPoisoned(e.to_string()))?.clone();
 
     let maybe_captcha = if config_value.captcha {
         Some(captcha::Captcha::new())
@@ -336,10 +405,8 @@ pub fn setup(
 
     if config_value.tls_cert_file.clone().is_some() && config_value.tls_key_file.clone().is_some() {
         // Load TLS certificates as raw bytes
-        let cert_bytes = std::fs::read(config_value.tls_cert_file.clone().unwrap())
-            .map_err(|e| format!("Could not read cert file: {}", e))?;
-        let key_bytes = std::fs::read(config_value.tls_key_file.clone().unwrap())
-            .map_err(|e| format!("Could not read key file: {}", e))?;
+        let cert_bytes = std::fs::read(config_value.tls_cert_file.clone().unwrap())?;
+        let key_bytes = std::fs::read(config_value.tls_key_file.clone().unwrap())?;
 
         tracing::debug!(
             msg = "Prepared HTTPS server",
@@ -373,7 +440,7 @@ pub fn setup(
     }
 }
 
-pub fn start_server(config: ServerConfig) -> Result<(), String> {
+pub fn start_server(config: ServerConfig) -> Result<(), ServerError> {
     let mut state = config.handler_state;
     let address = config.address.clone();
 
@@ -383,25 +450,27 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
         tls = config.has_tls,
     );
 
-    let listener =
-        TcpListener::bind(&address).map_err(|e| format!("Failed to bind to {}: {}", address, e))?;
+    let listener = TcpListener::bind(&address).map_err(|e| ServerError::FailedToBind {
+        address: address.clone(),
+        source: e,
+    })?;
 
     if let (Some(cert_bytes), Some(key_bytes)) = (config.tls_cert, config.tls_key) {
         // HTTPS server
         // Load certificates and keys
         let mut cert_reader = std::io::Cursor::new(cert_bytes);
         let certs = certs(&mut cert_reader)
-            .map_err(|e| format!("Failed to parse certificate: {}", e))?
+            .map_err(|e| ServerError::FailedToParseCertificate { source: e })?
             .into_iter()
             .map(rustls::Certificate)
             .collect::<Vec<_>>();
 
         let mut key_reader = std::io::Cursor::new(key_bytes);
         let mut keys = pkcs8_private_keys(&mut key_reader)
-            .map_err(|e| format!("Failed to parse private key: {}", e))?;
+            .map_err(|e| ServerError::FailedToParsePrivateKey { source: e })?;
 
         if keys.is_empty() {
-            return Err("No private keys found in key file".to_string());
+            return Err(ServerError::NoPrivateKeysFound);
         }
 
         let key = rustls::PrivateKey(keys.remove(0));
@@ -410,8 +479,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
         let tls_config = RustlsServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
-            .with_single_cert(certs, key)
-            .map_err(|e| format!("Failed to create TLS config: {}", e))?;
+            .with_single_cert(certs, key)?;
 
         let tls_config = Arc::new(tls_config);
 
@@ -483,7 +551,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             log_http_request_response(&request, &response);
 
                             if let Err(e) = write_http_response(&mut tls_stream, response) {
-                                if e.contains("timeout") || e.contains("TimedOut") {
+                                if e.is_timeout() {
                                     tracing::warn!(
                                         msg = "Client write timeout - dropping connection",
                                         peer_addr = %peer_addr,
@@ -499,7 +567,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             }
                         }
                         Err(e) => {
-                            if e.contains("timeout") || e.contains("TimedOut") {
+                            if e.is_timeout() {
                                 tracing::warn!(
                                     msg = "Client read timeout - dropping connection",
                                     peer_addr = %peer_addr,
@@ -518,9 +586,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                                 if let Err(write_err) =
                                     write_http_response(&mut tls_stream, error_response)
                                 {
-                                    if write_err.contains("timeout")
-                                        || write_err.contains("TimedOut")
-                                    {
+                                    if write_err.is_timeout() {
                                         tracing::warn!(
                                             msg = "Client write timeout - dropping connection",
                                             peer_addr = %peer_addr,
@@ -585,7 +651,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             log_http_request_response(&request, &response);
 
                             if let Err(e) = write_http_response(&mut stream, response) {
-                                if e.contains("timeout") || e.contains("TimedOut") {
+                                if e.is_timeout() {
                                     tracing::warn!(
                                         msg = "Client write timeout - dropping connection",
                                         peer_addr = %peer_addr,
@@ -601,7 +667,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             }
                         }
                         Err(e) => {
-                            if e.contains("timeout") || e.contains("TimedOut") {
+                            if e.is_timeout() {
                                 tracing::warn!(
                                     msg = "Client read timeout - dropping connection",
                                     peer_addr = %peer_addr,
@@ -620,9 +686,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                                 if let Err(write_err) =
                                     write_http_response(&mut stream, error_response)
                                 {
-                                    if write_err.contains("timeout")
-                                        || write_err.contains("TimedOut")
-                                    {
+                                    if write_err.is_timeout() {
                                         tracing::warn!(
                                             msg = "Client write timeout - dropping connection",
                                             peer_addr = %peer_addr,
@@ -653,7 +717,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
 fn parse_http_request<R: Read>(
     stream: &mut R,
     remote_addr: SocketAddr,
-) -> Result<RequestWrapper, String> {
+) -> Result<RequestWrapper, ServerError> {
     // Read up to 8KB for headers
     let mut buffer = vec![0u8; 8192];
     let mut total_read = 0;
@@ -661,17 +725,17 @@ fn parse_http_request<R: Read>(
     loop {
         // Ensure we don't exceed buffer bounds
         if total_read >= buffer.len() {
-            return Err("Request headers too large".to_string());
+            return Err(ServerError::RequestHeadersTooLarge);
         }
         let n = stream.read(&mut buffer[total_read..]).map_err(|e| {
             if e.kind() == ErrorKind::TimedOut {
-                format!("Read timeout from {}", remote_addr)
+                ServerError::ReadTimeout { remote_addr }
             } else {
-                format!("Failed to read from stream: {}", e)
+                ServerError::Io(e)
             }
         })?;
         if n == 0 {
-            return Err("Connection closed".to_string());
+            return Err(ServerError::ConnectionClosed);
         }
         total_read += n;
 
@@ -681,36 +745,28 @@ fn parse_http_request<R: Read>(
         match req.parse(&buffer[..total_read]) {
             Ok(Status::Complete(header_len)) => {
                 // Headers parsed successfully
-                let method = req.method.ok_or("Missing HTTP method")?;
-                let path = req.path.ok_or("Missing HTTP path")?;
+                let method = req.method.ok_or(ServerError::MissingHttpMethod)?;
+                let path = req.path.ok_or(ServerError::MissingHttpPath)?;
 
                 // Parse URI to extract path and query
                 let uri_str = format!("http://localhost{}", path);
-                let uri = uri_str
-                    .parse::<http::Uri>()
-                    .map_err(|e| format!("Invalid URI: {}", e))?;
+                let uri = uri_str.parse::<http::Uri>()?;
 
                 // Build headers map
                 let mut header_map = http::HeaderMap::new();
                 for header in req.headers {
-                    let name = HeaderName::from_bytes(header.name.as_bytes())
-                        .map_err(|e| format!("Invalid header name: {}", e))?;
-                    let value = HeaderValue::from_bytes(header.value)
-                        .map_err(|e| format!("Invalid header value: {}", e))?;
+                    let name = HeaderName::from_bytes(header.name.as_bytes())?;
+                    let value = HeaderValue::from_bytes(header.value)?;
                     header_map.insert(name, value);
                 }
 
                 // Read body if Content-Length is present
                 let body = if let Some(content_length_str) = header_map.get("content-length") {
-                    let content_length_str = content_length_str
-                        .to_str()
-                        .map_err(|e| format!("Invalid Content-Length header (not UTF-8): {}", e))?;
-                    let content_length: usize = content_length_str.parse().map_err(|e| {
-                        format!("Invalid Content-Length header (not a number): {}", e)
-                    })?;
+                    let content_length_str = content_length_str.to_str()?;
+                    let content_length: usize = content_length_str.parse()?;
 
                     if content_length > 65535 {
-                        return Err("Content-Length too large (max 65535)".to_string());
+                        return Err(ServerError::ContentLengthTooLarge);
                     }
 
                     // Check if body data is already in the buffer
@@ -737,13 +793,13 @@ fn parse_http_request<R: Read>(
                     while body_read < content_length {
                         let n = stream.read(&mut body[body_read..]).map_err(|e| {
                             if e.kind() == ErrorKind::TimedOut {
-                                format!("Read timeout while reading body from {}", remote_addr)
+                                ServerError::ReadTimeout { remote_addr }
                             } else {
-                                format!("Failed to read body: {}", e)
+                                ServerError::Io(e)
                             }
                         })?;
                         if n == 0 {
-                            return Err("Connection closed while reading body".to_string());
+                            return Err(ServerError::ConnectionClosedWhileReadingBody);
                         }
                         body_read += n;
                     }
@@ -758,27 +814,25 @@ fn parse_http_request<R: Read>(
                 // Copy headers
                 *request_builder.headers_mut().unwrap() = header_map;
 
-                let request = request_builder
-                    .body(body)
-                    .map_err(|e| format!("Failed to build request: {}", e))?;
+                let request = request_builder.body(body)?;
 
                 return Ok(RequestWrapper::new(request, remote_addr));
             }
             Ok(Status::Partial) => {
                 // Need more data, but check if we've exceeded buffer size
                 if total_read >= buffer.len() {
-                    return Err("Request headers too large".to_string());
+                    return Err(ServerError::RequestHeadersTooLarge);
                 }
                 // Continue reading
             }
             Err(e) => {
-                return Err(format!("Failed to parse HTTP request: {}", e));
+                return Err(ServerError::HttpParse(e));
             }
         }
     }
 }
 
-fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> Result<(), String> {
+fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> Result<(), ServerError> {
     // Write status line
     let status_line = format!(
         "HTTP/1.1 {} {}\r\n",
@@ -787,9 +841,9 @@ fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> 
     );
     stream.write_all(status_line.as_bytes()).map_err(|e| {
         if e.kind() == ErrorKind::TimedOut {
-            "Write timeout while writing status line".to_string()
+            ServerError::WriteTimeout
         } else {
-            format!("Failed to write status line: {}", e)
+            ServerError::Io(e)
         }
     })?;
 
@@ -798,9 +852,9 @@ fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> 
         let header_line = format!("{}: {}\r\n", name, value.to_str().unwrap_or(""));
         stream.write_all(header_line.as_bytes()).map_err(|e| {
             if e.kind() == ErrorKind::TimedOut {
-                "Write timeout while writing headers".to_string()
+                ServerError::WriteTimeout
             } else {
-                format!("Failed to write header: {}", e)
+                ServerError::Io(e)
             }
         })?;
     }
@@ -809,9 +863,9 @@ fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> 
     if !response.headers().contains_key("connection") {
         stream.write_all(b"Connection: close\r\n").map_err(|e| {
             if e.kind() == ErrorKind::TimedOut {
-                "Write timeout while writing Connection header".to_string()
+                ServerError::WriteTimeout
             } else {
-                format!("Failed to write Connection header: {}", e)
+                ServerError::Io(e)
             }
         })?;
     }
@@ -819,26 +873,26 @@ fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> 
     // Write empty line to separate headers from body
     stream.write_all(b"\r\n").map_err(|e| {
         if e.kind() == ErrorKind::TimedOut {
-            "Write timeout while writing header separator".to_string()
+            ServerError::WriteTimeout
         } else {
-            format!("Failed to write header separator: {}", e)
+            ServerError::Io(e)
         }
     })?;
 
     // Write body
     stream.write_all(response.body()).map_err(|e| {
         if e.kind() == ErrorKind::TimedOut {
-            "Write timeout while writing body".to_string()
+            ServerError::WriteTimeout
         } else {
-            format!("Failed to write body: {}", e)
+            ServerError::Io(e)
         }
     })?;
 
     stream.flush().map_err(|e| {
         if e.kind() == ErrorKind::TimedOut {
-            "Write timeout while flushing".to_string()
+            ServerError::WriteTimeout
         } else {
-            format!("Failed to flush stream: {}", e)
+            ServerError::Io(e)
         }
     })?;
 
