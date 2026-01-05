@@ -426,6 +426,10 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             continue;
                         }
                     };
+                    tracing::trace!(
+                        msg = "Accepted connection",
+                        peer_addr = %peer_addr,
+                    );
 
                     // Create TLS connection - log error and continue if it fails
                     let mut tls_conn = match ServerConnection::new(tls_config.clone()) {
@@ -439,6 +443,11 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             continue;
                         }
                     };
+                    tracing::trace!(
+                        msg = "Created TLS connection",
+                        peer_addr = %peer_addr,
+                    );
+
 
                     // Complete TLS handshake - log error and continue if it fails
                     if let Err(e) = tls_conn.complete_io(&mut stream) {
@@ -449,6 +458,10 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                         );
                         continue;
                     }
+                    tracing::trace!(
+                        msg = "Completed TLS handshake",
+                        peer_addr = %peer_addr,
+                    );
 
                     // Create TLS stream for reading/writing
                     let mut tls_stream = rustls::Stream::new(&mut tls_conn, &mut stream);
@@ -456,6 +469,11 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                     // Read request through TLS
                     match parse_http_request_tls(&mut tls_stream, peer_addr) {
                         Ok(request) => {
+                            tracing::debug!(
+                                msg = "Parsed request",
+                                peer_addr = %peer_addr,
+                                request = request.url(),
+                            );
                             let response = handle_request(&request, &mut state);
 
                             // Log request and response together
@@ -660,6 +678,10 @@ fn parse_http_request_tls(
     let mut total_read = 0;
 
     loop {
+        tracing::trace!(
+            msg = "Reading from TLS stream",
+            total_read = total_read,
+        );
         let n = stream
             .read(&mut buffer[total_read..])
             .map_err(|e| format!("Failed to read from TLS stream: {}", e))?;
@@ -667,12 +689,17 @@ fn parse_http_request_tls(
             return Err("Connection closed".to_string());
         }
         total_read += n;
+        tracing::trace!(
+            msg = "Read from TLS stream",
+            n = n,
+            total_read = total_read,
+        );
 
         // Try to parse headers
         let mut headers = [httparse::EMPTY_HEADER; 64];
         let mut req = HttpParseRequest::new(&mut headers);
         match req.parse(&buffer[..total_read]) {
-            Ok(Status::Complete(_)) => {
+            Ok(Status::Complete(body_start_offset)) => {
                 // Headers parsed successfully
                 let method = req.method.ok_or("Missing HTTP method")?;
                 let path = req.path.ok_or("Missing HTTP path")?;
@@ -707,9 +734,14 @@ fn parse_http_request_tls(
                     }
 
                     // Read remaining body
-                    let mut body = vec![0u8; content_length];
-                    let mut body_read = 0;
+                    let mut body = Vec::from(&buffer[body_start_offset..(body_start_offset+content_length)]);
+                    let mut body_read = body.len();
                     while body_read < content_length {
+                        tracing::trace!(
+                            msg = "Reading body",
+                            body_read = body_read,
+                            content_length = content_length,
+                        );
                         let n = stream
                             .read(&mut body[body_read..])
                             .map_err(|e| format!("Failed to read body: {}", e))?;
