@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener};
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -454,14 +454,14 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                     let mut tls_stream = rustls::Stream::new(&mut tls_conn, &mut stream);
 
                     // Read request through TLS
-                    match parse_http_request_tls(&mut tls_stream, peer_addr) {
+                    match parse_http_request(&mut tls_stream, peer_addr) {
                         Ok(request) => {
                             let response = handle_request(&request, &mut state);
 
                             // Log request and response together
                             log_http_request_response(&request, &response);
 
-                            if let Err(e) = write_http_response_tls(&mut tls_stream, response) {
+                            if let Err(e) = write_http_response(&mut tls_stream, response) {
                                 tracing::warn!(
                                     msg = "Failed to write response",
                                     peer_addr = %peer_addr,
@@ -478,7 +478,7 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
                             let error_response =
                                 response_with_status_code(response_text("Bad Request"), 400);
                             if let Err(write_err) =
-                                write_http_response_tls(&mut tls_stream, error_response)
+                                write_http_response(&mut tls_stream, error_response)
                             {
                                 tracing::warn!(
                                     msg = "Failed to write error response",
@@ -551,8 +551,8 @@ pub fn start_server(config: ServerConfig) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_http_request(
-    stream: &mut TcpStream,
+fn parse_http_request<R: Read>(
+    stream: &mut R,
     remote_addr: SocketAddr,
 ) -> Result<RequestWrapper, String> {
     // Read up to 8KB for headers
@@ -624,7 +624,8 @@ fn parse_http_request(
                     if body_already_read > 0 {
                         let body_in_buffer = body_already_read.min(content_length);
                         if header_len + body_in_buffer <= buffer.len() {
-                            body[..body_in_buffer].copy_from_slice(&buffer[header_len..header_len + body_in_buffer]);
+                            body[..body_in_buffer]
+                                .copy_from_slice(&buffer[header_len..header_len + body_in_buffer]);
                             body_read = body_in_buffer;
                         }
                     }
@@ -670,175 +671,7 @@ fn parse_http_request(
     }
 }
 
-// TLS versions of parse and write functions
-fn parse_http_request_tls(
-    stream: &mut rustls::Stream<'_, ServerConnection, TcpStream>,
-    remote_addr: SocketAddr,
-) -> Result<RequestWrapper, String> {
-    // Same logic as parse_http_request but using TLS stream
-    // Read up to 8KB for headers
-    let mut buffer = vec![0u8; 8192];
-    let mut total_read = 0;
-
-    loop {
-        // Ensure we don't exceed buffer bounds
-        if total_read >= buffer.len() {
-            return Err("Request headers too large".to_string());
-        }
-        let n = stream
-            .read(&mut buffer[total_read..])
-            .map_err(|e| format!("Failed to read from TLS stream: {}", e))?;
-        if n == 0 {
-            return Err("Connection closed".to_string());
-        }
-        total_read += n;
-
-        // Try to parse headers
-        let mut headers = [httparse::EMPTY_HEADER; 64];
-        let mut req = HttpParseRequest::new(&mut headers);
-        match req.parse(&buffer[..total_read]) {
-            Ok(Status::Complete(header_len)) => {
-                // Headers parsed successfully
-                let method = req.method.ok_or("Missing HTTP method")?;
-                let path = req.path.ok_or("Missing HTTP path")?;
-
-                // Parse URI to extract path and query
-                let uri_str = format!("http://localhost{}", path);
-                let uri = uri_str
-                    .parse::<http::Uri>()
-                    .map_err(|e| format!("Invalid URI: {}", e))?;
-
-                // Build headers map
-                let mut header_map = http::HeaderMap::new();
-                for header in req.headers {
-                    let name = HeaderName::from_bytes(header.name.as_bytes())
-                        .map_err(|e| format!("Invalid header name: {}", e))?;
-                    let value = HeaderValue::from_bytes(header.value)
-                        .map_err(|e| format!("Invalid header value: {}", e))?;
-                    header_map.insert(name, value);
-                }
-
-                // Read body if Content-Length is present
-                let body = if let Some(content_length_str) = header_map.get("content-length") {
-                    let content_length_str = content_length_str
-                        .to_str()
-                        .map_err(|e| format!("Invalid Content-Length header (not UTF-8): {}", e))?;
-                    let content_length: usize = content_length_str.parse().map_err(|e| {
-                        format!("Invalid Content-Length header (not a number): {}", e)
-                    })?;
-
-                    if content_length > 65535 {
-                        return Err("Content-Length too large (max 65535)".to_string());
-                    }
-
-                    // Check if body data is already in the buffer
-                    let body_already_read = if total_read > header_len {
-                        total_read - header_len
-                    } else {
-                        0
-                    };
-
-                    let mut body = vec![0u8; content_length];
-                    let mut body_read = 0;
-
-                    // Copy body data that was already read into the buffer
-                    if body_already_read > 0 {
-                        let body_in_buffer = body_already_read.min(content_length);
-                        if header_len + body_in_buffer <= buffer.len() {
-                            body[..body_in_buffer].copy_from_slice(&buffer[header_len..header_len + body_in_buffer]);
-                            body_read = body_in_buffer;
-                        }
-                    }
-
-                    // Read remaining body bytes from stream
-                    while body_read < content_length {
-                        let n = stream
-                            .read(&mut body[body_read..])
-                            .map_err(|e| format!("Failed to read body: {}", e))?;
-                        if n == 0 {
-                            return Err("Connection closed while reading body".to_string());
-                        }
-                        body_read += n;
-                    }
-                    body
-                } else {
-                    Vec::new()
-                };
-
-                // Build http::Request
-                let mut request_builder = HttpRequest::builder().method(method).uri(uri);
-
-                // Copy headers
-                *request_builder.headers_mut().unwrap() = header_map;
-
-                let request = request_builder
-                    .body(body)
-                    .map_err(|e| format!("Failed to build request: {}", e))?;
-
-                return Ok(RequestWrapper::new(request, remote_addr));
-            }
-            Ok(Status::Partial) => {
-                // Need more data, but check if we've exceeded buffer size
-                if total_read >= buffer.len() {
-                    return Err("Request headers too large".to_string());
-                }
-                // Continue reading
-            }
-            Err(e) => {
-                return Err(format!("Failed to parse HTTP request: {}", e));
-            }
-        }
-    }
-}
-
-fn write_http_response_tls(
-    stream: &mut rustls::Stream<'_, ServerConnection, TcpStream>,
-    response: HttpResponseType,
-) -> Result<(), String> {
-    // Same logic as write_http_response but using TLS stream
-    // Write status line
-    let status_line = format!(
-        "HTTP/1.1 {} {}\r\n",
-        response.status().as_u16(),
-        response.status().canonical_reason().unwrap_or("Unknown")
-    );
-    stream
-        .write_all(status_line.as_bytes())
-        .map_err(|e| format!("Failed to write status line: {}", e))?;
-
-    // Write headers
-    for (name, value) in response.headers() {
-        let header_line = format!("{}: {}\r\n", name, value.to_str().unwrap_or(""));
-        stream
-            .write_all(header_line.as_bytes())
-            .map_err(|e| format!("Failed to write header: {}", e))?;
-    }
-
-    // Ensure Connection: close header is present
-    if !response.headers().contains_key("connection") {
-        stream
-            .write_all(b"Connection: close\r\n")
-            .map_err(|e| format!("Failed to write Connection header: {}", e))?;
-    }
-
-    // Write empty line to separate headers from body
-    stream
-        .write_all(b"\r\n")
-        .map_err(|e| format!("Failed to write header separator: {}", e))?;
-
-    // Write body
-    stream
-        .write_all(response.body())
-        .map_err(|e| format!("Failed to write body: {}", e))?;
-
-    stream
-        .flush()
-        .map_err(|e| format!("Failed to flush stream: {}", e))?;
-
-    Ok(())
-}
-
-fn write_http_response(stream: &mut TcpStream, response: HttpResponseType) -> Result<(), String> {
+fn write_http_response<W: Write>(stream: &mut W, response: HttpResponseType) -> Result<(), String> {
     // Write status line
     let status_line = format!(
         "HTTP/1.1 {} {}\r\n",
