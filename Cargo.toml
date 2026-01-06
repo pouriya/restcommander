@@ -1,13 +1,13 @@
 [package]
 name = "mcpd"
-version = "23.9.3"
+version = "26.1.6"
 edition = "2021"
 description = "MCP daemon - expose simple scripts as MCP tools and resources"
 authors = ["pouriya.jahanbakhsh@gmail.com"]
 repository = "https://github.com/pouriya/mcpd"
 
 [workspace.metadata.ci-tools]
-application_version = "23.09.03"
+application_version = "26.01.06"
 
 [build-dependencies]
 md5 = "0.7"

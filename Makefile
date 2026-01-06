@@ -7,7 +7,7 @@ DEV_DIR=$(CURDIR)/_build
 BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
 VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "application_version"{print $$4;exit}')
 DOCKER_REGISTRY=
-DOCKER_ALPINE_VERSION=latest
+DOCKER_ALPINE_VERSION=3.23
 DOCKER_IMAGE_VERSION=${VERSION}
 
 
