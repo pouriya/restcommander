@@ -52,6 +52,61 @@ Open your browser to `http://localhost:1995` to access the web dashboard and tes
 
 ![mcpd web dashboard](https://github.com/user-attachments/assets/360b19b2-cfb8-4631-b083-39b555a718ad)
 
+## Using with AI Assistants
+
+Once mcpd is running, configure your AI assistant to connect to it.
+
+### Cursor
+
+Add to your `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
+
+```json
+{
+  "mcpServers": {
+    "mcpd": {
+      "url": "http://localhost:1995/api/mcp"
+    }
+  }
+}
+```
+
+<img width="960" height="283" alt="image" src="https://github.com/user-attachments/assets/4a9185c6-cf6c-4fe7-867e-076cbbc2a170" />
+
+### Claude Desktop
+
+Add to your Claude Desktop configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "mcpd": {
+      "url": "http://localhost:1995/api/mcp"
+    }
+  }
+}
+```
+
+### OpenAI Codex CLI
+
+Add to your `~/.codex/config.json`:
+
+```json
+{
+  "mcpServers": {
+    "mcpd": {
+      "url": "http://localhost:1995/api/mcp"
+    }
+  }
+}
+```
+
+### Any MCP Client
+
+Point your MCP client to the endpoint:
+
+```
+http://localhost:1995/api/mcp
+```
 
 ## Configuration
 
