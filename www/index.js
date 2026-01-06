@@ -13,8 +13,8 @@ async function main() {
     }
     setConfiguration({'banner-title': null, 'banner-text': null, 'footer': null})
     const testAuth = await new Api(ApiOpts).testAuth(true)
-    var nextPageLink = '/static/commands.html'
-    var nextPageName = 'Commands'
+    var nextPageLink = '/static/tools.html'
+    var nextPageName = 'Tools'
     if (testAuth === false) {
         nextPageLink = '/static/login.html'
         nextPageName = 'Login'

@@ -194,8 +194,6 @@ pub enum HTTPError {
     API(#[from] HTTPAPIError),
     #[error("{0}")]
     Deserialize(String),
-    #[error("Internal error: {0}")]
-    Internal(String),
 }
 
 impl HTTPError {
@@ -204,7 +202,6 @@ impl HTTPError {
             Self::Authentication(x) => x.http_error_code(),
             Self::API(x) => x.http_error_code(),
             Self::Deserialize(_) => 2000,
-            Self::Internal(_) => 5000,
         }
     }
 
@@ -213,7 +210,6 @@ impl HTTPError {
             Self::Authentication(x) => x.http_status_code(),
             Self::API(x) => x.http_status_code(),
             Self::Deserialize(_) => 400,
-            Self::Internal(_) => 500,
         }
     }
 }
@@ -251,12 +247,6 @@ pub enum HTTPAuthenticationError {
 
 #[derive(Error, Debug, Clone)]
 pub enum HTTPAPIError {
-    #[error("{message}")]
-    CommandNotFound { message: String },
-    #[error("{message}")]
-    CheckInput { message: String },
-    #[error("{message}")]
-    InitializeCommand { message: String },
     #[error("Password should not be empty")]
     EmptyPassword,
     #[error("Previous password is required")]
@@ -272,10 +262,6 @@ pub enum HTTPAPIError {
 impl HTTPAPIError {
     fn http_error_code(&self) -> i32 {
         match self {
-            // Keep 1001 for Command errors
-            Self::CommandNotFound { .. } => 1002,
-            Self::CheckInput { .. } => 1003,
-            Self::InitializeCommand { .. } => 1004,
             Self::EmptyPassword => 1007,
             Self::PreviousPasswordRequired => 1009,
             Self::InvalidPreviousPassword => 1011,
@@ -286,9 +272,6 @@ impl HTTPAPIError {
 
     fn http_status_code(&self) -> u16 {
         match self {
-            Self::CommandNotFound { .. } => 404,
-            Self::CheckInput { .. } => 400,
-            Self::InitializeCommand { .. } => 500,
             Self::EmptyPassword => 400,
             Self::PreviousPasswordRequired => 400,
             Self::InvalidPreviousPassword => 401,
@@ -339,24 +322,6 @@ struct SetPassword {
     password: String,
     hash: bool, // Required field - indicates if password is already SHA256 hashed
     previous_password: Option<String>, // Previous password (uses same hash flag)
-}
-
-#[inline]
-fn exit_code_to_status_code(_exit_code: i32) -> u16 {
-    // Legacy function - kept for potential future use but not currently called
-    match _exit_code {
-        0 => 200,
-        1 => 500,
-        2 => 400,
-        3 => 403,
-        4 => 404,
-        5 => 503,
-        6 => 406,
-        7 => 501,
-        8 => 409,
-        9 => 408,
-        _ => 500,
-    }
 }
 
 pub struct ServerConfig {

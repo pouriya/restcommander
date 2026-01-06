@@ -15,7 +15,6 @@ pub struct CommandOutput {
     pub exit_code: i32,
     pub stdout: String,
     pub stderr: String,
-    pub decoded_stdout: Result<serde_json::Value, String>,
     pub stats: CommandStats,
 }
 
@@ -215,13 +214,7 @@ pub fn run_command(
         command = ?command,
         exit_status = child_exit_code,
     );
-    let decoded_stdout: Result<serde_json::Value, String> =
-        match serde_json::from_str(&child_stdout) {
-            Ok(value) => Ok(value),
-            Err(reason) => Err(reason.to_string()),
-        };
     Ok(CommandOutput {
-        decoded_stdout,
         stdout: child_stdout,
         stderr: raw_stderr.trim_end().to_string(),
         exit_code: child_exit_code,

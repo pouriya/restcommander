@@ -6,16 +6,8 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {
             include_bytes!("index.js").to_vec(),
             Some("text/javascript".to_string()),
         )),
-        "commands.html" => Some((
-            include_bytes!("commands.html").to_vec(),
-            Some("text/html".to_string()),
-        )),
         "bootstrap.bundle.min.js" => Some((
             include_bytes!("bootstrap.bundle.min.js").to_vec(),
-            Some("text/javascript".to_string()),
-        )),
-        "commands.js" => Some((
-            include_bytes!("commands.js").to_vec(),
             Some("text/javascript".to_string()),
         )),
         "login.js" => Some((
@@ -36,6 +28,10 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {
             include_bytes!("login.html").to_vec(),
             Some("text/html".to_string()),
         )),
+        "tools.html" => Some((
+            include_bytes!("tools.html").to_vec(),
+            Some("text/html".to_string()),
+        )),
         "index.html" => Some((
             include_bytes!("index.html").to_vec(),
             Some("text/html".to_string()),
@@ -46,6 +42,10 @@ pub fn handle_static(_uri: String) -> Option<(Vec<u8>, Option<String>)> {
         )),
         "api.js" => Some((
             include_bytes!("api.js").to_vec(),
+            Some("text/javascript".to_string()),
+        )),
+        "mcp.js" => Some((
+            include_bytes!("mcp.js").to_vec(),
             Some("text/javascript".to_string()),
         )),
         "utils.js" => Some((

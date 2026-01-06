@@ -45,13 +45,6 @@ pub struct JsonRpcError {
 }
 
 impl JsonRpcError {
-    fn parse_error(msg: &str) -> Self {
-        Self {
-            code: -32700,
-            message: msg.into(),
-            data: None,
-        }
-    }
     fn invalid_request(msg: &str) -> Self {
         Self {
             code: -32600,
@@ -247,10 +240,8 @@ fn commands_to_tools(cmd: &Command, prefix: &str, root_name: &str) -> Vec<McpToo
 
     if cmd.is_directory {
         // Recursively collect tools from subcommands
-        for (_, result_cmd) in &cmd.commands {
-            if let Ok(sub_cmd) = result_cmd {
-                tools.extend(commands_to_tools(sub_cmd, &current_path, root_name));
-            }
+        for sub_cmd in cmd.commands.values().flatten() {
+            tools.extend(commands_to_tools(sub_cmd, &current_path, root_name));
         }
     } else {
         // This is a leaf command - create a tool
@@ -290,10 +281,8 @@ fn commands_to_resources(cmd: &Command, prefix: &str, root_name: &str) -> Vec<Mc
 
     if cmd.is_directory {
         // Recursively collect resources from subcommands
-        for (_, result_cmd) in &cmd.commands {
-            if let Ok(sub_cmd) = result_cmd {
-                resources.extend(commands_to_resources(sub_cmd, &current_path, root_name));
-            }
+        for sub_cmd in cmd.commands.values().flatten() {
+            resources.extend(commands_to_resources(sub_cmd, &current_path, root_name));
         }
     } else {
         // This is a leaf command - check if it supports state

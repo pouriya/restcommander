@@ -86,24 +86,10 @@ pub fn get_state(
             env_map,
         )?;
 
-        // Parse stdout: if valid JSON return parsed, else if exit code is 0 return as JSON string
-        let decoded_stdout = if output.exit_code == 0 {
-            match serde_json::from_str(&output.stdout) {
-                Ok(value) => Ok(value),
-                Err(_) => Ok(serde_json::Value::String(output.stdout.clone())),
-            }
-        } else {
-            Err(format!(
-                "script --state exited with code {}",
-                output.exit_code
-            ))
-        };
-
         Ok(CommandOutput {
             exit_code: output.exit_code,
             stdout: output.stdout,
             stderr: output.stderr,
-            decoded_stdout,
             stats: output.stats,
         })
     } else {

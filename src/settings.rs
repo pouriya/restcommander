@@ -135,7 +135,7 @@ pub struct CommandLine {
     ///
     /// Also you can override RestCommander virtual files inside this folder.
     /// RestCommander virtual files are: index.html, index.js, login.html,
-    /// login.js, commands.html, commands.js, restcommander-background-image.jpg,
+    /// login.js, tools.html, mcp.js, restcommander-background-image.jpg,
     /// favicon.ico, bootstrap.bundle.min.js, bootstrap.min.css, api.js, utils.js.
     #[arg(long, env = "RESTCOMMANDER_WWW_STATIC_DIRECTORY", value_parser = parse_static_directory)]
     pub static_directory: Option<PathBuf>,

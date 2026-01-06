@@ -469,13 +469,13 @@ textarea, select, input {
     outline: none;
 }
 
-#run-button {
+#call-button {
     background-color: var(--color-primary);
     border-color: var(--color-primary);
     color: var(--text-on-primary);
 }
 
-#run-button:hover {
+#call-button:hover {
     background-color: var(--color-primary-hover);
     border-color: var(--color-primary-hover);
 }
@@ -495,10 +495,10 @@ textarea, select, input {
 }
 
 /* ============================================
-   Command Results and State
+   Tool Results and State
    ============================================ */
-#command-result-text, 
-#command-state-text {
+#tool-result-text, 
+#tool-state-text {
     color: var(--code-text);
     background-color: var(--code-bg);
     border: 1px solid var(--code-border);
@@ -639,12 +639,24 @@ textarea, select, input {
 }
 
 /* ============================================
-   Commands Page - Sidebar Styles
+   Tools Page - Sidebar Styles
    ============================================ */
 :root {
     --sidebar-width: 280px;
     --sidebar-indent-base: 1rem;
     --sidebar-indent-unit: 1rem;
+    --header-offset: 4rem; /* Space for hamburger menu button */
+}
+
+/* Main content area - add top padding for hamburger menu */
+.main-content {
+    padding-top: var(--header-offset);
+}
+
+@media (max-width: 767px) {
+    :root {
+        --header-offset: 4.5rem; /* Slightly more on mobile for larger touch target */
+    }
 }
 
 .sidebar {

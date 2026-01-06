@@ -132,7 +132,7 @@ async function loginSubmitEventListener(event) {
         }
     )
     if (authResult === true) {
-        document.location = 'commands.html'
+        document.location = 'tools.html'
         return
     }
     var loginErrorElement = document.getElementById('login-error')

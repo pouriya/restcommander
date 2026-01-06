@@ -28,7 +28,7 @@ class Api {
         for (const extraHeaderKey in extraHeaders) {
            headers[extraHeaderKey] = extraHeaders[extraHeaderKey]
         }
-        await console.log('Attempt to do a', method, 'call to', url, 'with', Object.keys(extraHeaders).length, 'extra headers and', body.length, 'bytes body')
+        console.log('Attempt to do a', method, 'call to', url, 'with', Object.keys(extraHeaders).length, 'extra headers and', body.length, 'bytes body')
         var requestOptions = {method: method, headers: headers}
         if (body !== '') {
            requestOptions.body = body
@@ -67,9 +67,9 @@ class Api {
                }
            )
         if (result.ok) {
-           await console.log(url, '=>', result.result)
+           console.log(url, '=>', result.result)
         } else {
-           await console.log(url, '=>', result.result, 'with error code', result.code)
+           console.log(url, '=>', result.result, 'with error code', result.code)
         }
         if (filterFunction === true) {
             result = await this.unwrapResult(result)
@@ -127,7 +127,6 @@ class Api {
     // === MCP Methods ===
     async mcp(method, params = {}) {
         const request = { jsonrpc: "2.0", id: Date.now(), method, params }
-        // Use fetch directly to handle JSON-RPC response format properly
         const url = this.options.url + 'mcp'
         const response = await fetch(url, {
             method: 'POST',
@@ -135,7 +134,7 @@ class Api {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json'
             },
-            credentials: 'include', // Include cookies for authentication
+            credentials: 'include',
             body: JSON.stringify(request)
         })
         
@@ -170,9 +169,8 @@ class Api {
     }
 
     async mcpToolsList() {
-        const result = await this.mcp('tools/list', {})
-        if (!result.ok) return false
-        return this.toolsToCommandTree(result.result.tools)
+        // Returns raw MCP tools/list response
+        return this.mcp('tools/list', {})
     }
 
     async mcpToolsCall(toolName, args = {}) {
@@ -223,86 +221,6 @@ class Api {
             return { ok: true, status: 200, result: parsed, code: 0 }
         } catch (e) {
             return { ok: true, status: 200, result: content.text, code: 0 }
-        }
-    }
-
-    // Convert flat MCP tools list back to tree structure for UI
-    toolsToCommandTree(tools) {
-        const root = { name: 'root', is_directory: true, commands: {} }
-        
-        for (const tool of tools) {
-            const parts = tool.name.split('/')
-            let current = root
-            
-            // Create directory nodes for path segments
-            for (let i = 0; i < parts.length - 1; i++) {
-                const part = parts[i]
-                if (!current.commands[part]) {
-                    current.commands[part] = {
-                        name: part,
-                        is_directory: true,
-                        commands: {},
-                        type: 'directory'
-                    }
-                }
-                current = current.commands[part]
-            }
-            
-            // Create leaf command node
-            const leafName = parts[parts.length - 1]
-            current.commands[leafName] = {
-                name: leafName,
-                is_directory: false,
-                type: 'command',
-                http_path: tool.name,  // Use tool name for mcpToolsCall
-                info: this.schemaToCommandInfo(tool)
-            }
-        }
-        
-        return root
-    }
-
-    // Convert MCP inputSchema back to CommandInfo format for existing UI
-    schemaToCommandInfo(tool) {
-        const options = {}
-        const schema = tool.inputSchema || {}
-        
-        if (schema.properties) {
-            for (const [name, prop] of Object.entries(schema.properties)) {
-                options[name] = {
-                    description: prop.description || '',
-                    required: (schema.required || []).includes(name),
-                    value_type: this.jsonSchemaTypeToValueType(prop),
-                    default_value: prop.default
-                }
-                // Restore size constraints
-                if (prop.minimum !== undefined || prop.maximum !== undefined ||
-                    prop.minLength !== undefined || prop.maxLength !== undefined) {
-                    options[name].size = {
-                        min: prop.minimum ?? prop.minLength,
-                        max: prop.maximum ?? prop.maxLength
-                    }
-                }
-            }
-        }
-        
-        return {
-            description: tool.description,
-            title: tool.name.split('/').pop(),  // Use last segment as title
-            options: options
-        }
-    }
-
-    jsonSchemaTypeToValueType(prop) {
-        if (prop.enum) {
-            return { enum: prop.enum }
-        }
-        switch (prop.type) {
-            case 'string': return 'string'
-            case 'integer': return 'integer'
-            case 'number': return 'float'
-            case 'boolean': return 'boolean'
-            default: return 'any'
         }
     }
 }
