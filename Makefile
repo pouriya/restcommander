@@ -1,8 +1,8 @@
 TARGET=$(shell rustc -vV | awk '$$1 == "host:"{print $$2}')
 BUILD_DIR=$(CURDIR)/build
 RELEASE_FILENAME_POSTFIX=
-DEV_CMD=${BUILD_DIR}/restcommander-${VERSION}-${TARGET}-dev${RELEASE_FILENAME_POSTFIX}
-RELEASE_CMD=${BUILD_DIR}/restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
+DEV_CMD=${BUILD_DIR}/mcpd-${VERSION}-${TARGET}-dev${RELEASE_FILENAME_POSTFIX}
+RELEASE_CMD=${BUILD_DIR}/mcpd-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}
 DEV_DIR=$(CURDIR)/_build
 BOOTSTRAP_VERSION=$(shell cat www/bootstrap-version.txt)
 VERSION=$(shell cat Cargo.toml | awk 'BEGIN{FS="[ \"]"}$$1 == "application_version"{print $$4;exit}')
@@ -14,36 +14,36 @@ DOCKER_IMAGE_VERSION=${VERSION}
 all: release
 
 release: download-bootstrap
-	@ rm -rf ${BUILD_DIR}/restcommander-* || true
+	@ rm -rf ${BUILD_DIR}/mcpd-* || true
 	cargo build --release --target ${TARGET}
-	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/release/restcommander ${RELEASE_CMD}
-	@ ls -sh ${BUILD_DIR}/restcommander*
+	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/release/mcpd ${RELEASE_CMD}
+	@ ls -sh ${BUILD_DIR}/mcpd*
 
 deb:
-	@ rm -rf ${BUILD_DIR}/restcommander-*.deb || true
+	@ rm -rf ${BUILD_DIR}/mcpd-*.deb || true
 	cargo deb --target ${TARGET}
-	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/debian/*.deb ${BUILD_DIR}/restcommander-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
+	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/debian/*.deb ${BUILD_DIR}/mcpd-${VERSION}-${TARGET}${RELEASE_FILENAME_POSTFIX}.deb
 
 docker:
-	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --build-arg RESTCOMMANDER_VERSION=${VERSION} --force-rm -t restcommander:${DOCKER_IMAGE_VERSION} -t restcommander:latest .
+	docker build --build-arg DOCKER_REGISTRY=${DOCKER_REGISTRY} --build-arg DOCKER_ALPINE_VERSION=${DOCKER_ALPINE_VERSION} --build-arg MCPD_VERSION=${VERSION} --force-rm -t mcpd:${DOCKER_IMAGE_VERSION} -t mcpd:latest .
 
 dev: download-bootstrap
-	rm -rf ${BUILD_DIR}/restcommander-*-dev* || true
+	rm -rf ${BUILD_DIR}/mcpd-*-dev* || true
 	cargo build --target ${TARGET}
-	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/debug/restcommander ${DEV_CMD}
-	@ ls -sh ${BUILD_DIR}/restcommander-*-dev*
+	@ mkdir -p ${BUILD_DIR} && cp ./target/${TARGET}/debug/mcpd ${DEV_CMD}
+	@ ls -sh ${BUILD_DIR}/mcpd-*-dev*
 
 setup-dev: dev
-	@ rm -rf ${DEV_DIR}/bin/restcommander ${DEV_DIR}/etc/restcommander/config.toml
+	@ rm -rf ${DEV_DIR}/bin/mcpd ${DEV_DIR}/etc/mcpd/config.toml
 	@ ./tools/setup.sh ${DEV_CMD} ${DEV_DIR} ${DEV_DIR}
-	@ sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" ${DEV_DIR}/etc/restcommander/config.toml
-	@ sed -i -E "s|level_name = (.*)|level_name = \"debug\"|g" ${DEV_DIR}/etc/restcommander/config.toml
-	@ sed -i -E "s|report = (.*)|report = \"${DEV_DIR}/var/log/restcommander/report.log\"|g" ${DEV_DIR}/etc/restcommander/config.toml
+	@ sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" ${DEV_DIR}/etc/mcpd/config.toml
+	@ sed -i -E "s|level_name = (.*)|level_name = \"debug\"|g" ${DEV_DIR}/etc/mcpd/config.toml
+	@ sed -i -E "s|report = (.*)|report = \"${DEV_DIR}/var/log/mcpd/report.log\"|g" ${DEV_DIR}/etc/mcpd/config.toml
 
 start-dev: setup-dev
 	@echo ""
-	@echo "Starting RestCommander"
-	${DEV_DIR}/bin/restcommander config ${DEV_DIR}/etc/restcommander/config.toml
+	@echo "Starting mcpd"
+	${DEV_DIR}/bin/mcpd config ${DEV_DIR}/etc/mcpd/config.toml
 
 download-bootstrap: www/bootstrap.bundle.min.js www/bootstrap.min.css
 

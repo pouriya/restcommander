@@ -1,11 +1,11 @@
 [Unit]
-Description=HTTP REST API layer on top of scripts with a simple web dashboard
-Documentation=https://github.com/pouriya/RestCommander
+Description=MCP daemon - expose scripts as MCP tools and resources
+Documentation=https://github.com/pouriya/mcpd
 
 [Service]
 Type=simple
 # Depending on your installation, You may want to change paths here:
-ExecStart=/usr/local/bin/restcommander config /etc/restcommander/config.toml
+ExecStart=/usr/local/bin/mcpd config /etc/mcpd/config.toml
 StandardOutput=syslog
 Restart=on-failure
 #User=

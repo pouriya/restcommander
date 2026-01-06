@@ -3,7 +3,7 @@
  * Handles dark/light theme switching using CSS custom properties
  */
 
-const THEME_STORAGE_KEY = 'restcommander-theme';
+const THEME_STORAGE_KEY = 'mcpd-theme';
 const DEFAULT_THEME = 'dark';
 
 /**

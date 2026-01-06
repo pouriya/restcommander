@@ -2,11 +2,11 @@ import {ApiOpts, Api} from './api.js'
 
 
 const defaultConfiguration = {
-    'title': 'RestCommander',
+    'title': 'mcpd',
     'login-title': 'Login to {{title}}',
-    'banner-title': 'Simple, Flexible and Reliable',
-    'banner-text': '{{title}} helps you run your own scripts simply from its web dashboard or REST API',
-    'footer': 'Hosted on <a href="https://github.com/pouriya/RestCommander" target="_blank"><b>GitHub</b></a>'
+    'banner-title': 'MCP Daemon',
+    'banner-text': '{{title}} exposes your scripts as MCP tools and resources',
+    'footer': 'Hosted on <a href="https://github.com/pouriya/mcpd" target="_blank"><b>GitHub</b></a>'
 }
 
 var configuration = false

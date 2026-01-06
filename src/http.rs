@@ -161,6 +161,8 @@ pub enum ServerError {
     MissingHttpMethod,
     #[error("Missing HTTP path")]
     MissingHttpPath,
+    #[error("Failed to build request headers")]
+    FailedToBuildRequestHeaders,
 }
 
 impl ServerError {
@@ -355,19 +357,20 @@ pub fn setup(cfg: CommandLine, commands: Command) -> Result<ServerConfig, Server
 
     let address = format!("{}:{}", host, port);
 
-    if handler_state.cfg.tls_cert_file.clone().is_some()
-        && handler_state.cfg.tls_key_file.clone().is_some()
-    {
+    if let (Some(ref tls_cert_file), Some(ref tls_key_file)) = (
+        handler_state.cfg.tls_cert_file.clone(),
+        handler_state.cfg.tls_key_file.clone(),
+    ) {
         // Load TLS certificates as raw bytes
-        let cert_bytes = std::fs::read(handler_state.cfg.tls_cert_file.clone().unwrap())?;
-        let key_bytes = std::fs::read(handler_state.cfg.tls_key_file.clone().unwrap())?;
+        let cert_bytes = std::fs::read(tls_cert_file)?;
+        let key_bytes = std::fs::read(tls_key_file)?;
 
         tracing::debug!(
             msg = "Prepared HTTPS server",
             host = host.as_str(),
             port = port,
-            cert_file = ?handler_state.cfg.tls_cert_file.clone().unwrap(),
-            key_file = ?handler_state.cfg.tls_key_file.clone().unwrap(),
+            cert_file = ?tls_cert_file,
+            key_file = ?tls_key_file,
         );
 
         Ok(ServerConfig {
@@ -762,7 +765,10 @@ fn parse_http_request<R: Read>(
                 let mut request_builder = HttpRequest::builder().method(method).uri(uri);
 
                 // Copy headers
-                *request_builder.headers_mut().unwrap() = header_map;
+                let headers = request_builder
+                    .headers_mut()
+                    .ok_or(ServerError::FailedToBuildRequestHeaders)?;
+                *headers = header_map;
 
                 let request = request_builder.body(body)?;
 
@@ -1112,16 +1118,16 @@ fn api_auth_token_handler(
                 .as_secs() as usize
                 + token_timeout;
             tokens.insert(token.clone(), timestamp);
-            make_api_response_with_headers(
-                Ok(serde_json::json!({ "token": token })),
-                Some(vec![(
-                    std::borrow::Cow::Borrowed("Set-Cookie"),
-                    std::borrow::Cow::Owned(format!(
-                        "restcommander_token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
-                        token, token_timeout
-                    )),
-                )]),
-            )
+                make_api_response_with_headers(
+                    Ok(serde_json::json!({ "token": token })),
+                    Some(vec![(
+                        std::borrow::Cow::Borrowed("Set-Cookie"),
+                        std::borrow::Cow::Owned(format!(
+                            "mcpd_token={}; Path=/; Max-Age={}; SameSite=None; Secure;",
+                            token, token_timeout
+                        )),
+                    )]),
+                )
         }
     }
 }
@@ -1171,9 +1177,9 @@ fn extract_token(request: &RequestWrapper) -> Result<String, HTTPAuthenticationE
     if let Some(cookie_header) = request.header("Cookie") {
         for cookie in cookie_header.split(';') {
             let cookie = cookie.trim();
-            if cookie.starts_with("restcommander_token=") {
+            if cookie.starts_with("mcpd_token=") {
                 return Ok(cookie
-                    .strip_prefix("restcommander_token=")
+                    .strip_prefix("mcpd_token=")
                     .unwrap_or("")
                     .to_string());
             }
@@ -1220,16 +1226,17 @@ fn authentication_with_basic(
                         source: reason,
                     }
                 })?;
-            match String::from_utf8(decoded_username_password)
-                .unwrap()
-                .splitn(2, ':')
-                .collect::<Vec<&str>>()[..]
-            {
+            let decoded_string = String::from_utf8(decoded_username_password).map_err(|_| {
+                HTTPAuthenticationError::UsernameOrPasswordIsNotFound {
+                    data: username_password.to_string(),
+                }
+            })?;
+            match decoded_string.splitn(2, ':').collect::<Vec<&str>>()[..] {
                 [username, password] => {
                     if username == cfg.username {
-                        // Read X-RESTCOMMANDER-PASSWORD-HASHED header (default to "false")
+                        // Read X-MCPD-PASSWORD-HASHED header (default to "false")
                         let password_hashed_header = request
-                            .header("X-RESTCOMMANDER-PASSWORD-HASHED")
+                            .header("X-MCPD-PASSWORD-HASHED")
                             .unwrap_or("false")
                             .to_lowercase();
                         let is_password_hashed = password_hashed_header == "true";
@@ -1248,11 +1255,12 @@ fn authentication_with_basic(
                         );
 
                         // Verify password using bcrypt
-                        let password_valid = utils::verify_bcrypt(
-                            &password_sha256,
-                            cfg.password_sha512.as_ref().unwrap(),
-                        )
-                        .map_err(|_| HTTPAuthenticationError::InvalidUsernameOrPassword)?;
+                        let password_hash = cfg
+                            .password_sha512
+                            .as_ref()
+                            .ok_or(HTTPAuthenticationError::UsernameOrPasswordIsNotSet)?;
+                        let password_valid = utils::verify_bcrypt(&password_sha256, password_hash)
+                            .map_err(|_| HTTPAuthenticationError::InvalidUsernameOrPassword)?;
 
                         if password_valid {
                             if maybe_captcha.is_none() {
@@ -1261,9 +1269,8 @@ fn authentication_with_basic(
                             return if form.len() == 1 {
                                 let (key, value) = form
                                     .into_iter()
-                                    .fold(None, |_, key_value| Some(key_value.clone()))
-                                    .unwrap()
-                                    .clone();
+                                    .next()
+                                    .ok_or(HTTPAuthenticationError::InvalidCaptchaForm)?;
                                 if let Some(captcha) = maybe_captcha {
                                     if captcha.compare_and_update(
                                         key.to_string(),
@@ -1358,11 +1365,13 @@ fn try_set_password(
         };
 
         // Verify previous password against current password
-        let previous_password_valid = utils::verify_bcrypt(
-            &previous_password_sha256,
-            cfg.password_sha512.as_ref().unwrap(),
-        )
-        .map_err(|_| HTTPAPIError::InvalidPreviousPassword)?;
+        let current_password_hash = cfg
+            .password_sha512
+            .as_ref()
+            .ok_or(HTTPAPIError::InvalidPreviousPassword)?;
+        let previous_password_valid =
+            utils::verify_bcrypt(&previous_password_sha256, current_password_hash)
+                .map_err(|_| HTTPAPIError::InvalidPreviousPassword)?;
 
         if !previous_password_valid {
             // Invalidate token if previous password is wrong

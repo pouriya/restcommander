@@ -1,37 +1,82 @@
-_This is a contributing guideline for backend code contribution. For frontend code contributing see [here](https://github.com/pouriya/restcommander/blob/master/www/CONTRIBUTING.md)._  
+# Contributing to mcpd
 
-# To contributors
-I ❤️ PR from everyone, and I appreciate your help but before opening a PR, make an issue and describe your feature, bug, etc.  
+We welcome contributions! Before opening a PR, please create an issue to discuss your proposed changes.
 
+## Development Setup
 
-## Set up a development environment
-If you have `Rust` toolchain and GNU `make` installed, You just need to run `make start-dev` inside project root directory. It makes a new directory `tmp` inside project and starts a configured RestCommander inside it.  
-Test directory structure:  
-```shell
-tree tmp
+### Prerequisites
+
+- Rust toolchain (stable)
+- GNU make
+
+### Building
+
+```bash
+# Development build
+make dev
+
+# Release build
+make release
+
+# Run tests
+make test
+
+# Lint
+make lint
 ```
-```text
-tmp
-├── cert.pem
-├── config.toml
-├── key.pem
-├── password-file.sha512
-├── scripts
-│       ├── test
-│       └── test.yml
-└── www
-    ├── api.js
-    ├── bootstrap.bundle.min.js
-    ├── bootstrap.min.css
-    ├── commands.html
-    ├── commands.js
-    ├── CONTRIBUTING.md
-    ├── favicon.ico
-    ├── index.html
-    ├── index.js
-    ├── login.html
-    ├── login.js
-    ├── restcommander-background-image.jpg
-    └── utils.js
+
+### Running Locally
+
+```bash
+# Start development server
+make start-dev
 ```
-The server will start in debug mode on `https://127.0.0.1:1995/`. For more info see other `Makefile` targets.  
+
+This creates a `_build` directory with:
+- `bin/mcpd` — The executable
+- `etc/mcpd/config.toml` — Configuration
+- `scripts/` — Sample scripts
+
+The server starts on `https://127.0.0.1:1995/` with debug logging.
+
+### Project Structure
+
+```
+src/
+├── main.rs       # Entry point
+├── settings.rs   # CLI parsing and configuration
+├── http.rs       # HTTP server and routing
+├── mcp.rs        # MCP protocol implementation
+├── cmd/          # Script discovery and execution
+│   ├── mod.rs    # Command types
+│   ├── tree.rs   # Script tree building
+│   └── runner.rs # Script execution
+├── captcha.rs    # CAPTCHA generation
+├── utils.rs      # Utilities
+└── www/          # Embedded web assets
+```
+
+### Code Style
+
+- Run `cargo fmt` before committing
+- Run `cargo clippy` to check for common issues
+- Follow existing code patterns
+
+## Pull Request Guidelines
+
+1. Create an issue first to discuss the change
+2. Fork the repository
+3. Create a feature branch: `git checkout -b feature/my-feature`
+4. Make your changes
+5. Run tests: `make test`
+6. Run linter: `make lint`
+7. Commit with clear messages
+8. Push and open a PR
+
+## Frontend Development
+
+See [www/CONTRIBUTING.md](www/CONTRIBUTING.md) for frontend contribution guidelines.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under BSD-3-Clause.

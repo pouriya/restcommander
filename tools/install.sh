@@ -42,14 +42,14 @@ case "${OS_TYPE}" in
     ;;
 esac
 
-echo "Detected that RestCommander (${OS_TYPE}) would work on your system"
-EXECUTABLE="restcommander-${OS_TYPE}"
-DOWNLOAD_URL="https://github.com/pouriya/RestCommander/releases/download/${VERSION}/restcommander-${VERSION}-x86_64-${OS_TYPE}"
-echo "Attempt to download RestCommander from ${DOWNLOAD_URL}"
+echo "Detected that mcpd (${OS_TYPE}) would work on your system"
+EXECUTABLE="mcpd-${OS_TYPE}"
+DOWNLOAD_URL="https://github.com/pouriya/mcpd/releases/download/${VERSION}/mcpd-${VERSION}-x86_64-${OS_TYPE}"
+echo "Attempt to download mcpd from ${DOWNLOAD_URL}"
 wget -O ${EXECUTABLE} ${DOWNLOAD_URL} || curl curl -SsfL -o ${EXECUTABLE} ${DOWNLOAD_URL}
 chmod a+x ${EXECUTABLE}  || true
 NAME_AND_VERSION="$(./${EXECUTABLE} --version)"
 echo "${NAME_AND_VERSION} is downloaded to ${EXECUTABLE}"
-echo "For simplicity you can rename it to just restcommander by running:"
-echo "    mv ${EXECUTABLE} restcommander"
+echo "For simplicity you can rename it to just mcpd by running:"
+echo "    mv ${EXECUTABLE} mcpd"
 echo "Installed successfully"

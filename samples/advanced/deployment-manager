@@ -3,7 +3,7 @@
 # Demonstrates complex stateful workflow with multiple stages
 # Shows how to manage complex state with JSON files
 
-STATE_FILE="/tmp/restcommander_deployment.json"
+STATE_FILE="/tmp/mcpd_deployment.json"
 
 # Handle --help flag to return script metadata
 if [ "$1" = "--help" ]; then

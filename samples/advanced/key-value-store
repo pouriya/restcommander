@@ -8,7 +8,7 @@ import json
 import os
 
 # State file location - persists between calls
-STATE_FILE = "/tmp/restcommander_kvstore.json"
+STATE_FILE = "/tmp/mcpd_kvstore.json"
 
 def load_store():
     """Load the key-value store from file"""

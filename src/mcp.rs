@@ -295,7 +295,7 @@ fn commands_to_resources(cmd: &Command, prefix: &str, root_name: &str) -> Vec<Mc
                 };
                 // current_path already excludes root_name
                 resources.push(McpResource {
-                    uri: format!("restcommander://{}/state", current_path),
+                    uri: format!("mcpd://{}/state", current_path),
                     name: cmd.name.clone(),
                     description,
                     mime_type: "application/json".to_string(),
@@ -323,7 +323,7 @@ fn resolve_tool_path(tool_name: &str, root: &Command) -> Result<Command, JsonRpc
 fn resolve_resource_uri(uri: &str, root: &Command) -> Result<Command, JsonRpcError> {
     // Strip scheme and /state suffix
     let path = uri
-        .strip_prefix("restcommander://")
+        .strip_prefix("mcpd://")
         .ok_or_else(|| JsonRpcError::resource_not_found("invalid URI scheme"))?
         .strip_suffix("/state")
         .ok_or_else(|| JsonRpcError::resource_not_found("URI must end with /state"))?;
@@ -362,7 +362,7 @@ fn handle_initialize(_commands: &Command) -> JsonRpcResponse {
         json!({
             "protocolVersion": "2024-11-05",
             "serverInfo": {
-                "name": "restcommander",
+                "name": "mcpd",
                 "version": env!("CARGO_PKG_VERSION")
             },
             "capabilities": {
@@ -577,7 +577,7 @@ fn make_environment_variables_map_from_options(
 fn add_configuration_to_options(cfg: &CommandLine) -> HashMap<String, CommandOptionValue> {
     let mut options = HashMap::from([
         (
-            "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
+            "MCPD_CONFIG_SERVER_HOST".to_string(),
             CommandOptionValue::String(if cfg.host.as_str() == "0.0.0.0" {
                 "127.0.0.1".to_string()
             } else {
@@ -585,35 +585,35 @@ fn add_configuration_to_options(cfg: &CommandLine) -> HashMap<String, CommandOpt
             }),
         ),
         (
-            "RESTCOMMANDER_CONFIG_SERVER_PORT".to_string(),
+            "MCPD_CONFIG_SERVER_PORT".to_string(),
             CommandOptionValue::Integer(cfg.port as i64),
         ),
         (
-            "RESTCOMMANDER_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
+            "MCPD_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
             CommandOptionValue::String(cfg.http_base_path.clone()),
         ),
         (
-            "RESTCOMMANDER_CONFIG_SERVER_USERNAME".to_string(),
+            "MCPD_CONFIG_SERVER_USERNAME".to_string(),
             CommandOptionValue::String(cfg.username.clone()),
         ),
         (
-            "RESTCOMMANDER_CONFIG_SERVER_API_TOKEN".to_string(),
+            "MCPD_CONFIG_SERVER_API_TOKEN".to_string(),
             CommandOptionValue::String(cfg.api_token.clone().unwrap_or_default()),
         ),
         (
-            "RESTCOMMANDER_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
+            "MCPD_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
             CommandOptionValue::String(cfg.root_directory.to_str().unwrap().to_string()),
         ),
         (
-            "RESTCOMMANDER_CONFIG_SERVER_HTTPS".to_string(),
+            "MCPD_CONFIG_SERVER_HTTPS".to_string(),
             CommandOptionValue::Bool(cfg.tls_key_file.as_ref().map(|_| true).unwrap_or(false)),
         ),
         (
-            "RESTCOMMANDER_CONFIG_LOGGING_LEVEL_NAME".to_string(),
+            "MCPD_CONFIG_LOGGING_LEVEL_NAME".to_string(),
             CommandOptionValue::String(cfg.logging_level().to_string()),
         ),
         (
-            "RESTCOMMANDER_CONFIGURATION_FILENAME".to_string(),
+            "MCPD_CONFIGURATION_FILENAME".to_string(),
             CommandOptionValue::String("<COMMANDLINE>".to_string()),
         ),
     ]);

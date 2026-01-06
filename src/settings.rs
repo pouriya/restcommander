@@ -13,15 +13,15 @@ use tracing_subscriber::filter::LevelFilter;
 #[command(about)]
 pub struct CommandLine {
     /// HTTP server listen address.
-    #[arg(long, default_value = "127.0.0.1", env = "RESTCOMMANDER_SERVER_HOST", value_parser = parse_ip_addr)]
+    #[arg(long, default_value = "127.0.0.1", env = "MCPD_SERVER_HOST", value_parser = parse_ip_addr)]
     pub host: String,
 
     /// HTTP server listen port number.
-    #[arg(long, default_value = "1995", env = "RESTCOMMANDER_SERVER_PORT")]
+    #[arg(long, default_value = "1995", env = "MCPD_SERVER_PORT")]
     pub port: u16,
 
     /// HTTP server base path. Currently not used!
-    #[arg(long, default_value = "/", env = "RESTCOMMANDER_SERVER_HTTP_BASE_PATH", value_parser = parse_http_base_path)]
+    #[arg(long, default_value = "/", env = "MCPD_SERVER_HTTP_BASE_PATH", value_parser = parse_http_base_path)]
     pub http_base_path: String,
 
     /// HTTP server basic authentication username.
@@ -30,17 +30,17 @@ pub struct CommandLine {
     /// If the value is empty and no password is configured, then no authentication
     /// is needed for anything. If the value is empty and password is configured, the
     /// username will be `admin`.
-    #[arg(long, default_value = "", env = "RESTCOMMANDER_SERVER_USERNAME")]
+    #[arg(long, default_value = "", env = "MCPD_SERVER_USERNAME")]
     pub username: String,
 
     /// A file containing sha512 of your user password.
     ///
     /// By configuring this you are able to change the password in runtime via REST API.
-    /// Make sure that RestCommander process has appropriate permissions to write to the file.
+    /// Make sure that mcpd process has appropriate permissions to write to the file.
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    #[arg(long, env = "RESTCOMMANDER_SERVER_PASSWORD_FILE", value_parser = parse_password_file)]
+    #[arg(long, env = "MCPD_SERVER_PASSWORD_FILE", value_parser = parse_password_file)]
     pub password_file: Option<PathBuf>,
 
     /// sha512 of you user password.
@@ -51,36 +51,36 @@ pub struct CommandLine {
     /// Empty value means this option should be discarded and if one of server `password_file`
     /// and `password_sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    #[arg(long, env = "RESTCOMMANDER_SERVER_PASSWORD_SHA512")]
+    #[arg(long, env = "MCPD_SERVER_PASSWORD_SHA512")]
     pub password_sha512: Option<String>,
 
     /// HTTP server TLS certificate file.
     ///
-    /// If you configure this along with server `tls_key_file` option, RestCommander
+    /// If you configure this along with server `tls_key_file` option, mcpd
     /// serves everything over HTTPS.
-    #[arg(long, env = "RESTCOMMANDER_SERVER_TLS_CERT_FILE", value_parser = parse_tls_file)]
+    #[arg(long, env = "MCPD_SERVER_TLS_CERT_FILE", value_parser = parse_tls_file)]
     pub tls_cert_file: Option<PathBuf>,
 
     /// HTTP server TLS private-key file.
     ///
-    /// If you configure this along with server `tls_cert_file` option, RestCommander
+    /// If you configure this along with server `tls_cert_file` option, mcpd
     /// serves everything over HTTPS.
-    #[arg(long, env = "RESTCOMMANDER_SERVER_TLS_KEY_FILE", value_parser = parse_tls_file)]
+    #[arg(long, env = "MCPD_SERVER_TLS_KEY_FILE", value_parser = parse_tls_file)]
     pub tls_key_file: Option<PathBuf>,
 
     /// Enable/Disable CAPTCHA.
-    #[arg(long, env = "RESTCOMMANDER_SERVER_CAPTCHA")]
+    #[arg(long, env = "MCPD_SERVER_CAPTCHA")]
     pub captcha: bool,
 
     /// Make CAPTCHA case-sensitive
-    #[arg(long, env = "RESTCOMMANDER_SERVER_CAPTCHA_CASE_SENSITIVE")]
+    #[arg(long, env = "MCPD_SERVER_CAPTCHA_CASE_SENSITIVE")]
     pub captcha_case_sensitive: bool,
 
     /// hardcoded HTTP bearer token that does not expire.
     ///
     /// You can use this value in your application(s) then you do not have to pass
     /// CAPTCHA each time the previous token has expired to get a new one.
-    #[arg(long, env = "RESTCOMMANDER_SERVER_API_TOKEN")]
+    #[arg(long, env = "MCPD_SERVER_API_TOKEN")]
     pub api_token: Option<String>,
 
     /// Timeout for dynamically generated HTTP bearer tokens in seconds.
@@ -89,7 +89,7 @@ pub struct CommandLine {
     #[arg(
         long,
         default_value = "604800",
-        env = "RESTCOMMANDER_SERVER_TOKEN_TIMEOUT"
+        env = "MCPD_SERVER_TOKEN_TIMEOUT"
     )]
     pub token_timeout: usize,
 
@@ -97,18 +97,18 @@ pub struct CommandLine {
     ///
     /// If a client doesn't send data within this period, the connection will be dropped.
     /// The default value is 30 seconds.
-    #[arg(long, default_value = "30", env = "RESTCOMMANDER_SERVER_READ_TIMEOUT")]
+    #[arg(long, default_value = "30", env = "MCPD_SERVER_READ_TIMEOUT")]
     pub read_timeout_secs: u64,
 
     /// Write timeout for client connections in seconds.
     ///
     /// If data cannot be written to a client within this period, the connection will be dropped.
     /// The default value is 30 seconds.
-    #[arg(long, default_value = "30", env = "RESTCOMMANDER_SERVER_WRITE_TIMEOUT")]
+    #[arg(long, default_value = "30", env = "MCPD_SERVER_WRITE_TIMEOUT")]
     pub write_timeout_secs: u64,
 
     /// Root directory to load command files and directories and their information files.
-    #[arg(long, env = "RESTCOMMANDER_COMMANDS_ROOT_DIRECTORY", value_parser = parse_commands_root_directory)]
+    #[arg(long, env = "MCPD_COMMANDS_ROOT_DIRECTORY", value_parser = parse_commands_root_directory)]
     pub root_directory: PathBuf,
 
     /// Configuration key/values for commands in KEY=VALUE format (can be specified multiple times).
@@ -133,15 +133,15 @@ pub struct CommandLine {
 
     /// A directory to serve your own web files under `/static/*` HTTP path.
     ///
-    /// Also you can override RestCommander virtual files inside this folder.
-    /// RestCommander virtual files are: index.html, index.js, login.html,
-    /// login.js, tools.html, mcp.js, restcommander-background-image.jpg,
+    /// Also you can override mcpd virtual files inside this folder.
+    /// mcpd virtual files are: index.html, index.js, login.html,
+    /// login.js, tools.html, mcp.js, mcpd-background-image.jpg,
     /// favicon.ico, bootstrap.bundle.min.js, bootstrap.min.css, api.js, utils.js.
-    #[arg(long, env = "RESTCOMMANDER_WWW_STATIC_DIRECTORY", value_parser = parse_static_directory)]
+    #[arg(long, env = "MCPD_WWW_STATIC_DIRECTORY", value_parser = parse_static_directory)]
     pub static_directory: Option<PathBuf>,
 
     /// Enable/Disable the web dashboard.
-    #[arg(long, env = "RESTCOMMANDER_WWW_ENABLED")]
+    #[arg(long, env = "MCPD_WWW_ENABLED")]
     pub enabled: bool,
 
     /// Configuration key/values for www in KEY=VALUE format (can be specified multiple times).

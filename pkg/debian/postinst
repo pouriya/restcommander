@@ -1,62 +1,60 @@
 #!/bin/sh
 set -e
 
-# RC: RestCommander
+MCPD_CFG_DIR="/etc/mcpd/"
+MCPD_CFG_FILE=${MCPD_CFG_DIR}config.toml
+MCPD_PASSWORD_FILE=${MCPD_CFG_DIR}password-file.sha512
+MCPD_KEY_FILE=${MCPD_CFG_DIR}key.pem
+MCPD_CERT_FILE=${MCPD_CFG_DIR}cert.pem
+MCPD_CAPTCHA_FILE=${MCPD_CFG_DIR}captcha.txt
 
-RC_CFG_DIR="/etc/restcommander/"
-RC_CFG_FILE=${RC_CFG_DIR}config.toml
-RC_PASSWORD_FILE=${RC_CFG_DIR}password-file.sha512
-RC_KEY_FILE=${RC_CFG_DIR}key.pem
-RC_CERT_FILE=${RC_CFG_DIR}cert.pem
-RC_CAPTCHA_FILE=${RC_CFG_DIR}captcha.txt
-
-RC_SRV_DIR="/srv/restcommander/"
-RC_WWW_DIR=${RC_SRV_DIR}www/
-RC_SAMPLE_WWW_FILE=${RC_WWW_DIR}test.txt
-RC_SCRIPTS_DIR=${RC_SRV_DIR}scripts/
-RC_TEST_SCRIPT=${RC_SCRIPTS_DIR}test
-RC_TEST_SCRIPT_INFO=${RC_SCRIPTS_DIR}test.yml
+MCPD_SRV_DIR="/srv/mcpd/"
+MCPD_WWW_DIR=${MCPD_SRV_DIR}www/
+MCPD_SAMPLE_WWW_FILE=${MCPD_WWW_DIR}test.txt
+MCPD_SCRIPTS_DIR=${MCPD_SRV_DIR}scripts/
+MCPD_TEST_SCRIPT=${MCPD_SCRIPTS_DIR}test
+MCPD_TEST_SCRIPT_INFO=${MCPD_SCRIPTS_DIR}test.yml
 
 case "$1" in
   configure)
-    if [ ! -f ${RC_CFG_FILE} ]; then
-      restcommander sample config > ${RC_CFG_FILE}
+    if [ ! -f ${MCPD_CFG_FILE} ]; then
+      mcpd sample config > ${MCPD_CFG_FILE}
 
-      sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" ${RC_CFG_FILE}
-      sed -i -E "s|captcha = (.*)|captcha = true|g" ${RC_CFG_FILE}
-      sed -i -E "s|#password_file = (.*)|password_file = \"${RC_PASSWORD_FILE}\"|g" ${RC_CFG_FILE}
-      sed -i -E "s|#tls_cert_file = (.*)|tls_cert_file = \"${RC_CERT_FILE}\"|g" ${RC_CFG_FILE}
-      sed -i -E "s|#tls_key_file = (.*)|tls_key_file = \"${RC_KEY_FILE}\"|g" ${RC_CFG_FILE}
-      sed -i -E "s|root_directory = (.*)|root_directory = \"${RC_SCRIPTS_DIR}\"|g" ${RC_CFG_FILE}
-      sed -i -E "s|static_directory = (.*)|static_directory = \"${RC_WWW_DIR}\"|g" ${RC_CFG_FILE}
-      echo "Created new configuration file at " ${RC_CFG_FILE}
+      sed -i -E "s|host = (.*)|host = \"0.0.0.0\"|g" ${MCPD_CFG_FILE}
+      sed -i -E "s|captcha = (.*)|captcha = true|g" ${MCPD_CFG_FILE}
+      sed -i -E "s|#password_file = (.*)|password_file = \"${MCPD_PASSWORD_FILE}\"|g" ${MCPD_CFG_FILE}
+      sed -i -E "s|#tls_cert_file = (.*)|tls_cert_file = \"${MCPD_CERT_FILE}\"|g" ${MCPD_CFG_FILE}
+      sed -i -E "s|#tls_key_file = (.*)|tls_key_file = \"${MCPD_KEY_FILE}\"|g" ${MCPD_CFG_FILE}
+      sed -i -E "s|root_directory = (.*)|root_directory = \"${MCPD_SCRIPTS_DIR}\"|g" ${MCPD_CFG_FILE}
+      sed -i -E "s|static_directory = (.*)|static_directory = \"${MCPD_WWW_DIR}\"|g" ${MCPD_CFG_FILE}
+      echo "Created new configuration file at " ${MCPD_CFG_FILE}
     fi
-    if [ ! -f ${RC_PASSWORD_FILE} ]; then
-      restcommander sha512 admin > ${RC_PASSWORD_FILE}
-      echo "Created new password file at " ${RC_PASSWORD_FILE}
+    if [ ! -f ${MCPD_PASSWORD_FILE} ]; then
+      mcpd sha512 admin > ${MCPD_PASSWORD_FILE}
+      echo "Created new password file at " ${MCPD_PASSWORD_FILE}
     fi
-    mkdir -p ${RC_SCRIPTS_DIR}
-    if [ ! "$(ls -A ${RC_SCRIPTS_DIR})" ]; then
-      restcommander sample script > ${RC_TEST_SCRIPT}
-      chmod a+x ${RC_TEST_SCRIPT}
-      restcommander sample script-info > ${RC_TEST_SCRIPT_INFO}
-      echo "Created new sample script file at " ${RC_TEST_SCRIPT}
+    mkdir -p ${MCPD_SCRIPTS_DIR}
+    if [ ! "$(ls -A ${MCPD_SCRIPTS_DIR})" ]; then
+      mcpd sample script > ${MCPD_TEST_SCRIPT}
+      chmod a+x ${MCPD_TEST_SCRIPT}
+      mcpd sample script-info > ${MCPD_TEST_SCRIPT_INFO}
+      echo "Created new sample script file at " ${MCPD_TEST_SCRIPT}
     fi
-    if [ ! -f ${RC_KEY_FILE} ]; then
-      restcommander sample self-signed-key > ${RC_KEY_FILE}
-      echo "Created new private-key file at " ${RC_KEY_FILE}
-      restcommander sample self-signed-cert > ${RC_CERT_FILE}
-      echo "Created new certificate file at " ${RC_CERT_FILE}
+    if [ ! -f ${MCPD_KEY_FILE} ]; then
+      mcpd sample self-signed-key > ${MCPD_KEY_FILE}
+      echo "Created new private-key file at " ${MCPD_KEY_FILE}
+      mcpd sample self-signed-cert > ${MCPD_CERT_FILE}
+      echo "Created new certificate file at " ${MCPD_CERT_FILE}
     fi
-    if [ ! -f ${RC_SAMPLE_WWW_FILE} ]; then
-      mkdir -p ${RC_WWW_DIR}
-      touch ${RC_SAMPLE_WWW_FILE}
-      echo "This is a sample static file to test your configuration." >> ${RC_SAMPLE_WWW_FILE}
-      echo "You can access this file at /test.txt ot /static/test.txt to see this text." >> ${RC_SAMPLE_WWW_FILE}
-      echo "Created new static test file at " ${RC_SAMPLE_WWW_FILE}
+    if [ ! -f ${MCPD_SAMPLE_WWW_FILE} ]; then
+      mkdir -p ${MCPD_WWW_DIR}
+      touch ${MCPD_SAMPLE_WWW_FILE}
+      echo "This is a sample static file to test your configuration." >> ${MCPD_SAMPLE_WWW_FILE}
+      echo "You can access this file at /test.txt ot /static/test.txt to see this text." >> ${MCPD_SAMPLE_WWW_FILE}
+      echo "Created new static test file at " ${MCPD_SAMPLE_WWW_FILE}
     fi
-    if [ ! -f ${RC_CAPTCHA_FILE} ]; then
-      rm -rf ${RC_CAPTCHA_FILE}
+    if [ ! -f ${MCPD_CAPTCHA_FILE} ]; then
+      rm -rf ${MCPD_CAPTCHA_FILE}
     fi
     ;;
 esac

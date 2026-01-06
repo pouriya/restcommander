@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Basic Example: Hello World
-# The simplest possible RestCommander script
+# The simplest possible mcpd script
 # No options, just outputs a greeting
 
 # Handle --help flag to return script metadata

@@ -16,7 +16,7 @@ fi
 # Log the validation action
 echo "INFO Validating input for user: $username" >&2
 
-# RestCommander validates inputs before calling the script
+# mcpd validates inputs before calling the script
 # If we reach here, all constraints are satisfied
 echo "Valid: $username, age $age, score $score"
 exit 0

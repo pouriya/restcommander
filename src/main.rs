@@ -48,7 +48,7 @@ fn main() -> Result<(), String> {
     )
     .map_err(|reason| reason.to_string())?;
     let server_config = http::setup(settings, commands)?;
-    println!("\n_____    ____            __  ______                                          __             _\n____    / __ \\___  _____/ /_/ ____/___  ____ ___  ____ ___  ____ _____  ____/ /__  _____   __\n___    / /_/ / _ \\/ ___/ __/ /   / __ \\/ __ `__ \\/ __ `__ \\/ __ `/ __ \\/ __  / _ \\/ ___/  ___\n__    / _, _/  __(__  ) /_/ /___/ /_/ / / / / / / / / / / / /_/ / / / / /_/ /  __/ /     ____\n_    /_/ |_|\\___/____/\\__/\\____/\\____/_/ /_/ /_/_/ /_/ /_/\\__,_/_/ /_/\\__,_/\\___/_/     _____\n");
+    println!("\n__  __  ____ ____  ____\n|  \\/  |/ ___|  _ \\|  _ \\\n| |\\/| | |   | |_) | | | |\n| |  | | |___|  __/| |_| |\n|_|  |_|\\____|_|   |____/\n\nMCP daemon - expose simple scripts as MCP tools and resources\n");
 
     // Start server in main thread - this will block forever
     http::start_server(server_config)?;

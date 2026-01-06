@@ -1,52 +1,83 @@
-# Foreword
-Before starting to implement the web dashboard, I knew nothing about JS! I wrote the entire frontend code within a week (in my free times). I do know that the frontend code is shitty but **it works**.  
+# Frontend Contributing
 
-## To contributors
-I really appreciate you for helping but there is one and only one rule to know. **I do NOT want to use any other frontend libraries and build tools except Bootstrap v5**. After all I'm the only one that maintains the project, and I do not have enough free time to learn new JS/CSS libraries and build tools. So if, you want to help, You should enhance/bug-fix current implementation. If the current implementation does not fit your needs, You are free to build your own dashboard and RestCommander will serve it for you!  
+The web dashboard is built with vanilla JavaScript and Bootstrap 5. No build tools required.
 
-## Development
-RestCommander backend code is written in Rust. I guess you are a frontend developer and not familiar with Rust and, it's difficult for you to set up a development environment for this project. So in this explanation we use Docker.  
-Pull latest RestCommander version from DockerHub
-```shell
-docker pull pouriya/restcommander
+## Development Setup
+
+### Using Docker
+
+```bash
+# Pull the image
+docker pull pouriya/mcpd
+
+# Create directories
+mkdir mcpd-frontend mcpd-scripts
+
+# Copy frontend files (or clone the repo)
+cp www/* mcpd-frontend/
+
+# Create a test script
+cat > mcpd-scripts/test << 'EOF'
+#!/usr/bin/env sh
+if [ "$1" = "--help" ]; then
+  echo '{"description": "Test script"}'
+  exit 0
+fi
+echo '{"ok": true}'
+EOF
+chmod +x mcpd-scripts/test
+
+# Run with mounted directories
+docker run --init -it -p 1995:1995 \
+  -v $(pwd)/mcpd-frontend:/mcpd/www \
+  -v $(pwd)/mcpd-scripts:/mcpd/scripts \
+  pouriya/mcpd
 ```
-or from GitHub Container Registry:
-```shell
-docker pull ghcr.io/pouriya/restcommander && docker tag ghcr.io/pouriya/restcommander pouriya/restcommander 
+
+Open https://127.0.0.1:1995 and edit files in `mcpd-frontend/`. Refresh to see changes.
+
+### Using Rust
+
+If you have the Rust toolchain:
+
+```bash
+make start-dev
 ```
-Fork RestCommander under your GitHub account and clone RestCommander source code:
-```shell
-git clone --depth=1 --branch=master git@github.com:<YOUR_USERNAME>/restcommander.git
-```
-Make a new directory for your development:
-```shell
-mkdir restcommander-front-codes
-```
-Copy frontend codes from cloned RestCommander repository to your newly created directory and remove unwanted files:
-```shell
-cp restcommander/www/* restcommander-front-codes/ 
-rm -f restcommander-front-codes/*md restcommander-front-codes/bootstrap-version.txt
-```
-Make a new folder and a test script:
-```shell
-mkdir restcommander-scripts
-docker run pouriya/restcommander sample script > restcommander-scripts/test
-docker run pouriya/restcommander sample script-info > restcommander-scripts/test.yml
-chmod a+x restcommander-scripts/test
-```
-Now start a docker container and make a new volumes to set its `www` and `scripts` directories to your newly created directories:  
-```shell
-docker run --init -it -p 1995:1995 -v /absolute/path/to/your/restcommander-front-codes/:/restcommander/www/ -v /absolute/path/to/your/restcommander-scripts/:/restcommander/scripts/ pouriya/restcommander
-```
-Open [https://127.0.0.1:1995](https://127.0.0.1:1995) in your web browser, and you should see RestCommander web dashboard.  
-After above steps, You are free to update any file inside your `restcommander-front-codes` directory and inside browser if you reload the pages, You will see your changes.  
-If you were ready to make a PR, copy frontend codes back to your cloned RestCommander repository:  
-```shell
-cp restcommander-front-codes/* restcommander/www/ 
-```
-Then go inside cloned repository and make a new branch related to your work (for example `enhance-login-page-css`):  
-```shell
-cd restcommander
-git checkout -b enhance-login-page-css
-```
-Now you are ready to commit, push and make a PR.  
+
+This builds and runs the server with the `www/` directory mounted.
+
+## Guidelines
+
+**Important**: We use vanilla JavaScript and Bootstrap 5 only. No additional frameworks or build tools.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `index.html` | Main dashboard |
+| `index.js` | Dashboard logic |
+| `login.html` | Login page |
+| `login.js` | Authentication |
+| `tools.html` | Tools browser |
+| `mcp.js` | MCP client |
+| `api.js` | API utilities |
+| `utils.js` | Shared utilities |
+| `styles.css` | Custom styles |
+| `configuration.js` | Config handling |
+| `theme.js` | Theme switching |
+
+### Style Guide
+
+- Use Bootstrap 5 classes where possible
+- Keep JavaScript simple and readable
+- Test on latest Chrome, Firefox, Safari
+- Ensure mobile responsiveness
+
+## Submitting Changes
+
+1. Fork and clone the repository
+2. Create a branch: `git checkout -b fix/my-fix`
+3. Make changes and test locally
+4. Copy files back to `www/` in the repo
+5. Commit and push
+6. Open a pull request

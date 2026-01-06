@@ -451,6 +451,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3e378b66a060d48947b590737b30a1be76706c8dd7b8ba0f2fe3989c68a853f"
 
 [[package]]
+name = "mcpd"
+version = "23.9.3"
+dependencies = [
+ "anyhow",
+ "base64 0.13.0",
+ "bcrypt",
+ "captcha",
+ "clap",
+ "hex",
+ "http",
+ "httparse",
+ "humantime",
+ "is_executable",
+ "md5",
+ "num-traits",
+ "rand",
+ "rustls",
+ "rustls-pemfile",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_urlencoded",
+ "sha2",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "md5"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -589,36 +619,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d34f1408f55294453790c48b2f1ebbb1c5b4b7563eb1f418bcfcfdbb06ebb4e7"
 dependencies = [
  "getrandom 0.2.16",
-]
-
-[[package]]
-name = "restcommander"
-version = "23.9.3"
-dependencies = [
- "anyhow",
- "base64 0.13.0",
- "bcrypt",
- "captcha",
- "clap",
- "hex",
- "http",
- "httparse",
- "humantime",
- "is_executable",
- "md5",
- "num-traits",
- "rand",
- "rustls",
- "rustls-pemfile",
- "serde",
- "serde_derive",
- "serde_json",
- "serde_urlencoded",
- "sha2",
- "thiserror",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

@@ -238,7 +238,7 @@ function appendSettings(element) {
     logoutLink.appendChild(logoutName)
     logoutLink.onclick = function() {
         closeSidebar()
-        document.cookie = 'restcommander_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
+        document.cookie = 'mcpd_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;'
         document.location = 'index.html'
     }
     logoutItem.appendChild(logoutLink)
@@ -381,7 +381,7 @@ function drawTool(tool, element) {
 
 async function checkAndDrawState(tool) {
     // Check if there's a resource for this tool's state
-    const resourceUri = 'restcommander://' + tool.name + '/state'
+    const resourceUri = 'mcpd://' + tool.name + '/state'
     const result = await new Api(ApiOpts).mcpResourcesRead(resourceUri)
     
     if (result.ok) {
@@ -438,7 +438,7 @@ function drawToolState(tool, stateResult) {
 }
 
 async function refreshToolState(tool) {
-    const resourceUri = 'restcommander://' + tool.name + '/state'
+    const resourceUri = 'mcpd://' + tool.name + '/state'
     const result = await new Api(ApiOpts).mcpResourcesRead(resourceUri)
     if (result.ok) {
         drawToolState(tool, result)

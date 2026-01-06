@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 
 # State file location
-STATE_FILE = "/tmp/restcommander_taskqueue.json"
+STATE_FILE = "/tmp/mcpd_taskqueue.json"
 
 def load_queue():
     """Load queue from file or return empty queue"""

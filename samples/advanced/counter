@@ -3,7 +3,7 @@
 # Demonstrates stateful script with --state support
 # Shows how to persist state between calls using a file
 
-STATE_FILE="/tmp/restcommander_counter.json"
+STATE_FILE="/tmp/mcpd_counter.json"
 
 # Handle --help flag to return script metadata
 if [ "$1" = "--help" ]; then
