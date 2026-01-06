@@ -43,7 +43,7 @@ fn main() -> Result<(), String> {
         PathBuf::from(http::API_RUN_BASE_PATH)
     };
     let commands = cmd::tree::Command::new(
-        &settings.root_directory,
+        &settings.script_root_directory,
         &PathBuf::from(&settings.http_base_path).join(api_run_path),
     )
     .map_err(|reason| reason.to_string())?;

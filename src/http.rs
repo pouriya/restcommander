@@ -335,12 +335,12 @@ pub struct ServerConfig {
 }
 
 pub fn setup(cfg: CommandLine, commands: Command) -> Result<ServerConfig, ServerError> {
-    let host = cfg.host.clone();
-    let port = cfg.port;
+    let host = cfg.http_host.clone();
+    let port = cfg.http_port;
 
     // Convert commands from RwLock
 
-    let maybe_captcha = if cfg.captcha {
+    let maybe_captcha = if cfg.http_auth_captcha {
         Some(captcha::Captcha::new())
     } else {
         None
@@ -358,8 +358,8 @@ pub fn setup(cfg: CommandLine, commands: Command) -> Result<ServerConfig, Server
     let address = format!("{}:{}", host, port);
 
     if let (Some(ref tls_cert_file), Some(ref tls_key_file)) = (
-        handler_state.cfg.tls_cert_file.clone(),
-        handler_state.cfg.tls_key_file.clone(),
+        handler_state.cfg.http_tls_cert_file.clone(),
+        handler_state.cfg.http_tls_key_file.clone(),
     ) {
         // Load TLS certificates as raw bytes
         let cert_bytes = std::fs::read(tls_cert_file)?;
@@ -441,8 +441,8 @@ pub fn start_server(config: ServerConfig) -> Result<(), ServerError> {
         let tls_config = Arc::new(tls_config);
 
         // HTTPS server loop
-        let read_timeout = std::time::Duration::from_secs(state.cfg.read_timeout_secs);
-        let write_timeout = std::time::Duration::from_secs(state.cfg.write_timeout_secs);
+        let read_timeout = std::time::Duration::from_secs(state.cfg.http_read_timeout_secs);
+        let write_timeout = std::time::Duration::from_secs(state.cfg.http_write_timeout_secs);
 
         for stream_result in listener.incoming() {
             match stream_result {
@@ -568,8 +568,8 @@ pub fn start_server(config: ServerConfig) -> Result<(), ServerError> {
         }
     } else {
         // HTTP server
-        let read_timeout = std::time::Duration::from_secs(state.cfg.read_timeout_secs);
-        let write_timeout = std::time::Duration::from_secs(state.cfg.write_timeout_secs);
+        let read_timeout = std::time::Duration::from_secs(state.cfg.http_read_timeout_secs);
+        let write_timeout = std::time::Duration::from_secs(state.cfg.http_write_timeout_secs);
 
         for stream_result in listener.incoming() {
             match stream_result {
@@ -1001,7 +1001,7 @@ fn handle_request(request: &RequestWrapper, state: &mut HandlerState) -> HttpRes
 }
 
 fn redirect_root_to_index_html(cfg: &CommandLine) -> HttpResponseType {
-    if cfg.enabled {
+    if cfg.www_ui_enable {
         response_redirect_301(format!("{}static/index.html", cfg.http_base_path))
     } else {
         response_with_status_code(
@@ -1013,14 +1013,14 @@ fn redirect_root_to_index_html(cfg: &CommandLine) -> HttpResponseType {
 
 fn handle_static(_request: &RequestWrapper, cfg: &CommandLine, tail: &str) -> HttpResponseType {
     // Try external static directory first
-    if cfg.enabled
+    if cfg.www_ui_enable
         && cfg
-            .static_directory
+            .www_static_directory
             .as_ref()
             .map(|d| d.is_dir())
             .unwrap_or(false)
     {
-        let file_path = cfg.static_directory.as_ref().unwrap().join(tail);
+        let file_path = cfg.www_static_directory.as_ref().unwrap().join(tail);
         if file_path.exists() && file_path.is_file() {
             if let Ok(data) = std::fs::read(&file_path) {
                 // Simple mime type detection
@@ -1111,7 +1111,7 @@ fn api_auth_token_handler(
         Err(error) => make_api_response(Err(HTTPError::Authentication(error))),
         Ok(_) => {
             let token = utils::to_sha512(uuid::Uuid::new_v4().to_string());
-            let token_timeout = cfg.token_timeout;
+            let token_timeout = cfg.http_auth_token_timeout;
             let timestamp = time::SystemTime::now()
                 .duration_since(time::UNIX_EPOCH)
                 .unwrap()
@@ -1164,7 +1164,7 @@ fn check_authentication(
     tokens: &HashMap<String, usize>,
     cfg: &CommandLine,
 ) -> Result<(), HTTPAuthenticationError> {
-    if cfg.password_sha512.is_none() {
+    if cfg.http_auth_password_sha512.is_none() {
         return Ok(());
     }
 
@@ -1207,10 +1207,10 @@ fn authentication_with_basic(
     authorization_value: String,
     form: HashMap<String, String>,
 ) -> Result<(), HTTPAuthenticationError> {
-    if cfg.password_sha512.is_none() && cfg.username.is_empty() {
+    if cfg.http_auth_password_sha512.is_none() && cfg.http_auth_username.is_empty() {
         return Ok(());
     };
-    if cfg.password_sha512.is_none() || cfg.username.is_empty() {
+    if cfg.http_auth_password_sha512.is_none() || cfg.http_auth_username.is_empty() {
         return Err(HTTPAuthenticationError::UsernameOrPasswordIsNotSet);
     };
     match authorization_value
@@ -1233,7 +1233,7 @@ fn authentication_with_basic(
             })?;
             match decoded_string.splitn(2, ':').collect::<Vec<&str>>()[..] {
                 [username, password] => {
-                    if username == cfg.username {
+                    if username == cfg.http_auth_username {
                         // Read X-MCPD-PASSWORD-HASHED header (default to "false")
                         let password_hashed_header = request
                             .header("X-MCPD-PASSWORD-HASHED")
@@ -1256,7 +1256,7 @@ fn authentication_with_basic(
 
                         // Verify password using bcrypt
                         let password_hash = cfg
-                            .password_sha512
+                            .http_auth_password_sha512
                             .as_ref()
                             .ok_or(HTTPAuthenticationError::UsernameOrPasswordIsNotSet)?;
                         let password_valid = utils::verify_bcrypt(&password_sha256, password_hash)
@@ -1275,7 +1275,7 @@ fn authentication_with_basic(
                                     if captcha.compare_and_update(
                                         key.to_string(),
                                         value,
-                                        cfg.captcha_case_sensitive,
+                                        cfg.http_auth_captcha_case_sensitive,
                                     ) {
                                         Ok(())
                                     } else {
@@ -1318,13 +1318,13 @@ fn authentication_with_token(
     token: String,
     cfg: &CommandLine,
 ) -> Result<(), HTTPAuthenticationError> {
-    if cfg.password_sha512.is_none() {
+    if cfg.http_auth_password_sha512.is_none() {
         return Ok(());
     }
     if token.is_empty() {
         return Err(HTTPAuthenticationError::TokenNotFound);
     };
-    if let Some(ref api_token) = cfg.api_token {
+    if let Some(ref api_token) = cfg.http_auth_api_token {
         if &token == api_token {
             return Ok(());
         }
@@ -1366,7 +1366,7 @@ fn try_set_password(
 
         // Verify previous password against current password
         let current_password_hash = cfg
-            .password_sha512
+            .http_auth_password_sha512
             .as_ref()
             .ok_or(HTTPAPIError::InvalidPreviousPassword)?;
         let previous_password_valid =
@@ -1384,7 +1384,7 @@ fn try_set_password(
         return Err(HTTPAPIError::PreviousPasswordRequired);
     }
 
-    let password_file = if let Some(pf) = cfg.password_file.clone() {
+    let password_file = if let Some(pf) = cfg.http_auth_password_file.clone() {
         pf
     } else {
         return Err(HTTPAPIError::NoPasswordFile);
@@ -1409,7 +1409,7 @@ fn try_set_password(
             message: reason.to_string(),
         }
     })?;
-    cfg.password_sha512 = Some(password_bcrypt);
+    cfg.http_auth_password_sha512 = Some(password_bcrypt);
     Ok(make_api_response_ok())
 }
 

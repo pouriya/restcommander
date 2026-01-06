@@ -13,16 +13,44 @@ use tracing_subscriber::filter::LevelFilter;
 #[command(about)]
 pub struct CommandLine {
     /// HTTP server listen address.
-    #[arg(long, default_value = "127.0.0.1", env = "MCPD_SERVER_HOST", value_parser = parse_ip_addr)]
-    pub host: String,
+    #[arg(long, default_value = "127.0.0.1", env = "MCPD_HTTP_HOST", value_parser = parse_ip_addr)]
+    pub http_host: String,
 
     /// HTTP server listen port number.
-    #[arg(long, default_value = "1995", env = "MCPD_SERVER_PORT")]
-    pub port: u16,
+    #[arg(long, default_value = "1995", env = "MCPD_HTTP_PORT")]
+    pub http_port: u16,
 
     /// HTTP server base path. Currently not used!
-    #[arg(long, default_value = "/", env = "MCPD_SERVER_HTTP_BASE_PATH", value_parser = parse_http_base_path)]
+    #[arg(long, default_value = "/", env = "MCPD_HTTP_BASE_PATH", value_parser = parse_http_base_path)]
     pub http_base_path: String,
+
+    /// HTTP server TLS certificate file.
+    ///
+    /// If you configure this along with `--http-tls-key-file` option, mcpd
+    /// serves everything over HTTPS.
+    #[arg(long, env = "MCPD_HTTP_TLS_CERT_FILE", value_parser = parse_tls_file)]
+    pub http_tls_cert_file: Option<PathBuf>,
+
+    /// HTTP server TLS private-key file.
+    ///
+    /// If you configure this along with `--http-tls-cert-file` option, mcpd
+    /// serves everything over HTTPS.
+    #[arg(long, env = "MCPD_HTTP_TLS_KEY_FILE", value_parser = parse_tls_file)]
+    pub http_tls_key_file: Option<PathBuf>,
+
+    /// Read timeout for client connections in seconds.
+    ///
+    /// If a client doesn't send data within this period, the connection will be dropped.
+    /// The default value is 30 seconds.
+    #[arg(long, default_value = "30", env = "MCPD_HTTP_READ_TIMEOUT")]
+    pub http_read_timeout_secs: u64,
+
+    /// Write timeout for client connections in seconds.
+    ///
+    /// If data cannot be written to a client within this period, the connection will be dropped.
+    /// The default value is 30 seconds.
+    #[arg(long, default_value = "30", env = "MCPD_HTTP_WRITE_TIMEOUT")]
+    pub http_write_timeout_secs: u64,
 
     /// HTTP server basic authentication username.
     ///
@@ -30,58 +58,44 @@ pub struct CommandLine {
     /// If the value is empty and no password is configured, then no authentication
     /// is needed for anything. If the value is empty and password is configured, the
     /// username will be `admin`.
-    #[arg(long, default_value = "", env = "MCPD_SERVER_USERNAME")]
-    pub username: String,
+    #[arg(long, default_value = "", env = "MCPD_HTTP_AUTH_USERNAME")]
+    pub http_auth_username: String,
 
     /// A file containing sha512 of your user password.
     ///
     /// By configuring this you are able to change the password in runtime via REST API.
     /// Make sure that mcpd process has appropriate permissions to write to the file.
-    /// Empty value means this option should be discarded and if one of server `password_file`
-    /// and `password_sha512` is not configured, You can call every REST API endpoint without
+    /// Empty value means this option should be discarded and if one of `--http-auth-password-file`
+    /// and `--http-auth-password-sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    #[arg(long, env = "MCPD_SERVER_PASSWORD_FILE", value_parser = parse_password_file)]
-    pub password_file: Option<PathBuf>,
+    #[arg(long, env = "MCPD_HTTP_AUTH_PASSWORD_FILE", value_parser = parse_password_file)]
+    pub http_auth_password_file: Option<PathBuf>,
 
     /// sha512 of you user password.
     ///
-    /// If server `password_file` is configured, this is discarded.
+    /// If `--http-auth-password-file` is configured, this is discarded.
     /// Note that by configuring this, You can not change the password via REST API or in
     /// web dashboard.
-    /// Empty value means this option should be discarded and if one of server `password_file`
-    /// and `password_sha512` is not configured, You can call every REST API endpoint without
+    /// Empty value means this option should be discarded and if one of `--http-auth-password-file`
+    /// and `--http-auth-password-sha512` is not configured, You can call every REST API endpoint without
     /// authentication.
-    #[arg(long, env = "MCPD_SERVER_PASSWORD_SHA512")]
-    pub password_sha512: Option<String>,
-
-    /// HTTP server TLS certificate file.
-    ///
-    /// If you configure this along with server `tls_key_file` option, mcpd
-    /// serves everything over HTTPS.
-    #[arg(long, env = "MCPD_SERVER_TLS_CERT_FILE", value_parser = parse_tls_file)]
-    pub tls_cert_file: Option<PathBuf>,
-
-    /// HTTP server TLS private-key file.
-    ///
-    /// If you configure this along with server `tls_cert_file` option, mcpd
-    /// serves everything over HTTPS.
-    #[arg(long, env = "MCPD_SERVER_TLS_KEY_FILE", value_parser = parse_tls_file)]
-    pub tls_key_file: Option<PathBuf>,
+    #[arg(long, env = "MCPD_HTTP_AUTH_PASSWORD_SHA512")]
+    pub http_auth_password_sha512: Option<String>,
 
     /// Enable/Disable CAPTCHA.
-    #[arg(long, env = "MCPD_SERVER_CAPTCHA")]
-    pub captcha: bool,
+    #[arg(long, env = "MCPD_HTTP_AUTH_CAPTCHA")]
+    pub http_auth_captcha: bool,
 
     /// Make CAPTCHA case-sensitive
-    #[arg(long, env = "MCPD_SERVER_CAPTCHA_CASE_SENSITIVE")]
-    pub captcha_case_sensitive: bool,
+    #[arg(long, env = "MCPD_HTTP_AUTH_CAPTCHA_CASE_SENSITIVE")]
+    pub http_auth_captcha_case_sensitive: bool,
 
     /// hardcoded HTTP bearer token that does not expire.
     ///
     /// You can use this value in your application(s) then you do not have to pass
     /// CAPTCHA each time the previous token has expired to get a new one.
-    #[arg(long, env = "MCPD_SERVER_API_TOKEN")]
-    pub api_token: Option<String>,
+    #[arg(long, env = "MCPD_HTTP_AUTH_API_TOKEN")]
+    pub http_auth_api_token: Option<String>,
 
     /// Timeout for dynamically generated HTTP bearer tokens in seconds.
     ///
@@ -89,31 +103,21 @@ pub struct CommandLine {
     #[arg(
         long,
         default_value = "604800",
-        env = "MCPD_SERVER_TOKEN_TIMEOUT"
+        env = "MCPD_HTTP_AUTH_TOKEN_TIMEOUT"
     )]
-    pub token_timeout: usize,
-
-    /// Read timeout for client connections in seconds.
-    ///
-    /// If a client doesn't send data within this period, the connection will be dropped.
-    /// The default value is 30 seconds.
-    #[arg(long, default_value = "30", env = "MCPD_SERVER_READ_TIMEOUT")]
-    pub read_timeout_secs: u64,
-
-    /// Write timeout for client connections in seconds.
-    ///
-    /// If data cannot be written to a client within this period, the connection will be dropped.
-    /// The default value is 30 seconds.
-    #[arg(long, default_value = "30", env = "MCPD_SERVER_WRITE_TIMEOUT")]
-    pub write_timeout_secs: u64,
+    pub http_auth_token_timeout: usize,
 
     /// Root directory to load command files and directories and their information files.
-    #[arg(long, env = "MCPD_COMMANDS_ROOT_DIRECTORY", value_parser = parse_commands_root_directory)]
-    pub root_directory: PathBuf,
+    ///
+    /// This option is required. The directory must exist and be readable.
+    #[arg(long, env = "MCPD_SCRIPT_ROOT_DIRECTORY", value_parser = parse_script_root_directory)]
+    pub script_root_directory: PathBuf,
 
-    /// Configuration key/values for commands in KEY=VALUE format (can be specified multiple times).
-    #[arg(short = 'C', long, value_name = "KEY=VALUE", value_parser = parse_command_key_value)]
-    pub commands_configuration: Vec<(String, crate::cmd::tree::CommandOptionValue)>,
+    /// Configuration key/values for scripts in KEY=VALUE format (can be specified multiple times).
+    ///
+    /// Values must be valid JSON. These are passed to scripts via environment variables.
+    #[arg(long, value_name = "KEY=VALUE", value_parser = parse_command_key_value)]
+    pub script_config: Vec<(String, crate::cmd::tree::CommandOptionValue)>,
 
     /// Your scripts will receive below configuration key/values directly from env or stdin.
     #[arg(skip)]
@@ -131,6 +135,12 @@ pub struct CommandLine {
     #[arg(long)]
     pub quiet: bool,
 
+    /// Enable/Disable the web dashboard.
+    ///
+    /// Default is enabled (true).
+    #[arg(long, default_value = "true", env = "MCPD_WWW_UI_ENABLE")]
+    pub www_ui_enable: bool,
+
     /// A directory to serve your own web files under `/static/*` HTTP path.
     ///
     /// Also you can override mcpd virtual files inside this folder.
@@ -138,15 +148,13 @@ pub struct CommandLine {
     /// login.js, tools.html, mcp.js, mcpd-background-image.jpg,
     /// favicon.ico, bootstrap.bundle.min.js, bootstrap.min.css, api.js, utils.js.
     #[arg(long, env = "MCPD_WWW_STATIC_DIRECTORY", value_parser = parse_static_directory)]
-    pub static_directory: Option<PathBuf>,
-
-    /// Enable/Disable the web dashboard.
-    #[arg(long, env = "MCPD_WWW_ENABLED")]
-    pub enabled: bool,
+    pub www_static_directory: Option<PathBuf>,
 
     /// Configuration key/values for www in KEY=VALUE format (can be specified multiple times).
-    #[arg(short = 'W', long, value_name = "KEY=VALUE", value_parser = parse_key_value)]
-    pub www_configuration: Vec<(String, String)>,
+    ///
+    /// These are accessible via the `/api/public/configuration` endpoint.
+    #[arg(long, value_name = "KEY=VALUE", value_parser = parse_key_value)]
+    pub www_config: Vec<(String, String)>,
 
     /// You can access below configuration key/values from REST-API `/public/configuration` endpoint.
     #[arg(skip)]
@@ -218,11 +226,17 @@ fn parse_key_value(s: &str) -> Result<(String, String), String> {
     }
 }
 
-fn parse_commands_root_directory(s: &str) -> Result<PathBuf, String> {
+fn parse_script_root_directory(s: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(s);
+    if !path.exists() {
+        return Err(format!(
+            "Script root directory {:?} does not exist",
+            path
+        ));
+    }
     if !path.is_dir() {
         return Err(format!(
-            "Commands root directory {:?} is not a directory or could not be found",
+            "Script root directory {:?} is not a directory",
             path
         ));
     }
@@ -255,7 +269,7 @@ impl CommandLine {
 
     pub fn after_parse(&mut self) -> Result<(), String> {
         // Handle password_file reading
-        if let Some(password_file) = &self.password_file {
+        if let Some(password_file) = &self.http_auth_password_file {
             let password = fs::read(password_file)
                 .map_err(|e| format!("Could not read password file {:?}: {}", password_file, e))?;
             let password = String::from_utf8(password)
@@ -270,40 +284,40 @@ impl CommandLine {
             if password.is_empty() {
                 return Err(format!("Password file {:?} is empty!", password_file));
             }
-            if self.password_sha512.is_some() {
+            if self.http_auth_password_sha512.is_some() {
                 tracing::warn!(
                     msg = "Both password and password_file fields are set, ignoring password field",
                 );
             }
-            self.password_sha512 = Some(password);
+            self.http_auth_password_sha512 = Some(password);
         }
 
         // Handle username/password validation
         match (
-            !self.username.is_empty(),
-            self.password_sha512.is_some(),
-            self.password_file.is_some(),
+            !self.http_auth_username.is_empty(),
+            self.http_auth_password_sha512.is_some(),
+            self.http_auth_password_file.is_some(),
         ) {
             (true, false, false) => {
-                return Err("Configuration contains `username` but `password` or `password_file` field is not set".to_string())
+                return Err("Configuration contains `--http-auth-username` but `--http-auth-password-file` or `--http-auth-password-sha512` field is not set".to_string())
             }
             (false, true, _) => {
                 tracing::warn!(
                     msg = "Configuration contains password but username field is not set, using 'admin' as default username",
                 );
-                self.username = "admin".to_string();
+                self.http_auth_username = "admin".to_string();
             }
             (false, _, true) => {
                 tracing::warn!(
                     msg = "Configuration contains password_file but username field is not set, using 'admin' as default username",
                 );
-                self.username = "admin".to_string();
+                self.http_auth_username = "admin".to_string();
             }
             _ => (),
         }
 
         // Handle TLS file validation
-        match (self.tls_cert_file.is_some(), self.tls_key_file.is_some()) {
+        match (self.http_tls_cert_file.is_some(), self.http_tls_key_file.is_some()) {
             (true, false) => {
                 return Err("TLS cert file is set but TLS key file is not set".to_string())
             }
@@ -313,16 +327,16 @@ impl CommandLine {
             _ => (),
         }
 
-        // Convert parsed command key-value pairs into HashMap
+        // Convert parsed script key-value pairs into HashMap
         let mut config = HashMap::new();
-        for (key, value) in &self.commands_configuration {
+        for (key, value) in &self.script_config {
             config.insert(key.clone(), value.clone());
         }
         self.configuration = config;
 
         // Convert parsed www key-value pairs into HashMap
         let mut www_config = HashMap::new();
-        for (key, value) in &self.www_configuration {
+        for (key, value) in &self.www_config {
             www_config.insert(key.clone(), value.clone());
         }
         self.www_configuration_map = www_config;

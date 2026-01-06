@@ -578,15 +578,15 @@ fn add_configuration_to_options(cfg: &CommandLine) -> HashMap<String, CommandOpt
     let mut options = HashMap::from([
         (
             "MCPD_CONFIG_SERVER_HOST".to_string(),
-            CommandOptionValue::String(if cfg.host.as_str() == "0.0.0.0" {
+            CommandOptionValue::String(if cfg.http_host.as_str() == "0.0.0.0" {
                 "127.0.0.1".to_string()
             } else {
-                cfg.host.clone()
+                cfg.http_host.clone()
             }),
         ),
         (
             "MCPD_CONFIG_SERVER_PORT".to_string(),
-            CommandOptionValue::Integer(cfg.port as i64),
+            CommandOptionValue::Integer(cfg.http_port as i64),
         ),
         (
             "MCPD_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
@@ -594,19 +594,19 @@ fn add_configuration_to_options(cfg: &CommandLine) -> HashMap<String, CommandOpt
         ),
         (
             "MCPD_CONFIG_SERVER_USERNAME".to_string(),
-            CommandOptionValue::String(cfg.username.clone()),
+            CommandOptionValue::String(cfg.http_auth_username.clone()),
         ),
         (
             "MCPD_CONFIG_SERVER_API_TOKEN".to_string(),
-            CommandOptionValue::String(cfg.api_token.clone().unwrap_or_default()),
+            CommandOptionValue::String(cfg.http_auth_api_token.clone().unwrap_or_default()),
         ),
         (
             "MCPD_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
-            CommandOptionValue::String(cfg.root_directory.to_str().unwrap().to_string()),
+            CommandOptionValue::String(cfg.script_root_directory.to_str().unwrap().to_string()),
         ),
         (
             "MCPD_CONFIG_SERVER_HTTPS".to_string(),
-            CommandOptionValue::Bool(cfg.tls_key_file.as_ref().map(|_| true).unwrap_or(false)),
+            CommandOptionValue::Bool(cfg.http_tls_key_file.as_ref().map(|_| true).unwrap_or(false)),
         ),
         (
             "MCPD_CONFIG_LOGGING_LEVEL_NAME".to_string(),
