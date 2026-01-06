@@ -114,14 +114,6 @@ class Api {
         return this.fetch('auth/test', filterFunction)
     }
 
-    async commands(filterFunction) {
-        return this.fetch('commands', filterFunction)
-    }
-
-    async run(http_path, options, filterFunction) {
-        return this.fetch(http_path, filterFunction, 'POST', {'X-RESTCOMMANDER-STATISTICS': "true"}, JSON.stringify(options))
-    }
-
     async setPassword(password, previousPassword, filterFunction) {
         const hashResult = tryHash(password, 'password')
         const previousHashResult = tryHash(previousPassword, 'previous_password')
@@ -132,8 +124,186 @@ class Api {
         }))
     }
 
-    async state(http_path, filterFunction) {
-        return this.fetch(http_path, filterFunction, 'GET', {'X-RESTCOMMANDER-STATISTICS': "true"})
+    // === MCP Methods ===
+    async mcp(method, params = {}) {
+        const request = { jsonrpc: "2.0", id: Date.now(), method, params }
+        // Use fetch directly to handle JSON-RPC response format properly
+        const url = this.options.url + 'mcp'
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include', // Include cookies for authentication
+            body: JSON.stringify(request)
+        })
+        
+        // Handle HTTP 204 (No Content) for notifications
+        if (response.status === 204) {
+            return { ok: true, result: null, status: 204 }
+        }
+        
+        const jsonRpcResponse = await response.json()
+        
+        // Check for JSON-RPC error
+        if (jsonRpcResponse.error) {
+            return {
+                ok: false,
+                code: jsonRpcResponse.error.code,
+                result: jsonRpcResponse.error.message,
+                error: jsonRpcResponse.error,
+                status: response.status
+            }
+        }
+        
+        // Return success with result
+        return {
+            ok: true,
+            result: jsonRpcResponse.result,
+            status: response.status
+        }
+    }
+
+    async mcpInitialize() {
+        return this.mcp('initialize', {})
+    }
+
+    async mcpToolsList() {
+        const result = await this.mcp('tools/list', {})
+        if (!result.ok) return false
+        return this.toolsToCommandTree(result.result.tools)
+    }
+
+    async mcpToolsCall(toolName, args = {}) {
+        const result = await this.mcp('tools/call', { name: toolName, arguments: args })
+        if (!result.ok) {
+            return { ok: false, status: 500, result: result.result, code: result.code }
+        }
+        // Extract content from MCP response format
+        const content = result.result.content || []
+        const textContent = content.find(c => c.type === 'text')?.text || ''
+        const isError = result.result.isError || false
+        
+        // Try to parse JSON if possible, otherwise use string as-is
+        let parsedResult = textContent
+        try {
+            parsedResult = JSON.parse(textContent)
+        } catch (e) {
+            // Not JSON, use string as-is
+            parsedResult = textContent
+        }
+        
+        return {
+            ok: !isError,
+            status: isError ? 500 : 200,
+            result: parsedResult,
+            code: isError ? -32001 : 0
+        }
+    }
+
+    async mcpResourcesList() {
+        return this.mcp('resources/list', {})
+    }
+
+    async mcpResourcesRead(uri) {
+        const result = await this.mcp('resources/read', { uri: uri })
+        if (!result.ok) {
+            return { ok: false, status: 500, result: result.result, code: result.code }
+        }
+        // Extract content from MCP response format
+        const contents = result.result.contents || []
+        const content = contents[0]
+        if (!content) {
+            return { ok: false, status: 404, result: 'No content found', code: -32004 }
+        }
+        // Parse JSON text content
+        try {
+            const parsed = JSON.parse(content.text)
+            return { ok: true, status: 200, result: parsed, code: 0 }
+        } catch (e) {
+            return { ok: true, status: 200, result: content.text, code: 0 }
+        }
+    }
+
+    // Convert flat MCP tools list back to tree structure for UI
+    toolsToCommandTree(tools) {
+        const root = { name: 'root', is_directory: true, commands: {} }
+        
+        for (const tool of tools) {
+            const parts = tool.name.split('/')
+            let current = root
+            
+            // Create directory nodes for path segments
+            for (let i = 0; i < parts.length - 1; i++) {
+                const part = parts[i]
+                if (!current.commands[part]) {
+                    current.commands[part] = {
+                        name: part,
+                        is_directory: true,
+                        commands: {},
+                        type: 'directory'
+                    }
+                }
+                current = current.commands[part]
+            }
+            
+            // Create leaf command node
+            const leafName = parts[parts.length - 1]
+            current.commands[leafName] = {
+                name: leafName,
+                is_directory: false,
+                type: 'command',
+                http_path: tool.name,  // Use tool name for mcpToolsCall
+                info: this.schemaToCommandInfo(tool)
+            }
+        }
+        
+        return root
+    }
+
+    // Convert MCP inputSchema back to CommandInfo format for existing UI
+    schemaToCommandInfo(tool) {
+        const options = {}
+        const schema = tool.inputSchema || {}
+        
+        if (schema.properties) {
+            for (const [name, prop] of Object.entries(schema.properties)) {
+                options[name] = {
+                    description: prop.description || '',
+                    required: (schema.required || []).includes(name),
+                    value_type: this.jsonSchemaTypeToValueType(prop),
+                    default_value: prop.default
+                }
+                // Restore size constraints
+                if (prop.minimum !== undefined || prop.maximum !== undefined ||
+                    prop.minLength !== undefined || prop.maxLength !== undefined) {
+                    options[name].size = {
+                        min: prop.minimum ?? prop.minLength,
+                        max: prop.maximum ?? prop.maxLength
+                    }
+                }
+            }
+        }
+        
+        return {
+            description: tool.description,
+            title: tool.name.split('/').pop(),  // Use last segment as title
+            options: options
+        }
+    }
+
+    jsonSchemaTypeToValueType(prop) {
+        if (prop.enum) {
+            return { enum: prop.enum }
+        }
+        switch (prop.type) {
+            case 'string': return 'string'
+            case 'integer': return 'integer'
+            case 'number': return 'float'
+            case 'boolean': return 'boolean'
+            default: return 'any'
+        }
     }
 }
 

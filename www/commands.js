@@ -15,7 +15,7 @@ async function drawNavbar() {
         navigationBarElement.innerHTML = ''
     }
     
-    const commandsResult = await new Api(ApiOpts).commands(true)
+    const commandsResult = await new Api(ApiOpts).mcpToolsList()
     
     // Hide loading
     if (loadingElement) {
@@ -31,6 +31,7 @@ async function drawNavbar() {
         return false
     }
     
+    // mcpToolsList returns the tree structure directly (root with commands property)
     const commands = commandsResult.commands
     const commandCount = Object.keys(commands).length
     await console.log('Got', commandCount, 'command(s)')
@@ -612,7 +613,9 @@ async function getAndDrawCommandState(command) {
         stateContainer.appendChild(waitingCard)
     }
     
-    const runResult = await new Api(ApiOpts).state(command.http_path.replace('run', 'state'))
+    // Convert http_path (tool name) to resource URI
+    const resourceUri = 'restcommander://' + command.http_path + '/state'
+    const runResult = await new Api(ApiOpts).mcpResourcesRead(resourceUri)
     afterGetCommandState(command, runResult)
     if (runResult.status === 401) {
         changeLogoutToLogin()
@@ -766,7 +769,7 @@ async function makeCommandOptionsInputs(options, command) {
                 requestOptions[pair[0]] = value;
             };
             updateResultBeforeRequest()
-            const runResult = await new Api(ApiOpts).run(command.http_path, requestOptions)
+            const runResult = await new Api(ApiOpts).mcpToolsCall(command.http_path, requestOptions)
             if (runResult.status !== 401 && runResult.status !== 0 && command.info.support_state) {
                 await getAndDrawCommandState(command)
             }

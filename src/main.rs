@@ -4,6 +4,7 @@ use std::process::exit;
 mod captcha;
 mod cmd;
 mod http;
+mod mcp;
 mod settings;
 mod utils;
 mod www;

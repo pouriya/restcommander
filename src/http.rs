@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener};
-use std::ops::Deref;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time;
 
@@ -18,10 +16,7 @@ use thiserror::Error;
 use tracing::level_enabled;
 
 use crate::captcha;
-use crate::cmd;
-use crate::cmd::runner::CommandOptionValue;
-use crate::cmd::runner::CommandOptionsValue;
-use crate::cmd::{Command, CommandInput, CommandStats};
+use crate::cmd::{Command, CommandStats};
 use crate::settings::CommandLine;
 use crate::utils;
 use crate::www;
@@ -69,10 +64,6 @@ impl RequestWrapper {
 
     pub fn remote_addr(&self) -> SocketAddr {
         self.remote_addr
-    }
-
-    pub fn raw_query_string(&self) -> &str {
-        self.request.uri().query().unwrap_or("")
     }
 
     pub fn body(&self) -> &[u8] {
@@ -351,8 +342,9 @@ struct SetPassword {
 }
 
 #[inline]
-fn exit_code_to_status_code(exit_code: i32) -> u16 {
-    match exit_code {
+fn exit_code_to_status_code(_exit_code: i32) -> u16 {
+    // Legacy function - kept for potential future use but not currently called
+    match _exit_code {
         0 => 200,
         1 => 500,
         2 => 400,
@@ -1010,36 +1002,30 @@ fn handle_request(request: &RequestWrapper, state: &mut HandlerState) -> HttpRes
             &mut state.maybe_captcha,
             &mut state.tokens,
         ),
-        ("GET", "/api/commands") => {
-            api_get_commands(request, &mut state.commands, &mut state.tokens, &state.cfg)
-        }
         ("POST", "/api/setPassword") => {
             api_set_password(request, &mut state.cfg, &mut state.tokens)
         }
-        _ => {
-            // Handle dynamic routes for /api/run/* and /api/state/*
-            if method == "POST" && url.starts_with("/api/run/") {
-                let tail = url.strip_prefix("/api/run/").unwrap_or("");
-                return api_run_command(
-                    request,
-                    &state.cfg,
-                    &mut state.commands,
-                    &mut state.tokens,
-                    tail,
+        ("POST", "/api/mcp") => {
+            // Validate Content-Type
+            let content_type = request.header("Content-Type").unwrap_or("");
+            if !content_type.contains("application/json") {
+                return crate::mcp::json_rpc_error_response(
+                    serde_json::Value::Null,
+                    -32700,
+                    "Content-Type must be application/json",
+                    None,
                 );
             }
-            if method == "GET" && url.starts_with("/api/state/") {
-                let tail = url.strip_prefix("/api/state/").unwrap_or("");
-                return api_get_command_state(
-                    request,
-                    &state.cfg,
-                    &mut state.commands,
-                    &mut state.tokens,
-                    tail,
-                );
+
+            // Check authentication
+            if let Err(e) = check_authentication(request, &state.tokens, &state.cfg) {
+                return make_api_response(Err(HTTPError::Authentication(e)));
             }
-            response_with_status_code(response_text("Not Found"), 404)
+
+            // Handle MCP request(s)
+            crate::mcp::handle_mcp_body(request.body(), &mut state.commands, &state.cfg)
         }
+        _ => response_with_status_code(response_text("Not Found"), 404),
     }
 }
 
@@ -1175,45 +1161,6 @@ fn api_auth_token_handler(
     }
 }
 
-fn api_get_commands(
-    request: &RequestWrapper,
-    commands: &mut Command,
-    tokens: &mut HashMap<String, usize>,
-    cfg: &CommandLine,
-) -> HttpResponseType {
-    match check_authentication(request, tokens, cfg) {
-        Ok(_) => {
-            // Reload commands before returning them
-            let reload_result = commands.reload();
-            if let Err(e) = reload_result {
-                return make_api_response(Err(HTTPError::API(HTTPAPIError::InitializeCommand {
-                    message: format!("Failed to reload commands: {}", e),
-                })));
-            }
-            let mut command_value = match serde_json::to_value(commands.deref()) {
-                Ok(value) => value,
-                Err(e) => {
-                    return make_api_response(Err(HTTPError::Internal(format!(
-                        "Failed to serialize commands: {}",
-                        e
-                    ))));
-                }
-            };
-
-            // Ensure 'commands' field is always present (frontend expects it)
-            // The Command struct skips empty commands maps, but frontend needs it
-            if let Some(obj) = command_value.as_object_mut() {
-                if !obj.contains_key("commands") {
-                    obj.insert("commands".to_string(), serde_json::json!({}));
-                }
-            }
-
-            make_api_response_ok_with_result(command_value)
-        }
-        Err(e) => make_api_response(Err(HTTPError::Authentication(e))),
-    }
-}
-
 fn api_set_password(
     request: &RequestWrapper,
     cfg: &mut CommandLine,
@@ -1281,122 +1228,6 @@ fn extract_token(request: &RequestWrapper) -> Result<String, HTTPAuthenticationE
 
     Err(HTTPAuthenticationError::TokenNotFound)
 }
-
-fn api_run_command(
-    request: &RequestWrapper,
-    cfg: &CommandLine,
-    commands: &mut Command,
-    tokens: &mut HashMap<String, usize>,
-    command_path: &str,
-) -> HttpResponseType {
-    // Check authentication
-    if let Err(e) = check_authentication(request, tokens, cfg) {
-        return make_api_response(Err(HTTPError::Authentication(e)));
-    }
-
-    match extract_command_input(request, cfg) {
-        Ok(input) => match maybe_run_command(commands, command_path.to_string(), input) {
-            Ok(response) => response,
-            Err(e) => make_api_response(Err(HTTPError::API(e))),
-        },
-        Err(e) => make_api_response(Err(e)),
-    }
-}
-
-fn api_get_command_state(
-    request: &RequestWrapper,
-    cfg: &CommandLine,
-    commands: &mut Command,
-    tokens: &mut HashMap<String, usize>,
-    command_path: &str,
-) -> HttpResponseType {
-    // Check authentication
-    if let Err(e) = check_authentication(request, tokens, cfg) {
-        return make_api_response(Err(HTTPError::Authentication(e)));
-    }
-
-    match maybe_get_command_state(cfg, commands, command_path.to_string()) {
-        Ok(response) => response,
-        Err(e) => make_api_response(Err(HTTPError::API(e))),
-    }
-}
-
-fn extract_command_input(
-    request: &RequestWrapper,
-    cfg: &CommandLine,
-) -> Result<CommandInput, HTTPError> {
-    let mut input = CommandInput::default();
-
-    // Extract from headers
-    let mut options = CommandOptionsValue::new();
-    for (header_name, header_value) in request.headers() {
-        let header_name_upper = header_name.to_uppercase();
-        if header_name_upper == "X-RESTCOMMANDER-STATISTICS" {
-            input.statistics = true;
-            continue;
-        }
-        if header_name_upper.starts_with("X-") && header_name.len() > 2 {
-            // Safe: we checked header_name.len() > 2, so [2..] is valid
-            let key = header_name[2..].to_string();
-            let value_str = header_value;
-            let value = serde_json::from_str::<CommandOptionValue>(value_str)
-                .unwrap_or_else(|_| CommandOptionValue::String(value_str.to_string()));
-            options.insert(key, value);
-        } else {
-            let key = format!(
-                "RESTCOMMANDER_HEADER_{}",
-                header_name_upper.replace("-", "_")
-            );
-            let value = CommandOptionValue::String(header_value.to_string());
-            options.insert(key, value);
-        }
-    }
-
-    // Add client IP and port
-    let remote_addr = request.remote_addr();
-    options.insert(
-        "RESTCOMMANDER_CLIENT_IP".to_string(),
-        CommandOptionValue::String(remote_addr.ip().to_string()),
-    );
-    options.insert(
-        "RESTCOMMANDER_CLIENT_PORT".to_string(),
-        CommandOptionValue::Integer(remote_addr.port() as i64),
-    );
-
-    // Extract from body (JSON or form)
-    let content_type = request.header("Content-Type").unwrap_or("");
-    let body_options = if content_type.contains("application/json") {
-        serde_json::from_slice::<CommandOptionsValue>(request.body()).unwrap_or_default()
-    } else if content_type.contains("application/x-www-form-urlencoded") {
-        serde_urlencoded::from_bytes::<CommandOptionsValue>(request.body()).unwrap_or_default()
-    } else {
-        CommandOptionsValue::new()
-    };
-
-    // Extract from query string
-    let query_options = {
-        let query = request.raw_query_string();
-        if query.is_empty() {
-            CommandOptionsValue::new()
-        } else {
-            serde_urlencoded::from_str::<CommandOptionsValue>(query)
-                .unwrap_or_else(|_| CommandOptionsValue::new())
-        }
-    };
-
-    // Unify all options
-    input.options = unify_options(vec![
-        options,
-        query_options,
-        body_options,
-        add_configuration_to_options(cfg),
-    ]);
-
-    Ok(input)
-}
-
-// Old filter functions removed - replaced with rouille handlers above
-// Utility functions that are still used by handlers are kept below
 
 fn authentication_with_basic(
     request: &RequestWrapper,
@@ -1541,160 +1372,6 @@ fn authentication_with_token(
     }
 }
 
-fn maybe_run_command(
-    commands: &mut Command,
-    command_path: String,
-    command_input: CommandInput,
-) -> Result<HttpResponseType, HTTPAPIError> {
-    let root_command = commands.clone();
-    let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
-        .join(PathBuf::from(command_path))
-        .components()
-        .map(|x| x.as_os_str().to_str().unwrap().to_string())
-        .collect();
-    let command = cmd::search_for_command(&command_path_list, &root_command).map_err(|reason| {
-        HTTPAPIError::CommandNotFound {
-            message: reason.to_string(),
-        }
-    })?;
-    let input =
-        cmd::check_input(&command, &command_input).map_err(|reason| HTTPAPIError::CheckInput {
-            message: reason.to_string(),
-        })?;
-    let env_map = make_environment_variables_map_from_options(input.options.clone());
-    let command_output = cmd::run_command(&command, &input, env_map).map_err(|reason| {
-        HTTPAPIError::InitializeCommand {
-            message: reason.to_string(),
-        }
-    })?;
-    let http_status_code = exit_code_to_status_code(command_output.exit_code) as u16;
-    let http_response_body = if command_output.stdout.is_empty() {
-        serde_json::Value::Null
-    } else if command_output.decoded_stdout.is_err() {
-        serde_json::Value::String(command_output.stdout)
-    } else {
-        command_output.decoded_stdout.unwrap()
-    };
-    Ok(make_api_response_with_header_and_stats(
-        Ok(http_response_body),
-        None,
-        if command_input.statistics {
-            Some(command_output.stats)
-        } else {
-            None
-        },
-        Some(http_status_code),
-    ))
-}
-
-fn maybe_get_command_state(
-    cfg: &CommandLine,
-    commands: &mut Command,
-    command_path: String,
-) -> Result<HttpResponseType, HTTPAPIError> {
-    let root_command = commands.clone();
-    let command_path_list: Vec<String> = PathBuf::from(root_command.name.clone())
-        .join(PathBuf::from(command_path))
-        .components()
-        .map(|x| x.as_os_str().to_str().unwrap().to_string())
-        .collect();
-    let command = cmd::search_for_command(&command_path_list, &root_command).map_err(|reason| {
-        HTTPAPIError::CommandNotFound {
-            message: reason.to_string(),
-        }
-    })?;
-    let command_output = cmd::get_state(
-        &command,
-        make_environment_variables_map_from_options(add_configuration_to_options(cfg)),
-    )
-    .map_err(|reason| HTTPAPIError::InitializeCommand {
-        message: reason.to_string(),
-    })?;
-    let http_status_code = exit_code_to_status_code(command_output.exit_code) as u16;
-    let http_response_body = if command_output.stdout.is_empty() {
-        serde_json::Value::Null
-    } else if command_output.decoded_stdout.is_err() {
-        serde_json::Value::String(command_output.stdout)
-    } else {
-        command_output.decoded_stdout.unwrap()
-    };
-    Ok(make_api_response_with_header_and_stats(
-        Ok(http_response_body),
-        None,
-        None, // TODO
-        Some(http_status_code),
-    ))
-}
-
-fn make_environment_variables_map_from_options(
-    options: CommandOptionsValue,
-) -> HashMap<String, String> {
-    options
-        .into_iter()
-        .fold(HashMap::new(), |mut env_map, (key, value)| {
-            env_map.insert(
-                key,
-                match value {
-                    CommandOptionValue::Bool(x) => x.to_string(),
-                    CommandOptionValue::Integer(x) => x.to_string(),
-                    CommandOptionValue::Float(x) => x.to_string(),
-                    CommandOptionValue::None => "".to_string(),
-                    CommandOptionValue::String(x) => x,
-                },
-            );
-            env_map
-        })
-}
-
-fn add_configuration_to_options(cfg: &CommandLine) -> CommandOptionsValue {
-    let mut options = CommandOptionsValue::from([
-        (
-            "RESTCOMMANDER_CONFIG_SERVER_HOST".to_string(),
-            CommandOptionValue::String(if cfg.host.as_str() == "0.0.0.0" {
-                "127.0.0.1".to_string()
-            } else {
-                cfg.host.clone()
-            }),
-        ),
-        (
-            "RESTCOMMANDER_CONFIG_SERVER_PORT".to_string(),
-            CommandOptionValue::Integer(cfg.port as i64),
-        ),
-        (
-            "RESTCOMMANDER_CONFIG_SERVER_HTTP_BASE_PATH".to_string(),
-            CommandOptionValue::String(cfg.http_base_path.clone()),
-        ),
-        (
-            "RESTCOMMANDER_CONFIG_SERVER_USERNAME".to_string(),
-            CommandOptionValue::String(cfg.username.clone()),
-        ),
-        (
-            "RESTCOMMANDER_CONFIG_SERVER_API_TOKEN".to_string(),
-            CommandOptionValue::String(cfg.api_token.clone().unwrap_or_default()),
-        ),
-        (
-            "RESTCOMMANDER_CONFIG_COMMANDS_ROOT_DIRECTORY".to_string(),
-            CommandOptionValue::String(cfg.root_directory.to_str().unwrap().to_string()),
-        ),
-        (
-            "RESTCOMMANDER_CONFIG_SERVER_HTTPS".to_string(),
-            CommandOptionValue::Bool(cfg.tls_key_file.as_ref().map(|_| true).unwrap_or(false)),
-        ),
-        (
-            "RESTCOMMANDER_CONFIG_LOGGING_LEVEL_NAME".to_string(),
-            CommandOptionValue::String(cfg.logging_level().to_string()),
-        ),
-        (
-            "RESTCOMMANDER_CONFIGURATION_FILENAME".to_string(),
-            CommandOptionValue::String("<COMMANDLINE>".to_string()),
-        ),
-    ]);
-    for (key, value) in &cfg.configuration {
-        options.insert(key.clone(), value.clone());
-    }
-    options
-}
-
 fn try_set_password(
     cfg: &mut CommandLine,
     password: SetPassword,
@@ -1760,27 +1437,6 @@ fn try_set_password(
     })?;
     cfg.password_sha512 = Some(password_bcrypt);
     Ok(make_api_response_ok())
-}
-
-fn unify_options(options_list: Vec<CommandOptionsValue>) -> CommandOptionsValue {
-    let mut options = CommandOptionsValue::new();
-    for options_list_item in options_list {
-        for (option, mut value) in options_list_item {
-            if options.contains_key(option.as_str()) {
-                tracing::trace!(
-                    msg = "Replacing value for option",
-                    option = option.as_str(),
-                    old = ?options.get(option.as_str()).unwrap(),
-                    new = ?value,
-                )
-            };
-            if let CommandOptionValue::String(ref value_string) = value {
-                value = serde_json::from_str::<CommandOptionValue>(value_string).unwrap_or(value)
-            }
-            options.insert(option, value);
-        }
-    }
-    options
 }
 
 fn make_api_response_ok() -> HttpResponseType {
