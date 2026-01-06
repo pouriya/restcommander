@@ -31,7 +31,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--help":
 import os
 
 try:
-    # Options are passed as environment variables (without RC_OPT_ prefix)
+    # Options are passed as environment variables with their exact names
     a = int(os.environ.get("a", 0))
     b = int(os.environ.get("b", 0))
     op = os.environ.get("op", "add")
