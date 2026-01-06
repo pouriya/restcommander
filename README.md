@@ -18,22 +18,40 @@ mcpd is a ~3MB executable that includes:
 
 ## Quick Start
 
-```bash
-mkdir scripts
-mcpd --script-root-directory scripts
-```
-
-MCP clients can now connect to `http://localhost:1995/api/mcp`.
-
-The web dashboard is available at `http://localhost:1995` (enabled by default).
-
-## Installation
+### Using Docker
 
 ```bash
-cargo install --path .
+# Create a directory for your scripts
+mkdir -p scripts
+
+# Create a date example script with description and options
+cat > scripts/date << 'EOF'
+#!/bin/sh
+if [ "$1" = "--help" ]; then
+  # stdout: script metadata
+  echo '{"description": "Get the current date and time with optional format", "state": false}'
+  # stderr: option definitions
+  echo '{"format": {"description": "Date format string (e.g., +%Y-%m-%d)", "required": false, "value_type": "string", "default_value": ""}}' >&2
+  exit 0
+fi
+
+# Use format from environment variable if provided
+if [ -n "$format" ]; then
+  date "$format"
+else
+  date
+fi
+EOF
+chmod +x scripts/date
+
+# Run mcpd with Docker
+docker run --rm -it -p 1995:1995 -v "$(pwd)/scripts:/var/lib/mcpd" ghcr.io/pouriya/mcpd:latest
 ```
 
-Or download from [releases](https://github.com/pouriya/mcpd/releases).
+Open your browser to `http://localhost:1995` to access the web dashboard and test your tools.
+
+![mcpd web dashboard](https://github.com/user-attachments/assets/360b19b2-cfb8-4631-b083-39b555a718ad)
+
 
 ## Configuration
 
