@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+# Basic Example: Personalized Greeting
+# Demonstrates a required string option
+# Shows how required options work
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # First line to stdout: script info
+  echo '{"description": "Greet someone by name", "state": false}'
+  # Second line to stderr: options definition
+  # - required: true means this option must be provided
+  echo '{"name": {"description": "Name of the person to greet", "required": true, "value_type": "string"}}' >&2
+  exit 0
+fi
+
+# $name is guaranteed to be set since it's required
+echo "Hello, $name!"
+exit 0

@@ -1,0 +1,57 @@
+#!/usr/bin/env sh
+# Advanced Example: Stateful Counter
+# Demonstrates stateful script with --state support
+# Shows how to persist state between calls using a file
+
+STATE_FILE="/tmp/restcommander_counter.json"
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # state: true enables the --state flag support
+  echo '{"description": "A stateful counter that persists across calls", "version": "1.0.0", "state": true}'
+  echo '{"action": {"description": "Action to perform", "required": false, "value_type": {"enum": ["increment", "decrement", "reset", "set"]}, "default_value": "increment"}, "value": {"description": "Value for set action", "required": false, "value_type": "integer", "default_value": 1}}' >&2
+  exit 0
+fi
+
+# Handle --state flag to return current state
+# This is called by the UI to display current state
+if [ "$1" = "--state" ]; then
+  echo "INFO Reading counter state" >&2
+  if [ -f "$STATE_FILE" ]; then
+    cat "$STATE_FILE"
+  else
+    # Return initial state if file doesn't exist
+    echo 0
+  fi
+  exit 0
+fi
+
+# Read current count from state file
+if [ -f "$STATE_FILE" ]; then
+  count=$(cat "$STATE_FILE")
+else
+  count=0
+fi
+
+echo "INFO Counter action: $action (current: $count)" >&2
+
+# Perform action based on option
+case "$action" in
+  increment)
+    count=$((count + value))
+    ;;
+  decrement)
+    count=$((count - value))
+    ;;
+  reset)
+    count=0
+    ;;
+  set)
+    count="$value"
+    ;;
+esac
+
+# Save new state and output result
+echo "$count" > "$STATE_FILE"
+echo "$count"
+exit 0

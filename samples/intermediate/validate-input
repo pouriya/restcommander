@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+# Intermediate Example: Input Validation
+# Demonstrates size constraints for validation
+# Shows how to use min/max size for strings and numbers
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  echo '{"description": "Validate user input with constraints", "state": false}'
+  # Options with size constraints:
+  # - string size: min/max character length
+  # - integer size: min/max numeric value
+  echo '{"username": {"description": "Username (3-20 chars)", "required": true, "value_type": "string", "size": {"min": 3, "max": 20}}, "age": {"description": "Age (must be 1-120)", "required": true, "value_type": "integer", "size": {"min": 1, "max": 120}}, "score": {"description": "Score (0-100)", "required": false, "value_type": "integer", "default_value": 0, "size": {"min": 0, "max": 100}}}' >&2
+  exit 0
+fi
+
+# Log the validation action
+echo "INFO Validating input for user: $username" >&2
+
+# RestCommander validates inputs before calling the script
+# If we reach here, all constraints are satisfied
+echo "Valid: $username, age $age, score $score"
+exit 0

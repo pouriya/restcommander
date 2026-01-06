@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+# Basic Example: Add Two Numbers
+# Demonstrates integer options with required parameters
+# Shows how to use multiple required options
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # First line to stdout: script info
+  echo '{"description": "Add two numbers together", "state": false}'
+  # Second line to stderr: options definition
+  # - value_type: "integer" for whole numbers
+  # - Both options are required
+  echo '{"a": {"description": "First number", "required": true, "value_type": "integer"}, "b": {"description": "Second number", "required": true, "value_type": "integer"}}' >&2
+  exit 0
+fi
+
+# $a and $b are set as environment variables
+# Perform arithmetic and output result
+result=$(($a + $b))
+echo $result
+exit 0

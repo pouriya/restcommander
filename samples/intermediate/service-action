@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+# Intermediate Example: Service Action
+# Demonstrates enum value type for controlled options
+# Shows how to combine required and optional parameters
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  echo '{"description": "Simulate service management actions", "state": false}'
+  # Options: service (required string), action (optional enum with default)
+  echo '{"service": {"description": "Name of the service", "required": true, "value_type": "string"}, "action": {"description": "Action to perform", "required": false, "value_type": {"enum": ["start", "stop", "restart", "status"]}, "default_value": "status"}}' >&2
+  exit 0
+fi
+
+# Log the action being performed
+echo "INFO Performing $action on service: $service" >&2
+
+# Handle different actions with case statement
+case "$action" in
+  start)
+    echo "$service started"
+    ;;
+  stop)
+    echo "$service stopped"
+    ;;
+  restart)
+    echo "$service restarted"
+    ;;
+  status)
+    echo "$service is running"
+    ;;
+esac
+exit 0

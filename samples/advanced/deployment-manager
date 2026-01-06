@@ -1,0 +1,81 @@
+#!/usr/bin/env sh
+# Advanced Example: Deployment Manager
+# Demonstrates complex stateful workflow with multiple stages
+# Shows how to manage complex state with JSON files
+
+STATE_FILE="/tmp/restcommander_deployment.json"
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # title: custom display name in the UI
+  echo '{"title": "Deployment Manager", "description": "Simulate a deployment workflow with stages", "version": "2.0.0", "state": true}'
+  # Multiple options including boolean type
+  echo '{"action": {"description": "Deployment action", "required": false, "value_type": {"enum": ["start", "approve", "rollback", "status", "history"]}, "default_value": "status"}, "environment": {"description": "Target environment", "required": false, "value_type": {"enum": ["dev", "staging", "production"]}, "default_value": "dev"}, "version": {"description": "Version to deploy", "required": false, "value_type": "string", "default_value": "latest"}, "force": {"description": "Force deployment without approval", "required": false, "value_type": "boolean", "default_value": false}}' >&2
+  exit 0
+fi
+
+# Initialize state file if it doesn't exist
+init_state() {
+  if [ ! -f "$STATE_FILE" ]; then
+    echo '{"current": null, "history": [], "pending_approval": null}' > "$STATE_FILE"
+  fi
+}
+
+# Handle --state flag to return current state
+if [ "$1" = "--state" ]; then
+  echo "INFO Reading deployment state" >&2
+  init_state
+  cat "$STATE_FILE"
+  exit 0
+fi
+
+init_state
+
+echo "INFO Deployment action: $action (env: $environment, version: $version)" >&2
+
+# Handle different deployment actions
+case "$action" in
+  start)
+    # Production deployments require approval unless forced
+    if [ "$environment" = "production" ] && [ "$force" != "true" ]; then
+      echo "WARNING Production deployment requires approval" >&2
+      timestamp=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
+      # Update state file with pending approval
+      cat "$STATE_FILE" | sed "s/\"pending_approval\": null/\"pending_approval\": {\"version\": \"$version\", \"environment\": \"$environment\", \"requested_at\": \"$timestamp\"}/" > "${STATE_FILE}.tmp"
+      mv "${STATE_FILE}.tmp" "$STATE_FILE"
+      echo "Pending approval for $version to $environment"
+    else
+      timestamp=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
+      echo "INFO Deploying $version to $environment" >&2
+      echo "Deployed $version to $environment"
+    fi
+    ;;
+    
+  approve)
+    # Check for pending approval before approving
+    pending=$(cat "$STATE_FILE" | grep -o '"pending_approval": {[^}]*}' || echo "")
+    if [ -z "$pending" ] || echo "$pending" | grep -q 'null'; then
+      echo "No pending deployment to approve"
+      exit 4  # 404 Not Found
+    fi
+    timestamp=$(date -Iseconds 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
+    echo "Approved and deployed"
+    ;;
+    
+  rollback)
+    echo "WARNING Rolling back deployment" >&2
+    echo "Rolled back $environment"
+    ;;
+    
+  status)
+    # Return full state as JSON
+    cat "$STATE_FILE"
+    ;;
+    
+  history)
+    # Extract just the history array
+    cat "$STATE_FILE" | grep -o '"history": \[[^]]*\]' || echo '[]'
+    ;;
+esac
+
+exit 0

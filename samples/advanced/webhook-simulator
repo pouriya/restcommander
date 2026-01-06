@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+# Advanced Example: Webhook Simulator
+# Demonstrates error simulation and JSON payload parsing
+# Shows how to handle complex input validation
+
+import sys
+import json
+import os
+
+# Handle --help flag to return script metadata
+if len(sys.argv) > 1 and sys.argv[1] == "--help":
+    print(json.dumps({
+        "title": "Webhook Simulator",
+        "description": "Simulate webhook processing with validation",
+        "version": "1.0.0",
+        "state": False  # No state support needed
+    }))
+    # Options including boolean type
+    print(json.dumps({
+        "event_type": {
+            "description": "Type of webhook event",
+            "required": True,
+            "value_type": {"enum": ["user.created", "user.updated", "user.deleted", "order.placed", "order.shipped"]}
+        },
+        "payload": {
+            "description": "Event payload (JSON string)",
+            "required": False,
+            "value_type": "string",
+            "default_value": "{}"
+        },
+        "simulate_error": {
+            "description": "Simulate an error response",
+            "required": False,
+            "value_type": "boolean",
+            "default_value": False
+        }
+    }), file=sys.stderr)
+    sys.exit(0)
+
+# Get options from environment
+event_type = os.environ.get("event_type", "")
+payload_str = os.environ.get("payload", "{}")
+# Boolean values come as "true" or "false" strings
+simulate_error = os.environ.get("simulate_error", "false").lower() == "true"
+
+print(f"INFO Processing webhook: {event_type}", file=sys.stderr)
+
+# Parse the JSON payload
+try:
+    payload = json.loads(payload_str) if payload_str else {}
+except json.JSONDecodeError as e:
+    print(f"ERROR Invalid JSON payload: {e}", file=sys.stderr)
+    print(f"Invalid JSON payload: {e}")
+    sys.exit(2)  # 400 Bad Request
+
+# Simulate error if requested (useful for testing error handling)
+if simulate_error:
+    print("WARNING Simulating error as requested", file=sys.stderr)
+    print("Simulated error")
+    sys.exit(5)  # 503 Service Unavailable
+
+# Log details at different levels
+print(f"DEBUG Event type: {event_type}", file=sys.stderr)
+print(f"TRACE Payload: {payload}", file=sys.stderr)
+
+# Parse event type into entity and action
+entity = event_type.split(".")[0] if "." in event_type else "unknown"
+action = event_type.split(".")[1] if "." in event_type else "unknown"
+print(f"INFO {entity.title()} event processed: {event_type}", file=sys.stderr)
+
+# Simple success response
+print(f"Processed {event_type}")
+sys.exit(0)

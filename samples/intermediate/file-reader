@@ -1,0 +1,42 @@
+#!/usr/bin/env sh
+# Intermediate Example: File Reader
+# Demonstrates error handling with different exit codes
+# Shows how exit codes map to HTTP status codes:
+#   0 = 200 OK
+#   2 = 400 Bad Request
+#   3 = 403 Forbidden
+#   4 = 404 Not Found
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  echo '{"description": "Read contents of a file", "state": false}'
+  echo '{"path": {"description": "Path to the file to read", "required": true, "value_type": "string"}}' >&2
+  exit 0
+fi
+
+# Check if file exists
+if [ ! -e "$path" ]; then
+  # Log error to stderr, output message to stdout
+  echo "ERROR File not found: $path" >&2
+  echo "File not found"
+  exit 4  # Maps to 404 Not Found
+fi
+
+# Check if it's a regular file (not directory)
+if [ ! -f "$path" ]; then
+  echo "ERROR Not a regular file: $path" >&2
+  echo "Not a regular file"
+  exit 2  # Maps to 400 Bad Request
+fi
+
+# Check read permission
+if [ ! -r "$path" ]; then
+  echo "ERROR Permission denied: $path" >&2
+  echo "Permission denied"
+  exit 3  # Maps to 403 Forbidden
+fi
+
+# Log the action and output file contents
+echo "INFO Reading file: $path" >&2
+cat "$path"
+exit 0

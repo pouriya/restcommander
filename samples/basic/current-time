@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Basic Example: Current Time
+# Returns the current date and time
+# This is the simplest script that takes no parameters
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # First line to stdout: script info (description, version, state support)
+  echo '{"description": "Get the current date and time", "state": false}'
+  # Second line to stderr: options definition (empty object = no options)
+  echo '{}' >&2
+  exit 0
+fi
+
+# Output the current date/time
+date
+exit 0

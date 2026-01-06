@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Basic Example: Hello World
+# The simplest possible RestCommander script
+# No options, just outputs a greeting
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # First line to stdout: script info (description, version, state support)
+  echo '{"description": "A simple hello world greeting", "state": false}'
+  # Second line to stderr: options definition (empty = no options)
+  echo '{}' >&2
+  exit 0
+fi
+
+# Simple output - can be plain text or JSON
+echo "Hello, World!"
+exit 0

@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+# Intermediate Example: System Information
+# Demonstrates logging levels and JSON output
+# Shows how to use different log levels: INFO, DEBUG, TRACE
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # Include version in script info
+  echo '{"description": "Get system information", "version": "1.0.0", "state": false}'
+  # Enum option for detail level
+  echo '{"detail": {"description": "Level of detail", "required": false, "value_type": {"enum": ["basic", "full"]}, "default_value": "basic"}}' >&2
+  exit 0
+fi
+
+# Different log levels for different verbosity
+echo "INFO Gathering system information (detail: $detail)" >&2
+echo "DEBUG Hostname: $(hostname)" >&2
+
+# Collect system information
+hostname=$(hostname 2>/dev/null || echo "unknown")
+os=$(uname -s 2>/dev/null || echo "unknown")
+arch=$(uname -m 2>/dev/null || echo "unknown")
+
+# Output varies based on detail level
+if [ "$detail" = "full" ]; then
+  # TRACE level for very detailed logging
+  echo "TRACE Collecting detailed information" >&2
+  kernel=$(uname -r 2>/dev/null || echo "unknown")
+  uptime_info=$(uptime 2>/dev/null | sed 's/.*up/up/' | sed 's/,.*//' || echo "unknown")
+  # Output as JSON for structured data
+  echo '{"hostname": "'"$hostname"'", "os": "'"$os"'", "arch": "'"$arch"'", "kernel": "'"$kernel"'", "uptime": "'"$uptime_info"'"}'
+else
+  echo '{"hostname": "'"$hostname"'", "os": "'"$os"'", "arch": "'"$arch"'"}'
+fi
+
+exit 0

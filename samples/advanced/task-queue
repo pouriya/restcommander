@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+# Advanced Example: Task Queue
+# Demonstrates complex stateful operations with priority sorting
+# Shows how to manage lists and complex data structures
+
+import sys
+import json
+import os
+from datetime import datetime
+
+# State file location
+STATE_FILE = "/tmp/restcommander_taskqueue.json"
+
+def load_queue():
+    """Load queue from file or return empty queue"""
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, 'r') as f:
+            return json.load(f)
+    return {"tasks": [], "completed": [], "next_id": 1}
+
+def save_queue(queue):
+    """Save queue to file"""
+    with open(STATE_FILE, 'w') as f:
+        json.dump(queue, f, indent=2)
+
+# Handle --help flag to return script metadata
+if len(sys.argv) > 1 and sys.argv[1] == "--help":
+    print(json.dumps({
+        "title": "Task Queue Manager",  # Custom display name
+        "description": "Manage a simple task queue with priorities",
+        "version": "1.0.0",
+        "state": True
+    }))
+    # Options with size constraints for priority
+    print(json.dumps({
+        "action": {
+            "description": "Queue action",
+            "required": False,
+            "value_type": {"enum": ["add", "complete", "list", "clear", "next"]},
+            "default_value": "list"
+        },
+        "task": {
+            "description": "Task description (for add)",
+            "required": False,
+            "value_type": "string",
+            "default_value": ""
+        },
+        "priority": {
+            "description": "Task priority 1-5 (1=highest)",
+            "required": False,
+            "value_type": "integer",
+            "default_value": 3,
+            "size": {"min": 1, "max": 5}  # Constrain to valid range
+        },
+        "task_id": {
+            "description": "Task ID (for complete)",
+            "required": False,
+            "value_type": "integer",
+            "default_value": 0
+        }
+    }), file=sys.stderr)
+    sys.exit(0)
+
+# Handle --state flag to return summary state
+if len(sys.argv) > 1 and sys.argv[1] == "--state":
+    print("INFO Loading task queue state", file=sys.stderr)
+    queue = load_queue()
+    # Return summary counts for state display
+    print(json.dumps({
+        "pending": len(queue["tasks"]),
+        "completed": len(queue["completed"])
+    }))
+    sys.exit(0)
+
+# Get options from environment
+action = os.environ.get("action", "list")
+task_desc = os.environ.get("task", "")
+priority = int(os.environ.get("priority", 3))
+task_id = int(os.environ.get("task_id", 0))
+
+print(f"INFO Task queue action: {action}", file=sys.stderr)
+
+queue = load_queue()
+
+# Handle different actions
+if action == "add":
+    if not task_desc:
+        print("Task description is required")
+        sys.exit(2)
+    
+    # Create new task with auto-incrementing ID
+    new_task = {
+        "id": queue["next_id"],
+        "task": task_desc,
+        "priority": priority,
+        "created": datetime.now().isoformat()
+    }
+    queue["tasks"].append(new_task)
+    queue["next_id"] += 1
+    # Sort by priority (lower number = higher priority)
+    queue["tasks"].sort(key=lambda x: x["priority"])
+    save_queue(queue)
+    
+    print(f"DEBUG Added task #{new_task['id']}: {task_desc}", file=sys.stderr)
+    print(f"Added task #{new_task['id']}")
+
+elif action == "complete":
+    if task_id == 0:
+        print("Task ID is required")
+        sys.exit(2)
+    
+    # Find and remove task from pending list
+    task = None
+    for i, t in enumerate(queue["tasks"]):
+        if t["id"] == task_id:
+            task = queue["tasks"].pop(i)
+            break
+    
+    if task:
+        # Move to completed list with timestamp
+        task["completed"] = datetime.now().isoformat()
+        queue["completed"].append(task)
+        save_queue(queue)
+        print(f"DEBUG Completed task #{task_id}", file=sys.stderr)
+        print(f"Completed task #{task_id}")
+    else:
+        print(f"Task {task_id} not found")
+        sys.exit(4)
+
+elif action == "next":
+    # Show the highest priority task
+    if queue["tasks"]:
+        next_task = queue["tasks"][0]
+        print(f"#{next_task['id']}: {next_task['task']}")
+    else:
+        print("No pending tasks")
+
+elif action == "list":
+    # Return all pending tasks as JSON
+    print(json.dumps(queue["tasks"]))
+
+elif action == "clear":
+    # Clear pending tasks but keep next_id
+    queue = {"tasks": [], "completed": [], "next_id": queue["next_id"]}
+    save_queue(queue)
+    print("DEBUG Task queue cleared", file=sys.stderr)
+    print("Cleared")
+
+sys.exit(0)

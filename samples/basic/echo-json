@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# Basic Example: Echo JSON
+# Demonstrates optional parameter with default value
+# Shows how to define string options
+
+# Handle --help flag to return script metadata
+if [ "$1" = "--help" ]; then
+  # First line to stdout: script info
+  echo '{"description": "Echo a message as JSON", "state": false}'
+  # Second line to stderr: options definition
+  # - required: false means this option is optional
+  # - default_value: used when option is not provided
+  echo '{"message": {"description": "Message to echo", "required": false, "value_type": "string", "default_value": "Hello from RestCommander!"}}' >&2
+  exit 0
+fi
+
+# Options are passed as environment variables
+# $message contains the value (or default if not provided)
+echo "$message"
+exit 0

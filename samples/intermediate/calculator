@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+# Intermediate Example: Calculator (Python)
+# Demonstrates Python script with multiple options and validation
+# Shows how to use enum value_type for controlled options
+
+import sys
+import json
+
+# Handle --help flag to return script metadata
+if len(sys.argv) > 1 and sys.argv[1] == "--help":
+    # First line to stdout: script info with version
+    print(json.dumps({
+        "description": "A simple calculator",
+        "version": "1.0.0",
+        "state": False
+    }))
+    # Second line to stderr: options definition
+    # - enum value_type restricts values to a predefined list
+    print(json.dumps({
+        "a": {"description": "First operand", "required": True, "value_type": "integer"},
+        "b": {"description": "Second operand", "required": True, "value_type": "integer"},
+        "op": {
+            "description": "Operation to perform",
+            "required": False,
+            "value_type": {"enum": ["add", "subtract", "multiply", "divide"]},
+            "default_value": "add"
+        }
+    }), file=sys.stderr)
+    sys.exit(0)
+
+import os
+
+try:
+    # Options are passed as environment variables (without RC_OPT_ prefix)
+    a = int(os.environ.get("a", 0))
+    b = int(os.environ.get("b", 0))
+    op = os.environ.get("op", "add")
+    
+    # Log to stderr with INFO prefix for visibility in logs
+    print(f"INFO Calculating: {a} {op} {b}", file=sys.stderr)
+    
+    # Perform the calculation based on operation
+    if op == "add":
+        result = a + b
+    elif op == "subtract":
+        result = a - b
+    elif op == "multiply":
+        result = a * b
+    elif op == "divide":
+        if b == 0:
+            # Log error and exit with code 2 (400 Bad Request)
+            print("ERROR Division by zero", file=sys.stderr)
+            print("Division by zero")
+            sys.exit(2)
+        result = a // b  # Integer division
+    else:
+        print(f"Unknown operation: {op}")
+        sys.exit(2)
+    
+    # Output just the result
+    print(result)
+    sys.exit(0)
+
+except Exception as e:
+    # Log exception and exit with error
+    print(f"ERROR {e}", file=sys.stderr)
+    print(str(e))
+    sys.exit(1)

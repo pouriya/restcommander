@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+# Advanced Example: Key-Value Store (Python)
+# Demonstrates stateful script with complex state management
+# Shows how to use Python for more complex logic
+
+import sys
+import json
+import os
+
+# State file location - persists between calls
+STATE_FILE = "/tmp/restcommander_kvstore.json"
+
+def load_store():
+    """Load the key-value store from file"""
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_store(store):
+    """Save the key-value store to file"""
+    with open(STATE_FILE, 'w') as f:
+        json.dump(store, f)
+
+# Handle --help flag to return script metadata
+if len(sys.argv) > 1 and sys.argv[1] == "--help":
+    # First line to stdout: script info
+    print(json.dumps({
+        "description": "A simple key-value store",
+        "version": "2.0.0",
+        "state": True  # Enable --state support
+    }))
+    # Second line to stderr: options definition
+    # value_type: "any" accepts any JSON value
+    print(json.dumps({
+        "action": {
+            "description": "Action to perform",
+            "required": False,
+            "value_type": {"enum": ["get", "set", "delete", "list", "clear"]},
+            "default_value": "list"
+        },
+        "key": {
+            "description": "Key name",
+            "required": False,
+            "value_type": "string",
+            "default_value": ""
+        },
+        "value": {
+            "description": "Value to store (for set action)",
+            "required": False,
+            "value_type": "any",
+            "default_value": ""
+        }
+    }), file=sys.stderr)
+    sys.exit(0)
+
+# Handle --state flag to return current state
+if len(sys.argv) > 1 and sys.argv[1] == "--state":
+    print("INFO Loading key-value store state", file=sys.stderr)
+    store = load_store()
+    # Return the entire store as state
+    print(json.dumps(store))
+    sys.exit(0)
+
+# Get options from environment variables
+action = os.environ.get("action", "list")
+key = os.environ.get("key", "")
+value = os.environ.get("value", "")
+
+print(f"INFO KV Store action: {action}", file=sys.stderr)
+
+store = load_store()
+
+# Handle different actions
+if action == "get":
+    if not key:
+        print("Key is required")
+        sys.exit(2)  # 400 Bad Request
+    if key in store:
+        # Return just the value
+        print(store[key])
+    else:
+        print(f"Key not found: {key}")
+        sys.exit(4)  # 404 Not Found
+
+elif action == "set":
+    if not key:
+        print("Key is required")
+        sys.exit(2)
+    store[key] = value
+    save_store(store)
+    print(f"DEBUG Set {key}={value}", file=sys.stderr)
+    print(f"{key}={value}")
+
+elif action == "delete":
+    if not key:
+        print("Key is required")
+        sys.exit(2)
+    if key in store:
+        del store[key]
+        save_store(store)
+        print(f"DEBUG Deleted key: {key}", file=sys.stderr)
+        print(f"Deleted {key}")
+    else:
+        print(f"Key not found: {key}")
+        sys.exit(4)
+
+elif action == "list":
+    # Return entire store as JSON
+    print(json.dumps(store))
+
+elif action == "clear":
+    store = {}
+    save_store(store)
+    print("DEBUG Store cleared", file=sys.stderr)
+    print("Cleared")
+
+sys.exit(0)
