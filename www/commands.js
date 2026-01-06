@@ -527,7 +527,9 @@ async function drawError(errorName, errorData, element) {
 
 async function drawCommand(commandName, command, element) {
     await console.log('Drawing command', commandName)
-    var commandInfo = command.info;
+    // Commands may be wrapped in Ok/Err, unwrap the actual command data
+    var commandData = command.Ok || command.Err || command
+    var commandInfo = commandData.info;
 
     var commandHeaderElement = document.createElement('h1');
     setAttributes(
@@ -538,7 +540,7 @@ async function drawCommand(commandName, command, element) {
         }
     )
     // Use title if available, otherwise use the provided commandName
-    var displayName = getDisplayName(command, commandName)
+    var displayName = getDisplayName(commandData, commandName)
     commandHeaderElement.innerHTML = displayName
     if ('version' in commandInfo) {
         var smallElement = document.createElement('small')
@@ -556,7 +558,7 @@ async function drawCommand(commandName, command, element) {
         element.appendChild(commandDescriptionElement)
     }
 
-    if (command.info.support_state) {
+    if (commandData.info.support_state) {
         var commandStateHeaderElement = document.createElement('h3')
         setAttributes(
             commandStateHeaderElement,
@@ -573,14 +575,14 @@ async function drawCommand(commandName, command, element) {
             {'class': '', 'id': 'command-state'}
         )
         element.appendChild(commandStateDivElement)
-        getAndDrawCommandState(command)
+        getAndDrawCommandState(commandData)
     }
 
     var optionDefinitions = {};
     if ('options' in commandInfo) {
         optionDefinitions = commandInfo.options
     };
-    element.appendChild(await makeCommandOptionsInputs(optionDefinitions, command))
+    element.appendChild(await makeCommandOptionsInputs(optionDefinitions, commandData))
 
 }
 
